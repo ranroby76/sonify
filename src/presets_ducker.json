@@ -1,0 +1,256 @@
+{
+ "presets": [
+  {
+   "name": "Default",
+   "values": {
+    "Low On": 1.0,
+    "Low Freq": 450.0,
+    "Low Q": 1.2,
+    "Low Depth": 6.0,
+    "Low Threshold": -30.0,
+    "Low Ratio": 4.0,
+    "Low Attack": 8.0,
+    "Low Release": 180.0,
+    "High On": 1.0,
+    "High Freq": 2600.0,
+    "High Q": 1.4,
+    "High Depth": 6.0,
+    "High Threshold": -30.0,
+    "High Ratio": 4.0,
+    "High Attack": 4.0,
+    "High Release": 140.0
+   }
+  },
+  {
+   "name": "Kick vs Bass",
+   "values": {
+    "Low On": 1,
+    "Low Freq": 80,
+    "Low Q": 1.0,
+    "Low Depth": 9,
+    "Low Threshold": -30,
+    "Low Ratio": 6,
+    "Low Attack": 2,
+    "Low Release": 120,
+    "High On": 0,
+    "High Freq": 2600,
+    "High Q": 1.4,
+    "High Depth": 6,
+    "High Threshold": -30,
+    "High Ratio": 4,
+    "High Attack": 4,
+    "High Release": 140
+   }
+  },
+  {
+   "name": "Vocal Pocket",
+   "values": {
+    "Low On": 1,
+    "Low Freq": 400,
+    "Low Q": 1.0,
+    "Low Depth": 3,
+    "Low Threshold": -35,
+    "Low Ratio": 4,
+    "Low Attack": 10,
+    "Low Release": 200,
+    "High On": 1,
+    "High Freq": 3000,
+    "High Q": 1.0,
+    "High Depth": 5,
+    "High Threshold": -35,
+    "High Ratio": 4,
+    "High Attack": 10,
+    "High Release": 200
+   }
+  },
+  {
+   "name": "Snare Space",
+   "values": {
+    "Low On": 0,
+    "Low Freq": 450,
+    "Low Q": 1.2,
+    "Low Depth": 6,
+    "Low Threshold": -30,
+    "Low Ratio": 4,
+    "Low Attack": 8,
+    "Low Release": 180,
+    "High On": 1,
+    "High Freq": 1800,
+    "High Q": 1.5,
+    "High Depth": 6,
+    "High Threshold": -30,
+    "High Ratio": 6,
+    "High Attack": 1,
+    "High Release": 100
+   }
+  },
+  {
+   "name": "Deep Kick Duck",
+   "values": {
+    "Low On": 1,
+    "Low Freq": 60,
+    "Low Q": 0.8,
+    "Low Depth": 12,
+    "Low Threshold": -30,
+    "Low Ratio": 8,
+    "Low Attack": 1,
+    "Low Release": 150,
+    "High On": 0,
+    "High Freq": 2600,
+    "High Q": 1.4,
+    "High Depth": 6,
+    "High Threshold": -30,
+    "High Ratio": 4,
+    "High Attack": 4,
+    "High Release": 140
+   }
+  },
+  {
+   "name": "Gentle Clarity",
+   "values": {
+    "Low On": 1,
+    "Low Freq": 350,
+    "Low Q": 0.8,
+    "Low Depth": 3,
+    "Low Threshold": -30,
+    "Low Ratio": 3,
+    "Low Attack": 10,
+    "Low Release": 200,
+    "High On": 1,
+    "High Freq": 2800,
+    "High Q": 0.8,
+    "High Depth": 3,
+    "High Threshold": -30,
+    "High Ratio": 3,
+    "High Attack": 8,
+    "High Release": 180
+   }
+  },
+  {
+   "name": "Voice-Over",
+   "values": {
+    "Low On": 1,
+    "Low Freq": 300,
+    "Low Q": 0.7,
+    "Low Depth": 6,
+    "Low Threshold": -40,
+    "Low Ratio": 4,
+    "Low Attack": 20,
+    "Low Release": 400,
+    "High On": 1,
+    "High Freq": 3000,
+    "High Q": 0.7,
+    "High Depth": 8,
+    "High Threshold": -40,
+    "High Ratio": 4,
+    "High Attack": 20,
+    "High Release": 400
+   }
+  },
+  {
+   "name": "Synth vs Vocal",
+   "values": {
+    "Low On": 1,
+    "Low Freq": 800,
+    "Low Q": 1.0,
+    "Low Depth": 4,
+    "Low Threshold": -35,
+    "Low Ratio": 4,
+    "Low Attack": 10,
+    "Low Release": 250,
+    "High On": 1,
+    "High Freq": 2000,
+    "High Q": 0.8,
+    "High Depth": 6,
+    "High Threshold": -35,
+    "High Ratio": 4,
+    "High Attack": 10,
+    "High Release": 250
+   }
+  },
+  {
+   "name": "Guitar vs Vocal",
+   "values": {
+    "Low On": 1,
+    "Low Freq": 1000,
+    "Low Q": 1.0,
+    "Low Depth": 4,
+    "Low Threshold": -35,
+    "Low Ratio": 4,
+    "Low Attack": 10,
+    "Low Release": 220,
+    "High On": 1,
+    "High Freq": 3500,
+    "High Q": 1.0,
+    "High Depth": 5,
+    "High Threshold": -35,
+    "High Ratio": 4,
+    "High Attack": 8,
+    "High Release": 200
+   }
+  },
+  {
+   "name": "Pumping",
+   "values": {
+    "Low On": 1,
+    "Low Freq": 80,
+    "Low Q": 0.5,
+    "Low Depth": 18,
+    "Low Threshold": -35,
+    "Low Ratio": 20,
+    "Low Attack": 1,
+    "Low Release": 250,
+    "High On": 0,
+    "High Freq": 2600,
+    "High Q": 1.4,
+    "High Depth": 6,
+    "High Threshold": -30,
+    "High Ratio": 4,
+    "High Attack": 4,
+    "High Release": 140
+   }
+  },
+  {
+   "name": "Hi-Hat vs Vocal",
+   "values": {
+    "Low On": 0,
+    "Low Freq": 450,
+    "Low Q": 1.2,
+    "Low Depth": 6,
+    "Low Threshold": -30,
+    "Low Ratio": 4,
+    "Low Attack": 8,
+    "Low Release": 180,
+    "High On": 1,
+    "High Freq": 8000,
+    "High Q": 1.0,
+    "High Depth": 4,
+    "High Threshold": -35,
+    "High Ratio": 4,
+    "High Attack": 5,
+    "High Release": 150
+   }
+  },
+  {
+   "name": "Tight Kick and Bass",
+   "values": {
+    "Low On": 1,
+    "Low Freq": 50,
+    "Low Q": 1.2,
+    "Low Depth": 10,
+    "Low Threshold": -30,
+    "Low Ratio": 8,
+    "Low Attack": 0.5,
+    "Low Release": 60,
+    "High On": 0,
+    "High Freq": 2600,
+    "High Q": 1.4,
+    "High Depth": 6,
+    "High Threshold": -30,
+    "High Ratio": 4,
+    "High Attack": 4,
+    "High Release": 140
+   }
+  }
+ ]
+}

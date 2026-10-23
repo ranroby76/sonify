@@ -1,0 +1,12 @@
+{
+  "name": "Dual knob",
+  "category": "Controls",
+  "order": 14,
+  "icon": "dualknob",
+  "description": "Two concentric knobs, an outer ring and an inner cap, each turning its own parameter: frequency and gain, coarse and fine.",
+  "widget": {
+    "type": "DualKnob",
+    "w": 96,
+    "h": 114
+  }
+}

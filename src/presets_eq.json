@@ -1,0 +1,238 @@
+{
+ "presets": [
+  {
+   "name": "Default",
+   "values": {
+    "Low Cut": 10.0,
+    "Low Shelf Freq": 100.0,
+    "Low Shelf Gain": 0.0,
+    "Low Mid Freq": 300.0,
+    "Low Mid Gain": 0.0,
+    "Low Mid Q": 1.0,
+    "High Mid Freq": 2500.0,
+    "High Mid Gain": 0.0,
+    "High Mid Q": 1.0,
+    "High Shelf Freq": 8000.0,
+    "High Shelf Gain": 0.0,
+    "High Cut": 22000.0,
+    "Output": 0.0
+   }
+  },
+  {
+   "name": "Vocal Presence",
+   "values": {
+    "Low Cut": 90,
+    "Low Shelf Freq": 120,
+    "Low Shelf Gain": -1,
+    "Low Mid Freq": 300,
+    "Low Mid Gain": -2,
+    "Low Mid Q": 1.2,
+    "High Mid Freq": 3500,
+    "High Mid Gain": 3,
+    "High Mid Q": 0.9,
+    "High Shelf Freq": 10000,
+    "High Shelf Gain": 2.5,
+    "High Cut": 22000.0,
+    "Output": 0.0
+   }
+  },
+  {
+   "name": "Vocal De-Mud",
+   "values": {
+    "Low Cut": 100,
+    "Low Shelf Freq": 100.0,
+    "Low Shelf Gain": 0.0,
+    "Low Mid Freq": 400,
+    "Low Mid Gain": -4,
+    "Low Mid Q": 1.4,
+    "High Mid Freq": 5000,
+    "High Mid Gain": 1.5,
+    "High Mid Q": 1.0,
+    "High Shelf Freq": 8000.0,
+    "High Shelf Gain": 0.0,
+    "High Cut": 22000.0,
+    "Output": 0.0
+   }
+  },
+  {
+   "name": "Kick Punch",
+   "values": {
+    "Low Cut": 30,
+    "Low Shelf Freq": 60,
+    "Low Shelf Gain": 4,
+    "Low Mid Freq": 350,
+    "Low Mid Gain": -5,
+    "Low Mid Q": 1.6,
+    "High Mid Freq": 3500,
+    "High Mid Gain": 4,
+    "High Mid Q": 1.5,
+    "High Shelf Freq": 8000.0,
+    "High Shelf Gain": 0.0,
+    "High Cut": 12000,
+    "Output": 0.0
+   }
+  },
+  {
+   "name": "Snare Crack",
+   "values": {
+    "Low Cut": 80,
+    "Low Shelf Freq": 200,
+    "Low Shelf Gain": 2,
+    "Low Mid Freq": 500,
+    "Low Mid Gain": -3,
+    "Low Mid Q": 1.0,
+    "High Mid Freq": 5000,
+    "High Mid Gain": 4,
+    "High Mid Q": 1.0,
+    "High Shelf Freq": 9000,
+    "High Shelf Gain": 2,
+    "High Cut": 22000.0,
+    "Output": 0.0
+   }
+  },
+  {
+   "name": "Bass Weight",
+   "values": {
+    "Low Cut": 30,
+    "Low Shelf Freq": 80,
+    "Low Shelf Gain": 3,
+    "Low Mid Freq": 250,
+    "Low Mid Gain": -2,
+    "Low Mid Q": 1.0,
+    "High Mid Freq": 800,
+    "High Mid Gain": 2,
+    "High Mid Q": 1.2,
+    "High Shelf Freq": 8000.0,
+    "High Shelf Gain": 0.0,
+    "High Cut": 8000,
+    "Output": 0.0
+   }
+  },
+  {
+   "name": "Acoustic Guitar",
+   "values": {
+    "Low Cut": 80,
+    "Low Shelf Freq": 150,
+    "Low Shelf Gain": -2,
+    "Low Mid Freq": 250,
+    "Low Mid Gain": -2,
+    "Low Mid Q": 1.0,
+    "High Mid Freq": 3000,
+    "High Mid Gain": 2,
+    "High Mid Q": 1.0,
+    "High Shelf Freq": 12000,
+    "High Shelf Gain": 3,
+    "High Cut": 22000.0,
+    "Output": 0.0
+   }
+  },
+  {
+   "name": "Electric Guitar",
+   "values": {
+    "Low Cut": 90,
+    "Low Shelf Freq": 100.0,
+    "Low Shelf Gain": 0.0,
+    "Low Mid Freq": 300,
+    "Low Mid Gain": -2,
+    "Low Mid Q": 1.0,
+    "High Mid Freq": 2000,
+    "High Mid Gain": 2,
+    "High Mid Q": 1.0,
+    "High Shelf Freq": 6000,
+    "High Shelf Gain": -1,
+    "High Cut": 9000,
+    "Output": 0.0
+   }
+  },
+  {
+   "name": "Piano Sparkle",
+   "values": {
+    "Low Cut": 40,
+    "Low Shelf Freq": 100.0,
+    "Low Shelf Gain": 0.0,
+    "Low Mid Freq": 300,
+    "Low Mid Gain": -1.5,
+    "Low Mid Q": 1.0,
+    "High Mid Freq": 3000,
+    "High Mid Gain": 1,
+    "High Mid Q": 1.0,
+    "High Shelf Freq": 10000,
+    "High Shelf Gain": 3,
+    "High Cut": 22000.0,
+    "Output": 0.0
+   }
+  },
+  {
+   "name": "Air Lift",
+   "values": {
+    "Low Cut": 20,
+    "Low Shelf Freq": 100.0,
+    "Low Shelf Gain": 0.0,
+    "Low Mid Freq": 300.0,
+    "Low Mid Gain": 0.0,
+    "Low Mid Q": 1.0,
+    "High Mid Freq": 2500.0,
+    "High Mid Gain": 0.0,
+    "High Mid Q": 1.0,
+    "High Shelf Freq": 12000,
+    "High Shelf Gain": 4,
+    "High Cut": 22000.0,
+    "Output": 0.0
+   }
+  },
+  {
+   "name": "Telephone",
+   "values": {
+    "Low Cut": 400,
+    "Low Shelf Freq": 100.0,
+    "Low Shelf Gain": 0.0,
+    "Low Mid Freq": 300.0,
+    "Low Mid Gain": 0.0,
+    "Low Mid Q": 1.0,
+    "High Mid Freq": 1500,
+    "High Mid Gain": 6,
+    "High Mid Q": 1.5,
+    "High Shelf Freq": 8000.0,
+    "High Shelf Gain": 0.0,
+    "High Cut": 3500,
+    "Output": -3
+   }
+  },
+  {
+   "name": "Warm Tape",
+   "values": {
+    "Low Cut": 10.0,
+    "Low Shelf Freq": 100,
+    "Low Shelf Gain": 2,
+    "Low Mid Freq": 250,
+    "Low Mid Gain": 1,
+    "Low Mid Q": 0.7,
+    "High Mid Freq": 2500.0,
+    "High Mid Gain": 0.0,
+    "High Mid Q": 1.0,
+    "High Shelf Freq": 9000,
+    "High Shelf Gain": -2,
+    "High Cut": 16000,
+    "Output": 0.0
+   }
+  },
+  {
+   "name": "Drum Bus",
+   "values": {
+    "Low Cut": 30,
+    "Low Shelf Freq": 70,
+    "Low Shelf Gain": 2,
+    "Low Mid Freq": 400,
+    "Low Mid Gain": -2,
+    "Low Mid Q": 1.0,
+    "High Mid Freq": 2500.0,
+    "High Mid Gain": 0.0,
+    "High Mid Q": 1.0,
+    "High Shelf Freq": 10000,
+    "High Shelf Gain": 2,
+    "High Cut": 22000.0,
+    "Output": 0.0
+   }
+  }
+ ]
+}

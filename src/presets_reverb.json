@@ -1,0 +1,184 @@
+{
+ "presets": [
+  {
+   "name": "Default",
+   "values": {
+    "Size": 50.0,
+    "Decay": 50.0,
+    "Damping": 50.0,
+    "Pre-Delay": 25.0,
+    "Low Cut": 150.0,
+    "High Cut": 20000.0,
+    "Early": 0.0,
+    "Early Size": 50.0,
+    "Dry": 100.0,
+    "Wet": 30.0
+   }
+  },
+  {
+   "name": "Small Room",
+   "values": {
+    "Size": 20,
+    "Decay": 25,
+    "Damping": 60,
+    "Pre-Delay": 25,
+    "Low Cut": 200,
+    "High Cut": 12000,
+    "Early": 40,
+    "Early Size": 30,
+    "Dry": 100,
+    "Wet": 25
+   }
+  },
+  {
+   "name": "Vocal Hall",
+   "values": {
+    "Size": 45,
+    "Decay": 45,
+    "Damping": 40,
+    "Pre-Delay": 40,
+    "Low Cut": 250,
+    "High Cut": 14000,
+    "Early": 10,
+    "Early Size": 50,
+    "Dry": 100,
+    "Wet": 25
+   }
+  },
+  {
+   "name": "Large Hall",
+   "values": {
+    "Size": 80,
+    "Decay": 70,
+    "Damping": 50,
+    "Pre-Delay": 40,
+    "Low Cut": 150,
+    "High Cut": 16000,
+    "Early": 20,
+    "Early Size": 70,
+    "Dry": 100,
+    "Wet": 30
+   }
+  },
+  {
+   "name": "Cathedral",
+   "values": {
+    "Size": 100,
+    "Decay": 95,
+    "Damping": 45,
+    "Pre-Delay": 60,
+    "Low Cut": 120,
+    "High Cut": 15000,
+    "Early": 15,
+    "Early Size": 90,
+    "Dry": 100,
+    "Wet": 35
+   }
+  },
+  {
+   "name": "Drum Room",
+   "values": {
+    "Size": 30,
+    "Decay": 30,
+    "Damping": 55,
+    "Pre-Delay": 25,
+    "Low Cut": 150,
+    "High Cut": 12000,
+    "Early": 60,
+    "Early Size": 35,
+    "Dry": 100,
+    "Wet": 25
+   }
+  },
+  {
+   "name": "Ambient Wash",
+   "values": {
+    "Size": 95,
+    "Decay": 100,
+    "Damping": 30,
+    "Pre-Delay": 80,
+    "Low Cut": 300,
+    "High Cut": 18000,
+    "Early": 0,
+    "Early Size": 50,
+    "Dry": 80,
+    "Wet": 60
+   }
+  },
+  {
+   "name": "Dark Hall",
+   "values": {
+    "Size": 75,
+    "Decay": 70,
+    "Damping": 85,
+    "Pre-Delay": 40,
+    "Low Cut": 150,
+    "High Cut": 6000,
+    "Early": 20,
+    "Early Size": 70,
+    "Dry": 100,
+    "Wet": 30
+   }
+  },
+  {
+   "name": "Bright Hall",
+   "values": {
+    "Size": 75,
+    "Decay": 60,
+    "Damping": 15,
+    "Pre-Delay": 30,
+    "Low Cut": 200,
+    "High Cut": 20000,
+    "Early": 20,
+    "Early Size": 70,
+    "Dry": 100,
+    "Wet": 25
+   }
+  },
+  {
+   "name": "Snare Verb",
+   "values": {
+    "Size": 50,
+    "Decay": 40,
+    "Damping": 40,
+    "Pre-Delay": 25,
+    "Low Cut": 400,
+    "High Cut": 14000,
+    "Early": 30,
+    "Early Size": 40,
+    "Dry": 100,
+    "Wet": 30
+   }
+  },
+  {
+   "name": "Pad Bloom",
+   "values": {
+    "Size": 90,
+    "Decay": 90,
+    "Damping": 40,
+    "Pre-Delay": 120,
+    "Low Cut": 250,
+    "High Cut": 16000,
+    "Early": 0,
+    "Early Size": 50,
+    "Dry": 100,
+    "Wet": 45
+   }
+  },
+  {
+   "name": "Wet Only",
+   "values": {
+    "Size": 60,
+    "Decay": 60,
+    "Damping": 50,
+    "Pre-Delay": 40,
+    "Low Cut": 150,
+    "High Cut": 16000,
+    "Early": 20,
+    "Early Size": 60,
+    "Dry": 0,
+    "Wet": 100
+   }
+  }
+ ]
+}

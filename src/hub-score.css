@@ -1,0 +1,37 @@
+/* D:\workspace\Fanan_web_hub\src\hub-score.css */
+
+/* The Score (hub-score.js): a large window over the Studio, its controls along the top, then the
+   score on white paper, as Studio One shows it. The copy the PDF is drawn from sits off screen. */
+
+.score-view {
+  position: fixed; inset: 0; z-index: 68; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.5);
+}
+.score-view[hidden] { display: none; }
+.score-box {
+  width: min(1400px, 94vw); height: 90vh; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 8px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+.score-head { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.score-head h2 { margin: 0 6px 0 0; color: var(--bright); font-size: 15px; font-weight: 600; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.score-head .spacer { flex: 1; }
+.score-field { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.score-field[hidden] { display: none; }
+.score-field select {
+  height: 26px; padding: 0 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--inset); color: var(--bright); font-size: 12px;
+}
+.score-zoom { display: inline-flex; align-items: center; gap: 2px; color: var(--text); font-size: 12px; }
+.score-zoom span { min-width: 40px; text-align: center; }
+.score-head .plain-button.small { height: 26px; padding: 0 10px; }
+
+.score-status { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid var(--line); background: var(--panel-2); color: var(--text); font-size: 12px; }
+.score-status[hidden] { display: none; }
+
+/* The paper: white, as printed. */
+.score-paper { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 18px; background: #6b6e74; }
+.score-render { min-height: 100%; background: #ffffff; border-radius: 2px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); }
+/* The page's icon size for svg (hub.css) isn't the score's: it keeps its own size and colours. */
+.score-render svg, .score-print svg { display: block; width: auto; height: auto; fill: initial; flex: none; }
+
+/* What the PDF is drawn from: A4 pages, off screen. */
+.score-print { position: fixed; left: -10000px; top: 0; width: 1000px; background: #ffffff; pointer-events: none; }

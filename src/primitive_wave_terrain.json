@@ -1,0 +1,18 @@
+{
+  "name": "3D waves",
+  "category": "Displays",
+  "order": 160,
+  "icon": "wave3d",
+  "description": "An oscillator's waves in 3D, the row that plays lit and glowing as you play. Drag it to turn it.",
+  "widget": {
+    "type": "WaveTerrain",
+    "w": 420,
+    "h": 210,
+    "label": "Osc",
+    "color": "#38E0D0",
+    "settings": {
+      "engine": "Morph",
+      "sweep": "morph"
+    }
+  }
+}

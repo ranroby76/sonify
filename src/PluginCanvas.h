@@ -1,0 +1,661 @@
+// D:\workspace\Fanan_web_hub\src\PluginCanvas.h
+
+#pragma once
+
+#include <juce_gui_basics/juce_gui_basics.h>
+
+#include "GuiLayout.h"
+#include "Looks.h"
+#include "ObjectPaint.h"
+#include "PresetLibrary.h"
+#include "Primitives.h"
+
+#include <bitset>
+#include <functional>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+
+class WasmElements;
+
+//==============================================================================
+/**
+    The Edit UI tab's canvas: the plugin's window, drawn from its layout, sitting on a big
+    grid you zoom and move around, like Colosseum's rack. Ctrl + wheel zooms (10% to 200%)
+    around the mouse, the wheel scrolls (Shift + wheel: sideways), dragging empty space
+    moves the view, and the minimap and the scrollbars jump anywhere. Fit shows the whole
+    window.
+
+    Play mode: the controls work like the finished plugin's: drag a knob or slider
+    (Shift for fine moves), click a switch or a selector's position, drag in an XY pad,
+    double-click for the default, use the mouse wheel; a keyboard's keys play notes while
+    they're held (sliding across them plays each in turn). Meters, lamps and scopes move
+    with the sound; envelope and filter curves follow their parameters; keyboards light up
+    for every note that sounds, a MIDI keyboard's too.
+
+    Edit mode: drag primitives in from the toolbox (or pictures from the desktop). Click an
+    element to select it; right-click it for its menu (the one menu): Copy, Paste,
+    Duplicate and its layer at the top, then what edits it (its parameter typed in by id),
+    Delete, and an instruction for Sonify AI at its foot. Right-click the window's empty
+    space for the window's own menu (size, colours, a picture behind everything, Paste).
+    Drag to move (snapped); drag the selected element's handles (corners and sides) to
+    resize it, Shift on a corner keeps its shape. Delete removes it, the arrow keys nudge
+    it (Shift: further). Dragging a group carries what's inside. The window's own corner
+    handle resizes the window; the Crop tool (the Crop button beside Fit, or C) crops it as
+    Photoshop does: a box over it whose sides and corners drag in or out (past the window:
+    it grows), dragged inside to move it, then Enter (or Apply, or a double-click) to crop to
+    it, Esc to leave it. Double-clicking a knob, slider or switch opens its menu, where
+    "Design it in the Knob Studio" opens its look there (with "Include similars": the controls
+    like it too); double-clicking a picture picks its file.
+
+    Elements lie in layers, in the layout's order: the first at the back. The menu's Layer
+    list brings one to the front or forward, or sends it backward or to the back (also
+    Ctrl+Shift+], Ctrl+], Ctrl+[, Ctrl+Shift+[). Copy, Paste and Duplicate (Ctrl+C, Ctrl+V,
+    Ctrl+D): a copied frame takes what's inside it along, and a paste lands where the menu
+    was opened (Ctrl+V: under the mouse). Copies go through the system clipboard, so they
+    paste into another project too.
+
+    Every element is an object: the round handle above the selected one turns it (Shift: in
+    steps of 15 degrees), its menu has its position, size, angle and opacity, and a turned one
+    is still resized by its handles and played in its own frame. Shapes (rectangles, circles,
+    triangles, stars) have a handle of their own (the yellow diamond) that rounds a rectangle's
+    corners, moves a triangle's top point or a star's or circle's middle (lopsided), and their
+    menu gives them a material with pattern layers, relief, a shadow and an outline.
+
+    Several at once: Shift+click adds an element to the selection (or takes it away), and
+    Shift+drag on empty space draws a box that adds what it touches. Dragging any of them
+    moves them all; Delete, the arrow keys, Copy, Duplicate, Bring to front and Send to back
+    work on them all, and their menu gives them one colour; a click on one of them alone
+    selects just that one. A background picture is a picture element covering the window
+    at the back; until it's selected, dragging it moves the view, as empty space does.
+
+    Knobs, sliders and switches are drawn from their looks (see Looks): a frame for each
+    value, made by KnobMaker's layer renderer. Programmed elements (Sonify AI's own, from
+    the project's elements folder) draw themselves, through the GUI's sandboxed module
+    (WasmElements); in Play mode they get the mouse, and their popups lie over everything.
+*/
+class PluginCanvas final : public juce::Component,
+                           public juce::DragAndDropTarget,
+                           public juce::FileDragAndDropTarget,
+                           private juce::Timer
+{
+public:
+    struct Param
+    {
+        int index = -1;
+        juce::String id, name, unit;
+        float min = 0.0f, max = 1.0f, def = 0.0f, value = 0.0f, skew = 1.0f;
+        int decimals = -1;     // how many its value shows (-1: by its range; a percentage none)
+    };
+
+    PluginCanvas();
+    ~PluginCanvas() override;
+
+    void setLayout (const GuiLayout& newLayout);
+    const GuiLayout& getLayout() const noexcept    { return layout; }
+
+    /** The open project's gui folder: its pictures are in images/, the view is kept in
+        view.json. None: no project. */
+    void setGuiFolder (const juce::File& folder);
+
+    void setDesignMode (bool shouldDesign);
+    void setParameters (const juce::Array<Param>& newParams);
+
+    /** The plugin's own window in Sonify (a plugin made here, on a track): Play mode, the panel
+        alone, fitted to the component, with no grid, caption, minimap or scrollbars, and a view
+        that doesn't move or zoom by hand. */
+    void setPanelOnly (bool shouldBePanelOnly);
+    bool isPanelOnly() const noexcept    { return panelOnly; }
+
+    /** What meters, lamps and scopes can watch: signals ("voices.out", "plugin.out L") and
+        module displays ("lfo.position"). For the edit menu's lists. */
+    void setSources (const juce::StringArray& signals, const juce::StringArray& displays);
+
+    /** What the preset manager widgets show: the presets under their headings, the chosen one
+        (and whether it changed), and what can be done (Save, Delete...). */
+    void setPresets (const PresetMenu& presets);
+
+    /** The GUI's programmed elements from the latest build (nullptr: none, or not built yet). */
+    void setElements (std::shared_ptr<WasmElements> newElements);
+
+    /** The looks knobs, sliders and switches are drawn from (owned by the Workspace). */
+    void setLooks (Looks& looksToUse);
+
+    /** A look changed, came or went: draw again. */
+    void looksChanged();
+
+    /** A control takes a look; or gets a copy of its look of its own (named after its caption,
+        returned), so changing it changes only that control. */
+    void useLook (int widgetIndex, const juce::String& lookName);
+    juce::String giveOwnLook (int widgetIndex);
+
+    /** Photoshop's Global Light window: the panel's one light (the layout's "light"), which
+        lights the looks, the shapes and painted backgrounds. */
+    void editGlobalLight();
+
+    /** Photoshop's Layer Style window for a shape (its "effects"). */
+    void editLayerStyle (int widgetIndex);
+
+    /** Edit mode: a primitive's element, centred on a point of the plugin window (in its
+        pixels), or in the middle of what's showing. A background primitive asks for the
+        picture instead. */
+    void addPrimitive (const Primitive& primitive, std::optional<juce::Point<float>> centre = {});
+
+    //==========================================================================
+    /** The view: how big the window shows, 10% to 200%, kept around a point of the canvas
+        (by default its middle). */
+    void setZoom (float newZoom, std::optional<juce::Point<float>> around = {});
+    float getZoom() const noexcept    { return zoom; }
+
+    /** The whole window in view (at most at 100%). */
+    void fitToView();
+
+    static constexpr float minZoom = 0.10f, maxZoom = 2.0f;
+
+    //==========================================================================
+    /** An edit menu's instruction for Sonify AI, about one element (-1: the whole window). */
+    std::function<void (int widgetIndex, const juce::String& instruction)> onAskAi;
+
+    /** The banner's Open chat button. */
+    std::function<void()> onOpenChat;
+
+    /** The banner across the top: Sonify AI at work on a request made here, then its answer. */
+    void showAiWorking (const juce::String& what);
+    void showAiReply (const juce::String& reply);
+
+    //==========================================================================
+    /** For Export: the GUI as images the exported plugin draws from. Everything that never
+        moves is in the background (pictures too); each control's moving part is a strip of
+        frames (controls with the same look and size share one: their look's own frames, a
+        switch's off and on). Meters, scopes, curves and XY dots are drawn live by the plugin
+        itself. */
+    /** An element's size when it's added, at a point of the plugin window. */
+    static juce::Rectangle<int> defaultBounds (GuiWidget::Type type, int x, int y);
+
+    /** The registration badge: its words when none are given, and how it's drawn (the
+        exported plugin shows the same picture). */
+    static juce::String registrationText();
+    static void drawRegistration (juce::Graphics&, const GuiWidget&);
+
+    struct Bake
+    {
+        juce::Image background;
+
+        struct Strip
+        {
+            juce::Image image;   // frames stacked vertically
+            int frameWidth = 0, frameHeight = 0, frames = 0;
+        };
+
+        std::vector<Strip> strips;
+        std::vector<int> stripOf;                        // per widget: its strip, or -1
+        std::vector<juce::Rectangle<int>> movingArea;    // per widget: where its moving part goes
+
+        juce::Image registration;                        // the registration badge, if the panel has one
+        juce::Rectangle<int> registrationArea;           // ...and where it goes
+    };
+
+    Bake bake();
+
+    /** For Export to plugin files (PluginExporter, PluginCanvas_Export.cpp): the window baked page
+        by page, as the exported plugin shows it. Each page's background holds everything still on
+        it; what moves is a strip of frames, drawn as the panel draws it (a control's look at each
+        value, turned and faded as it is; a meter at each level; a lamp lit; a selector at each
+        position; a preset manager at each preset, then with none chosen; the page tabs at each
+        page; a readout at each value). Scopes, curves, XY pads, keyboards and programmed
+        elements are drawn live by the plugin. presetNames: the presets the plugin carries. */
+    struct ExportBake
+    {
+        int width = 0, height = 0;
+        std::vector<juce::Image> pages;      // each page's background (one when the window has no pages)
+
+        struct Strip
+        {
+            juce::Image image;                // frames stacked top to bottom
+            int frameWidth = 0, frameHeight = 0, frames = 0;
+        };
+
+        std::vector<Strip> strips;
+
+        /** One element as the plugin has it (stella::gui::Widget), in the layout's order. */
+        struct Item
+        {
+            int widget = -1;                  // its place in the layout
+            juce::String kind;                // stella::gui::Kind's name: "knob" .. "tabs", "readout"
+            int page = -1;                    // the page it's on; -1: every page
+            juce::Rectangle<int> area;        // where its frames go, or what's drawn live
+            juce::Rectangle<int> box;         // where it's played, upright
+            int strip = -1;
+            int count = 0, mode = 0;          // as stella::gui::Widget has them
+            float angle = 0.0f;
+        };
+
+        std::vector<Item> items;
+    };
+
+    ExportBake bakeForExport (const juce::StringArray& presetNames);
+
+    /** The panel as it plays now, as the finished plugin shows it (no Edit marks), scaled:
+        the store's picture. Invalid when there's no panel. */
+    juce::Image snapshot (float scale);
+
+    std::function<void (int index, float value)> onParameterChanged;
+    std::function<void (int note, float velocity)> onNote;         // a keyboard's key: down (velocity 0..1) or up (0)
+    std::function<bool (int note)> isNoteDown;                     // whether a note is sounding, for the keyboards to show
+    std::function<void()> onLayoutEdited;                          // save it
+    std::function<void (int widgetIndex, bool includeSimilars)> onEditLook;   // open a control's look in the Knob Studio (with the controls like it)
+
+    /** Paints a picture in code, as paint_picture does (the recipe: "element", "file", "width",
+        "height", "color", "settings", and "quiet": the canvas reads it afresh itself); done
+        gets what went wrong, or nothing when it's painted. The Edit tab's material controls. */
+    std::function<void (const juce::var& recipe, std::function<void (const juce::String& problem)> done)> onPaintPicture;
+    std::function<void (int presetIndex)> onPresetChosen;          // a preset manager's arrows or list, in Play mode
+    std::function<void (PresetAction action)> onPresetAction;      // its menu's Save, Save as, Load, banks...
+    std::function<void (const juce::String& why)> onElementsFailed; // the programmed elements crashed or got stuck
+
+    /** A protected plugin's window (panel only): a click on the registration badge in Play mode
+        opens its Registration window; once it's registered, the badge isn't drawn. */
+    std::function<void()> onRegistrationClicked;
+    void setRegistered (bool isRegistered);
+
+    /** Live data, read about 30 times a second. */
+    std::function<float (const juce::String& source, bool rms)> readLevel;
+    std::function<void (const juce::String& source, float* destination, int numSamples)> readScope;
+    std::function<void (const juce::StringArray& levels, const juce::StringArray& scopes)> onSourcesChanged;
+
+    //==========================================================================
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void moved() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
+    bool keyPressed (const juce::KeyPress&) override;
+
+    // Primitives dragged in from the toolbox.
+    bool isInterestedInDragSource (const SourceDetails&) override;
+    void itemDragEnter (const SourceDetails&) override;
+    void itemDragMove (const SourceDetails&) override;
+    void itemDragExit (const SourceDetails&) override;
+    void itemDropped (const SourceDetails&) override;
+
+    // Pictures dragged in from the desktop.
+    bool isInterestedInFileDrag (const juce::StringArray& files) override;
+    void fileDragEnter (const juce::StringArray& files, int x, int y) override;
+    void fileDragMove (const juce::StringArray& files, int x, int y) override;
+    void fileDragExit (const juce::StringArray& files) override;
+    void filesDropped (const juce::StringArray& files, int x, int y) override;
+
+private:
+    class ElementMenu;
+    class AiBanner;
+    class ElementBridge;
+
+    //==========================================================================
+    // The elements
+    static constexpr int snapStep = 4;                 // design grid, in plugin pixels
+    static constexpr int edgeSnap = 8;                 // how near a resized side sticks to the window's edge
+    static constexpr float handleSize = 10.0f;         // resize handles, in view pixels
+    static int snapped (float v)                       { return juce::roundToInt (v / (float) snapStep) * snapStep; }
+    static bool isInteractive (const GuiWidget& w);
+    static juce::String typeDisplayName (GuiWidget::Type type);
+    static juce::Colour standardColour (const GuiWidget& w);   // what it's drawn in with no colour of its own
+    static const char* defaultStarPath();
+
+    /** A project is open: the window shows (even with nothing on it yet). */
+    bool hasPanel() const noexcept    { return guiFolder != juce::File(); }
+
+    void timerCallback() override;
+    int widgetAt (juce::Point<float> plugin, bool interactiveOnly) const;
+    const Param* paramById (const juce::String& id) const;
+    const Param* paramFor (const GuiWidget& widget) const    { return paramById (widget.param); }
+    float proportionOf (const Param& p, float value) const;
+    float valueAt (const Param& p, float proportion) const;
+    float currentValue (const Param& p) const;
+    float roleProportion (const GuiWidget& w, const juce::String& role, float fallback) const;
+    void setValue (const Param& p, float value);
+
+    /** Repaints only what shows these parameters (their controls, displays and programmed
+        elements); everything in Edit, where more of the canvas shows them. */
+    void repaintParameters (const std::vector<int>& indices);
+
+    /** Whether a widget may be skipped while painting: one with a bounded picture lying wholly
+        outside the area being painted (panel pixels). */
+    bool liesOutside (const GuiWidget& w, juce::Rectangle<float> painted) const;
+    void setXy (const GuiWidget& w, juce::Point<float> plugin);
+
+    /** What to draw of a widget: all of it, only what never moves, or only what moves. */
+    enum class Part { all, still, moving };
+
+    /** override >= 0 draws the moving part as if at that value: a proportion for knobs and
+        sliders, 0 or 1 for switches and lamps, a position for selectors. */
+    void drawWidget (juce::Graphics&, int index, Part part = Part::all, float override = -1.0f);
+    void drawUpright (juce::Graphics&, int index, Part part, float override);   // drawWidget's work, before it's turned and faded
+    void drawShape (juce::Graphics&, const GuiWidget&, int index);
+    void drawLive (juce::Graphics&, const GuiWidget&, int index, Part part, float override);
+    void drawCurve (juce::Graphics&, const GuiWidget&, Part part);
+    void drawPanel (juce::Graphics&);   // the window's colours and background picture, in plugin pixels
+
+    //==========================================================================
+    // Programmed elements (PluginCanvas_Elements.cpp)
+    struct ElementView
+    {
+        juce::String type;                 // the element it was made as
+        bool created = false;
+        int width = 0, height = 0;
+        juce::Image image, popupImage;
+        juce::Rectangle<int> popup;        // the open popup, in plugin pixels (empty: closed)
+    };
+
+    void syncElements();                   // the layout's custom elements made, resized or let go
+    void refreshElements (bool all);       // drawn again where they changed (all: every one)
+    void drawElement (juce::Graphics&, const GuiWidget&, int index);
+    void drawElementPopups (juce::Graphics&);
+    int popupAt (juce::Point<float> plugin) const;   // whose open popup is there (-1: none)
+    bool anyPopupOpen() const;
+    void closeElementPopups();
+
+    /** The mouse to a programmed element (or its popup): event as in WasmElements::mouse. */
+    bool elementMouse (int index, bool popup, int event, juce::Point<float> plugin, const juce::ModifierKeys& mods,
+                       bool doubleClick = false, float notches = 0.0f);
+
+    /** Hovering in Play mode: the element (or popup) under the mouse hears it move, the one
+        it left hears it leave. */
+    void hoverElements (juce::Point<float> plugin, const juce::ModifierKeys& mods);
+    void checkElementsFailed();
+    float frameLevel (const juce::String& source, bool rms);
+    void drawPicture (juce::Graphics&, const juce::String& name, juce::Rectangle<float> area, const juce::String& mode);
+    juce::Rectangle<int> movingAreaOf (const GuiWidget& widget) const;
+    juce::Rectangle<int> knobSquare (const GuiWidget& widget) const;
+
+    /** A knob's, slider's or switch's look: its frame for a value, in its moving area. */
+    void drawLook (juce::Graphics&, const GuiWidget&, juce::Rectangle<int> area, float value);
+
+    /** A keyboard: its keys at rest (what never moves), then the keys that are down, drawn
+        the way the exported plugin draws them over its baked background. */
+    void drawKeyboard (juce::Graphics&, const GuiWidget&, int index, Part part);
+    void drawKeyboardAtRest (juce::Graphics&, const GuiWidget&);
+
+    /** Play mode: the key under the mouse plays (the one before stops); -1 lets go. */
+    void playKey (int widgetIndex, juce::Point<float> plugin);
+    void releaseKey();
+
+    /** The look most of the window's controls of this kind wear, for a new one (none: the default). */
+    juce::String commonLook (const GuiWidget& widget) const;
+    void edited();
+    void reportSources();
+
+    /** Adds an element: its parameter, caption and the like filled in where they're missing.
+        Returns its index. */
+    int addElement (GuiWidget w, std::optional<juce::Point<float>> centre);
+    void removeSelected();
+
+    /** An element's box centred on a point (plugin pixels), snapped, inside the window. */
+    juce::Rectangle<int> placed (juce::Rectangle<int> bounds, juce::Point<float> centre) const;
+
+    /** Asks for a picture and copies it into the project: for an element, or (-1) the background. */
+    void choosePicture (int widgetIndex);
+    void usePicture (int widgetIndex, const juce::String& name);
+    const juce::Image& picture (const juce::String& name);
+    juce::File imagesFolder() const;
+
+    //==========================================================================
+    // The view (Colosseum's rack): plugin pixel p shows at (p - pan) * zoom.
+    juce::Rectangle<float> panelArea() const;   // where the plugin window shows
+    juce::Point<float> toPlugin (juce::Point<float> view) const;
+    juce::Rectangle<float> toView (juce::Rectangle<int> plugin) const;
+    juce::Rectangle<float> worldBounds() const;  // how far the view can go, in plugin pixels
+    juce::Rectangle<float> viewArea() const;     // the canvas minus the scrollbars
+    void clampPan();
+    void centreOn (juce::Point<float> plugin);
+    void followPosition();                       // the window stays put when the canvas's left edge moves
+    void viewChanged();
+    void loadView();
+    void saveViewSoon();
+
+    juce::Rectangle<float> minimapArea() const;
+    juce::Rectangle<float> hScrollArea() const;
+    juce::Rectangle<float> vScrollArea() const;
+    juce::Rectangle<float> hThumb() const;
+    juce::Rectangle<float> vThumb() const;
+    juce::Rectangle<float> panelHandle() const;  // the window's own resize corner
+
+    /** The crop tool: a box in plugin pixels over the window. Its handles are numbered as an
+        element's (0 top-left round to 7 left); 8 is inside it (moves it), 9 a new box drawn
+        from outside it. Applied, the window takes its size, everything moves with its
+        top-left corner, a background picture fills the new window (painted ones are painted
+        again at its size), and what lies wholly outside it is deleted. */
+    bool cropping = false;
+    juce::Rectangle<int> cropBox, cropStart;
+    int cropHandle = -1;
+    juce::TextButton cropButton { "Crop" }, cropApplyButton { "Apply" }, cropCancelButton { "Cancel" };
+    void startCrop();
+    void applyCrop();
+    void cancelCrop();
+    juce::Rectangle<float> cropHandleArea (int handle) const;
+    int cropHandleAt (juce::Point<float> view) const;     // -1: none (8: inside the box)
+    void dragCrop (juce::Point<float> delta, bool keepShape);
+    void drawCrop (juce::Graphics&);
+    void fitPaintedBackdrops();                            // painted backgrounds painted again at the window's size
+
+    /** The selected element's handles: 0 top-left, 1 top, 2 top-right, 3 right, 4 bottom-right,
+        5 bottom, 6 bottom-left, 7 left resize it (knobs, which stay round, have the corners
+        only; a small element, its corners only; a line, none: its points shape it); 8 turns it
+        (the round one above it); 9 is a shape's own (see ObjectPaint::adjust: a line's bend
+        point); 10 and 11 a line's ends. All turn with it. Empty: no such handle. */
+    static constexpr int turnHandle = 8, shapeHandle = 9, lineStartHandle = 10, lineEndHandle = 11, numHandles = 12;
+
+    /** Whether the element at an index is a line (a shape of kind "line"). */
+    bool isLine (int index) const;
+    juce::Rectangle<float> handleArea (int handle) const;
+    juce::Point<float> handleCentre (int handle) const;   // in view pixels (none: off the canvas)
+    int handleAt (juce::Point<float> view) const;   // -1: none
+
+    /** An element's turn as the view shows it (about its middle there), and its outline there. */
+    juce::AffineTransform viewTurn (const GuiWidget& w) const;
+    juce::Path viewOutline (const GuiWidget& w, float grow) const;
+    juce::Rectangle<int> viewAreaOf (const GuiWidget& w) const;   // what it covers in the view, turned: what to repaint
+
+    /** A point of the window in an element's own unturned frame (where it's played and picked). */
+    static juce::Point<float> intoWidget (const GuiWidget& w, juce::Point<float> plugin)    { return w.unturned (plugin); }
+
+    /** Element indexes moved (added, deleted, reordered): what's kept by index starts afresh. */
+    void indexesChanged();
+
+    //==========================================================================
+    // Pages (GuiLayout::pages): one shows at a time, in Edit and in Play; a tabs element
+    // switches them, and so does the strip of page tabs above the window in Edit.
+    int shownPage = 0;
+    juce::String shownPageName() const     { return layout.pages.isEmpty() ? juce::String() : layout.pages[juce::jlimit (0, layout.pages.size() - 1, shownPage)]; }
+    bool isShown (const GuiWidget& w) const { return layout.isOnPage (w, shownPageName()); }
+    void showPage (int index);
+
+    /** A new page, shown. The first time (no pages yet) there are two: "Main" with the window's
+        controls on it, and the new one; withTabs: and a tabs element to switch them if there's none. */
+    void addPage (bool withTabs = true);
+    void renamePage (int index, const juce::String& name);
+    void removePage (int index);       // its elements go to the page before it (or every page when none is left)
+    void movePage (int index, int delta);
+    void askToRenamePage (int index);
+
+    /** The window menu's list of pages, in order: renamed where a name changed, added, removed. */
+    void setPages (const juce::StringArray& names);
+
+    /** The strip above the window in Edit: a tab per page, then "+". Index: a page; -1 "+". */
+    std::vector<std::pair<int, juce::Rectangle<float>>> pageStrip() const;
+    void drawPageStrip (juce::Graphics&);
+    void pageStripClicked (int item, const juce::MouseEvent&);
+
+    /** A tabs element's tab at a point (in its own frame); -1: none. */
+    int tabAt (const GuiWidget& tabs, juce::Point<float> local) const;
+
+    //==========================================================================
+    // Layers: the layout's order, the first element at the back.
+    enum class Order { front, forward, backward, back };
+    void reorder (int index, Order order);
+
+    // Several selected at once: `selected` is the one the mouse last picked, `manySelected` all of
+    // them (empty when one or none is selected).
+    std::vector<int> selection() const;                            // every selected element, back to front
+    bool isSelected (int index) const;
+    void toggleSelection (int index);                              // Shift+click
+    void selectMany (const std::set<int>& indexes, int primary);   // one or none: a plain selection
+    void reorderSelection (bool toFront);                          // all of them, keeping their order
+
+    // Copy and paste: elements as JSON on the system clipboard.
+    void copyElements (const std::vector<int>& indexes);           // frames with what's inside them
+    void copyElement (int index)                                   { copyElements ({ index }); }
+    std::vector<GuiWidget> clipboardElements() const;              // empty: nothing of ours there
+    void pasteElements (std::optional<juce::Point<float>> at);     // at: where their top-left goes (plugin
+                                                                   // pixels); none: a step beside the copies
+    int pasteCount = 0;                                            // pastes since the copy, each a step further
+    std::optional<juce::Point<float>> pastePoint;                  // where the menu was opened, for its Paste
+
+    /** A picture covering the whole window: the background. */
+    bool isBackdrop (const GuiWidget& w) const;
+
+    /** The background picture that shows at the back (the last of those with only frames and
+        backgrounds under them), or -1: a new frame goes just above it, a new background takes
+        its place. */
+    int backBackdrop() const;
+    void navigateMinimapTo (juce::Point<float> view);
+    void drawGrid (juce::Graphics&);
+    void drawMinimap (juce::Graphics&);
+    void drawScrollbars (juce::Graphics&);
+    void drawDropGhost (juce::Graphics&);
+    void showDropGhost (const juce::String& primitiveId, juce::Point<float> view);
+    void repaintDropGhost();
+
+    //==========================================================================
+    // Selection and the edit menu
+    void select (int index);                     // -1: nothing
+    void selectPanel();
+    void openMenu();                             // for what's selected
+    void closeMenu();
+    void followMenu();                           // what's dragged: its open menu shows where it is now
+
+    /** The look a control wore before the user first tried another (see GuiWidget::originalStyle). */
+    static void rememberOriginalLook (GuiWidget& w)
+    {
+        if (! w.originalKnown)
+        {
+            w.originalKnown = true;
+            w.originalStyle = w.style;
+        }
+    }
+    void layOutOverlays();
+    void updateZoomControls();
+
+    //==========================================================================
+    GuiLayout layout;
+    juce::Array<Param> params;
+    std::map<int, float> values;                                   // by parameter index
+    Looks* looks = nullptr;
+    juce::StringArray signalSources, displaySources;
+    PresetMenu presetMenu;
+    int presetVersion = 0;                                         // counts the preset menu's changes (programmed elements follow it)
+
+    // Painted backgrounds (PanelPainter): their material, colours and patterns from the Edit tab.
+    juce::var paintedRecipeOf (const GuiWidget& w) const;   // a painted picture's recipe; void if it isn't one
+    void repaintPainted (const juce::var& recipe);          // paints it again (the newest asked for wins)
+    void paintNewBackground();                              // a lit panel behind everything, to shape in its menu
+    void pictureRepainted (const juce::String& fileName);
+    bool paintingPicture = false;
+    std::map<juce::String, juce::var> pendingRecipes;              // by file: the newest change asked for while one paints
+    int paintGeneration = 0;                                       // counts project switches: a paint asked for in the project before is let go
+
+    // The global light: shown at once (looks, shapes); kept, it repaints painted backgrounds too.
+    void setGlobalLight (float angle, float altitude);
+    void repaintBackgrounds();
+    bool lightKnown = false;                                       // the project's light was seen (a new one in a new layout: repaint)
+
+    int heldNote = -1, heldKeyboard = -1;                          // the key the mouse holds down, and on which keyboard
+    std::bitset<128> notesShown;                                   // the notes the keyboards show as down
+
+    std::shared_ptr<WasmElements> elements;
+    std::unique_ptr<ElementBridge> elementBridge;
+    std::map<int, ElementView> elementViews;                       // by widget index
+    juce::String elementsProblem;                                  // why the elements stopped
+    bool pressedPopup = false;                                     // the press went to a popup
+    int hoveredElement = -1;                                       // the element (or popup) the mouse is over
+    bool hoveredPopup = false;
+
+    // Shapes painted pixel by pixel (a material, patterns, relief, a shadow): kept by element until
+    // they change; big ones are painted on a thread of their own while the last one stands in.
+    struct ShapePainting
+    {
+        ObjectPaint::Painting painting;
+        juce::String pending;                                      // the key being painted on the thread
+    };
+
+    static constexpr int shapePixelsNow = 360000;                  // bigger ones go to the thread
+    std::map<int, ShapePainting> shapePaintings;                   // by widget index
+    std::unique_ptr<juce::ThreadPool> shapePainter;
+
+    std::map<int, float> meterLevels;                              // by widget: shown level, with fall-back
+    std::map<int, float> meterNeedles;                             // ...a VU's needle, swinging after it (0..1 of the meter)
+    std::map<int, std::pair<float, double>> meterPeaks;            // ...the peak held (0..1) and until when (ms)
+    std::map<juce::String, float> frameLevels;                     // read once per frame per source
+    juce::StringArray reportedLevels, reportedScopes;
+    std::vector<float> scopeBuffer;
+
+    juce::File guiFolder;
+    std::map<juce::String, juce::Image> pictures;                  // by file name in images/
+    std::map<juce::String, juce::Time> pictureTimes;               // when each file was read: a newer file is read again
+    std::unique_ptr<juce::FileChooser> pictureChooser;
+
+    bool design = true, baking = false;
+    bool panelOnly = false;   // a made plugin's window in Sonify: the panel alone
+    bool registered = false;  // ...registered on this computer: its registration badge hides
+    int selected = -1, active = -1, hovered = -1;
+    std::set<int> manySelected;                                          // all selected, when more than one
+    juce::Rectangle<int> marquee;                                  // Shift+drag's box, in plugin pixels
+    bool panelSelected = false, menuOpen = false;
+
+    // What a press is doing.
+    // A line: its end dragged (lineEnd, resizeHandle says which), or the line pulled where it was
+    // grabbed (lineBend, at lineGrab along it); a right-press on it moves it, its menu opening
+    // on release when it wasn't dragged (menuOnRelease).
+    enum class Drag { none, element, resizeElement, turnElement, adjustShape, resizePanel, pan, minimap, hScroll, vScroll, control, marquee, crop,
+                      lineEnd, lineBend };
+    Drag drag = Drag::none;
+    float lineGrab = 0.5f;
+    bool menuOnRelease = false;
+    bool changed = false, dragMoved = false;                       // dragMoved: the press became a drag
+    bool pressedPanel = false;                                     // the press started on the window's empty space
+    int pressedBackdrop = -1;                                      // ...or on the background picture, not selected yet
+    int resizeHandle = -1;                                         // the handle being dragged (see handleArea)
+    bool reopenMenu = false;                                       // the menu was open when the press started
+    juce::Point<float> dragStart;
+    juce::Point<float> panAtDragStart;
+    float startProportion = 0.0f;
+    juce::Rectangle<int> startBounds;
+    GuiWidget startWidget;                                         // the element as it was when a turn or a shape's handle began
+    juce::Point<int> startPanelSize;
+    std::vector<std::pair<int, juce::Rectangle<int>>> carried;     // a group's contents, while it moves
+
+    // The view.
+    float zoom = 1.0f;
+    juce::Point<float> pan;                                        // the plugin pixel at the view's top-left
+    int lastX = 0;                                                 // where the canvas sat in its parent
+    bool autoFit = true;               // the view follows the window until the user moves it
+    bool viewSaveScheduled = false;
+
+    // Something dragged over the canvas: where it would land, in plugin pixels.
+    std::optional<juce::Rectangle<int>> dropGhost;
+
+    std::unique_ptr<ElementMenu> menu;
+    std::unique_ptr<AiBanner> banner;
+    juce::TextButton fitButton { "Fit" };
+    juce::Slider zoomSlider;
+    juce::Label zoomLabel;
+
+    std::shared_ptr<bool> alive = std::make_shared<bool> (true);
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginCanvas)
+};

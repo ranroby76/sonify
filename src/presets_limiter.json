@@ -1,0 +1,100 @@
+{
+ "presets": [
+  {
+   "name": "Default",
+   "values": {
+    "Gain": 0.0,
+    "Ceiling": -1.0,
+    "Release": 80.0
+   }
+  },
+  {
+   "name": "Transparent",
+   "values": {
+    "Gain": 2,
+    "Ceiling": -1,
+    "Release": 120
+   }
+  },
+  {
+   "name": "Streaming Safe",
+   "values": {
+    "Gain": 3,
+    "Ceiling": -1,
+    "Release": 100
+   }
+  },
+  {
+   "name": "Loud Master",
+   "values": {
+    "Gain": 6,
+    "Ceiling": -0.3,
+    "Release": 60
+   }
+  },
+  {
+   "name": "Very Loud",
+   "values": {
+    "Gain": 9,
+    "Ceiling": -0.3,
+    "Release": 40
+   }
+  },
+  {
+   "name": "Brickwall",
+   "values": {
+    "Gain": 0,
+    "Ceiling": -0.1,
+    "Release": 10
+   }
+  },
+  {
+   "name": "Gentle Catch",
+   "values": {
+    "Gain": 1,
+    "Ceiling": -2,
+    "Release": 200
+   }
+  },
+  {
+   "name": "Drum Bus Peaks",
+   "values": {
+    "Gain": 4,
+    "Ceiling": -1,
+    "Release": 30
+   }
+  },
+  {
+   "name": "Vocal Peaks",
+   "values": {
+    "Gain": 3,
+    "Ceiling": -1.5,
+    "Release": 150
+   }
+  },
+  {
+   "name": "Broadcast",
+   "values": {
+    "Gain": 4,
+    "Ceiling": -2,
+    "Release": 300
+   }
+  },
+  {
+   "name": "Slow and Smooth",
+   "values": {
+    "Gain": 5,
+    "Ceiling": -1,
+    "Release": 600
+   }
+  },
+  {
+   "name": "Fast and Punchy",
+   "values": {
+    "Gain": 6,
+    "Ceiling": -1,
+    "Release": 15
+   }
+  }
+ ]
+}

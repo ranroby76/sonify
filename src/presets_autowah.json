@@ -1,0 +1,136 @@
+{
+ "presets": [
+  {
+   "name": "Default",
+   "values": {
+    "Sensitivity": 50.0,
+    "Frequency": 400.0,
+    "Resonance": 60.0,
+    "LFO Rate": 1.0,
+    "LFO Depth": 0.0,
+    "Mix": 100.0
+   }
+  },
+  {
+   "name": "Funk Guitar",
+   "values": {
+    "Sensitivity": 70,
+    "Frequency": 350,
+    "Resonance": 75,
+    "LFO Rate": 1,
+    "LFO Depth": 0,
+    "Mix": 100
+   }
+  },
+  {
+   "name": "Bass Quack",
+   "values": {
+    "Sensitivity": 65,
+    "Frequency": 200,
+    "Resonance": 80,
+    "LFO Rate": 1,
+    "LFO Depth": 0,
+    "Mix": 100
+   }
+  },
+  {
+   "name": "Soft Wah",
+   "values": {
+    "Sensitivity": 40,
+    "Frequency": 500,
+    "Resonance": 40,
+    "LFO Rate": 1,
+    "LFO Depth": 0,
+    "Mix": 100
+   }
+  },
+  {
+   "name": "Vowel",
+   "values": {
+    "Sensitivity": 55,
+    "Frequency": 600,
+    "Resonance": 85,
+    "LFO Rate": 1,
+    "LFO Depth": 0,
+    "Mix": 100
+   }
+  },
+  {
+   "name": "Slow Sweep",
+   "values": {
+    "Sensitivity": 0,
+    "Frequency": 500,
+    "Resonance": 70,
+    "LFO Rate": 0.3,
+    "LFO Depth": 80,
+    "Mix": 100
+   }
+  },
+  {
+   "name": "Fast Wobble",
+   "values": {
+    "Sensitivity": 0,
+    "Frequency": 500,
+    "Resonance": 65,
+    "LFO Rate": 4,
+    "LFO Depth": 60,
+    "Mix": 100
+   }
+  },
+  {
+   "name": "Clavinet",
+   "values": {
+    "Sensitivity": 75,
+    "Frequency": 450,
+    "Resonance": 70,
+    "LFO Rate": 1,
+    "LFO Depth": 0,
+    "Mix": 100
+   }
+  },
+  {
+   "name": "Talking",
+   "values": {
+    "Sensitivity": 60,
+    "Frequency": 300,
+    "Resonance": 90,
+    "LFO Rate": 1.5,
+    "LFO Depth": 25,
+    "Mix": 100
+   }
+  },
+  {
+   "name": "Subtle Envelope",
+   "values": {
+    "Sensitivity": 35,
+    "Frequency": 700,
+    "Resonance": 45,
+    "LFO Rate": 1,
+    "LFO Depth": 0,
+    "Mix": 50
+   }
+  },
+  {
+   "name": "Synth Sweep",
+   "values": {
+    "Sensitivity": 20,
+    "Frequency": 150,
+    "Resonance": 85,
+    "LFO Rate": 0.15,
+    "LFO Depth": 100,
+    "Mix": 100
+   }
+  },
+  {
+   "name": "Dub Wah",
+   "values": {
+    "Sensitivity": 50,
+    "Frequency": 250,
+    "Resonance": 90,
+    "LFO Rate": 0.5,
+    "LFO Depth": 40,
+    "Mix": 100
+   }
+  }
+ ]
+}

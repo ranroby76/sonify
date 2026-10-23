@@ -1,0 +1,413 @@
+{
+ "width": 680,
+ "height": 328,
+ "background": {
+  "top": "#FF1A1B1F",
+  "bottom": "#FF0D0D10"
+ },
+ "light": {
+  "angle": 120,
+  "altitude": 32
+ },
+ "widgets": [
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 680,
+   "h": 328,
+   "material": "anodized",
+   "color": "#FF15161A",
+   "finish": "satin",
+   "grain": 0.7
+  },
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 680,
+   "h": 64,
+   "color": "#FF0B0B0D"
+  },
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 680,
+   "h": 30,
+   "color": "#10FFFFFF"
+  },
+  {
+   "type": "line",
+   "from": [
+    0,
+    64
+   ],
+   "to": [
+    680,
+    64
+   ],
+   "lineWidth": 1,
+   "color": "#FF2A2B30"
+  },
+  {
+   "type": "line",
+   "from": [
+    0,
+    65
+   ],
+   "to": [
+    680,
+    65
+   ],
+   "lineWidth": 1,
+   "color": "#FF050506"
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 20,
+   "w": 4,
+   "h": 24,
+   "rounding": 1,
+   "color": "#FFF2F4F8",
+   "effects": {
+    "dropShadow": {
+     "color": "#FFFFFFFF",
+     "opacity": 70,
+     "distance": 0,
+     "size": 6
+    }
+   }
+  },
+  {
+   "type": "label",
+   "text": "Sonify Delay",
+   "x": 40,
+   "y": 14,
+   "w": 360,
+   "h": 28,
+   "size": 20,
+   "bold": true,
+   "font": "Montserrat",
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "label",
+   "text": "PING-PONG  \u00b7  TAPE-DARK REPEATS",
+   "x": 41,
+   "y": 41,
+   "w": 420,
+   "h": 14,
+   "size": 9.5,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "preset",
+   "label": "Presets",
+   "x": 436,
+   "y": 18,
+   "w": 220,
+   "h": 28,
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 84,
+   "w": 224,
+   "h": 220,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    34,
+    85
+   ],
+   "to": [
+    238,
+    85
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "TIME",
+   "x": 40,
+   "y": 94,
+   "w": 192,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "selector",
+   "param": "Sync",
+   "options": [
+    "Free",
+    "Song"
+   ],
+   "x": 40,
+   "y": 106,
+   "w": 112,
+   "h": 56,
+   "color": "#FFF2F4F8",
+   "settings": {
+    "display": "pill"
+   }
+  },
+  {
+   "type": "selector",
+   "param": "Note",
+   "options": [
+    "1/1",
+    "1/2",
+    "1/4",
+    "1/8",
+    "1/16",
+    "1/4 dotted",
+    "1/8 dotted",
+    "1/4 triplet",
+    "1/8 triplet"
+   ],
+   "x": 40,
+   "y": 172,
+   "w": 192,
+   "h": 56,
+   "color": "#FFF2F4F8",
+   "settings": {
+    "display": "vfd",
+    "background": "#FF07080A"
+   }
+  },
+  {
+   "type": "knob",
+   "param": "Time",
+   "label": "Free Time",
+   "x": 172,
+   "y": 100,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "label",
+   "display": "readout",
+   "param": "Time",
+   "x": 40,
+   "y": 236,
+   "w": 192,
+   "h": 34,
+   "color": "#FFF2F4F8",
+   "font": "Share Tech Mono",
+   "background": "#FF07080A"
+  },
+  {
+   "type": "label",
+   "text": "DELAY TIME",
+   "x": 40,
+   "y": 274,
+   "w": 192,
+   "h": 14,
+   "size": 8.5,
+   "bold": true,
+   "color": "#FF5C6068"
+  },
+  {
+   "type": "rectangle",
+   "x": 264,
+   "y": 84,
+   "w": 232,
+   "h": 220,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    274,
+    85
+   ],
+   "to": [
+    486,
+    85
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "REPEATS",
+   "x": 280,
+   "y": 94,
+   "w": 200,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "knob",
+   "param": "Feedback",
+   "label": "Feedback",
+   "x": 280,
+   "y": 112,
+   "size": 88,
+   "style": "Sonify knob red"
+  },
+  {
+   "type": "knob",
+   "param": "Damping",
+   "label": "Damping",
+   "x": 392,
+   "y": 116,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Low Cut",
+   "label": "Low Cut",
+   "x": 392,
+   "y": 208,
+   "size": 52,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "rectangle",
+   "x": 512,
+   "y": 84,
+   "w": 144,
+   "h": 220,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    522,
+    85
+   ],
+   "to": [
+    646,
+    85
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "MIX",
+   "x": 528,
+   "y": 94,
+   "w": 112,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "knob",
+   "param": "Wet",
+   "label": "Wet",
+   "x": 528,
+   "y": 112,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Dry",
+   "label": "Dry",
+   "x": 600,
+   "y": 112,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "meter",
+   "source": "out L",
+   "x": 560,
+   "y": 214,
+   "w": 10,
+   "h": 60,
+   "settings": {
+    "display": "segments",
+    "segments": 15,
+    "colorLow": "#FFB9BCC4",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "meter",
+   "source": "out R",
+   "x": 574,
+   "y": 214,
+   "w": 10,
+   "h": 60,
+   "settings": {
+    "display": "segments",
+    "segments": 15,
+    "colorLow": "#FFB9BCC4",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "label",
+   "text": "OUT",
+   "x": 552,
+   "y": 280,
+   "w": 50,
+   "h": 14,
+   "size": 8.5,
+   "bold": true,
+   "color": "#FF5C6068"
+  }
+ ]
+}

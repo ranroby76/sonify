@@ -1,0 +1,13 @@
+{
+  "name": "Range slider",
+  "category": "Controls",
+  "order": 22,
+  "icon": "range",
+  "description": "One track with two handles for a range's two ends: a high-pass and a low-pass, a band, a key range. Its low and high are bound in its menu.",
+  "widget": {
+    "type": "RangeSlider",
+    "w": 240,
+    "h": 56,
+    "label": "Band"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "Instrument list",
+  "category": "Controls",
+  "order": 33,
+  "icon": "samples",
+  "description": "A sampler's instruments: the names in its sample library (Options > Sample library...), for its instrument parameter.",
+  "widget": {
+    "type": "dropdown",
+    "label": "Instrument",
+    "w": 220,
+    "h": 48,
+    "options": [
+      "(no instruments yet)"
+    ],
+    "settings": {
+      "library": true
+    }
+  }
+}

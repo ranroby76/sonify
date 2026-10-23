@@ -1,0 +1,400 @@
+{
+ "width": 720,
+ "height": 368,
+ "background": {
+  "top": "#FF1A1B1F",
+  "bottom": "#FF0D0D10"
+ },
+ "light": {
+  "angle": 120,
+  "altitude": 32
+ },
+ "widgets": [
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 720,
+   "h": 368,
+   "material": "anodized",
+   "color": "#FF15161A",
+   "finish": "satin",
+   "grain": 0.7
+  },
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 720,
+   "h": 64,
+   "color": "#FF0B0B0D"
+  },
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 720,
+   "h": 30,
+   "color": "#10FFFFFF"
+  },
+  {
+   "type": "line",
+   "from": [
+    0,
+    64
+   ],
+   "to": [
+    720,
+    64
+   ],
+   "lineWidth": 1,
+   "color": "#FF2A2B30"
+  },
+  {
+   "type": "line",
+   "from": [
+    0,
+    65
+   ],
+   "to": [
+    720,
+    65
+   ],
+   "lineWidth": 1,
+   "color": "#FF050506"
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 20,
+   "w": 4,
+   "h": 24,
+   "rounding": 1,
+   "color": "#FFF2F4F8",
+   "effects": {
+    "dropShadow": {
+     "color": "#FFFFFFFF",
+     "opacity": 70,
+     "distance": 0,
+     "size": 6
+    }
+   }
+  },
+  {
+   "type": "label",
+   "text": "Sonify Reverb",
+   "x": 40,
+   "y": 14,
+   "w": 360,
+   "h": 28,
+   "size": 20,
+   "bold": true,
+   "font": "Montserrat",
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "label",
+   "text": "HALL  \u00b7  EARLY REFLECTIONS",
+   "x": 41,
+   "y": 41,
+   "w": 420,
+   "h": 14,
+   "size": 9.5,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "preset",
+   "label": "Presets",
+   "x": 404,
+   "y": 18,
+   "w": 220,
+   "h": 28,
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "label",
+   "text": "OUT",
+   "x": 634,
+   "y": 25,
+   "w": 30,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "meter",
+   "source": "out L",
+   "x": 668,
+   "y": 14,
+   "w": 10,
+   "h": 36,
+   "settings": {
+    "display": "segments",
+    "segments": 9,
+    "colorLow": "#FFB9BCC4",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "meter",
+   "source": "out R",
+   "x": 682,
+   "y": 14,
+   "w": 10,
+   "h": 36,
+   "settings": {
+    "display": "segments",
+    "segments": 9,
+    "colorLow": "#FFB9BCC4",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 84,
+   "w": 312,
+   "h": 260,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    34,
+    85
+   ],
+   "to": [
+    326,
+    85
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "SPACE",
+   "x": 40,
+   "y": 94,
+   "w": 280,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "knob",
+   "param": "Size",
+   "label": "Size",
+   "x": 40,
+   "y": 112,
+   "size": 88,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Decay",
+   "label": "Decay",
+   "x": 152,
+   "y": 112,
+   "size": 88,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Pre-Delay",
+   "label": "Pre-Delay",
+   "x": 40,
+   "y": 236,
+   "size": 48,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Damping",
+   "label": "Damping",
+   "x": 112,
+   "y": 236,
+   "size": 48,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Early",
+   "label": "Early",
+   "x": 184,
+   "y": 236,
+   "size": 48,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Early Size",
+   "label": "Early Size",
+   "x": 256,
+   "y": 236,
+   "size": 48,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "rectangle",
+   "x": 352,
+   "y": 84,
+   "w": 136,
+   "h": 260,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    362,
+    85
+   ],
+   "to": [
+    478,
+    85
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "TONE",
+   "x": 368,
+   "y": 94,
+   "w": 104,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "knob",
+   "param": "Low Cut",
+   "label": "Low Cut",
+   "x": 392,
+   "y": 116,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "High Cut",
+   "label": "High Cut",
+   "x": 392,
+   "y": 224,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "rectangle",
+   "x": 504,
+   "y": 84,
+   "w": 192,
+   "h": 260,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    514,
+    85
+   ],
+   "to": [
+    686,
+    85
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "MIX",
+   "x": 520,
+   "y": 94,
+   "w": 160,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "slider",
+   "param": "Dry",
+   "label": "Dry",
+   "x": 524,
+   "y": 112,
+   "w": 44,
+   "h": 206,
+   "style": "Sonify fader"
+  },
+  {
+   "type": "slider",
+   "param": "Wet",
+   "label": "Wet",
+   "x": 600,
+   "y": 112,
+   "w": 44,
+   "h": 206,
+   "style": "Sonify fader"
+  },
+  {
+   "type": "lamp",
+   "source": "out",
+   "threshold": 0.03,
+   "display": "dome",
+   "color": "#FFF2F4F8",
+   "follow": true,
+   "x": 664,
+   "y": 300,
+   "w": 20,
+   "h": 20
+  }
+ ]
+}

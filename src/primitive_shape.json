@@ -1,0 +1,12 @@
+{
+  "name": "Star",
+  "category": "Pictures & text",
+  "order": 263,
+  "icon": "star",
+  "description": "A star: its points, how deep they go and its middle in its menu; a flat colour or a material with patterns, relief and a shadow.",
+  "widget": {
+    "type": "star",
+    "w": 64,
+    "h": 61
+  }
+}

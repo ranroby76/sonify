@@ -1,0 +1,112 @@
+{
+ "presets": [
+  {
+   "name": "Default",
+   "values": {
+    "Rate": 0.5,
+    "Depth": 80.0,
+    "Feedback": 50.0,
+    "Mix": 50.0
+   }
+  },
+  {
+   "name": "Slow Sweep",
+   "values": {
+    "Rate": 0.1,
+    "Depth": 90,
+    "Feedback": 40,
+    "Mix": 50
+   }
+  },
+  {
+   "name": "Classic Script",
+   "values": {
+    "Rate": 0.5,
+    "Depth": 70,
+    "Feedback": 20,
+    "Mix": 50
+   }
+  },
+  {
+   "name": "Jet",
+   "values": {
+    "Rate": 0.08,
+    "Depth": 100,
+    "Feedback": 85,
+    "Mix": 60
+   }
+  },
+  {
+   "name": "Funky Fast",
+   "values": {
+    "Rate": 2.5,
+    "Depth": 80,
+    "Feedback": 50,
+    "Mix": 50
+   }
+  },
+  {
+   "name": "Gentle Movement",
+   "values": {
+    "Rate": 0.25,
+    "Depth": 50,
+    "Feedback": 20,
+    "Mix": 35
+   }
+  },
+  {
+   "name": "Vibe",
+   "values": {
+    "Rate": 1.2,
+    "Depth": 60,
+    "Feedback": 10,
+    "Mix": 70
+   }
+  },
+  {
+   "name": "Deep Resonant",
+   "values": {
+    "Rate": 0.3,
+    "Depth": 100,
+    "Feedback": 90,
+    "Mix": 50
+   }
+  },
+  {
+   "name": "Guitar Swirl",
+   "values": {
+    "Rate": 0.7,
+    "Depth": 85,
+    "Feedback": 60,
+    "Mix": 50
+   }
+  },
+  {
+   "name": "Keys Phase",
+   "values": {
+    "Rate": 0.4,
+    "Depth": 75,
+    "Feedback": 45,
+    "Mix": 45
+   }
+  },
+  {
+   "name": "Bubbles",
+   "values": {
+    "Rate": 4.0,
+    "Depth": 60,
+    "Feedback": 70,
+    "Mix": 50
+   }
+  },
+  {
+   "name": "Subtle",
+   "values": {
+    "Rate": 0.2,
+    "Depth": 40,
+    "Feedback": 15,
+    "Mix": 25
+   }
+  }
+ ]
+}

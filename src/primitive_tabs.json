@@ -1,0 +1,12 @@
+{
+  "name": "Page tabs",
+  "category": "Controls",
+  "order": 55,
+  "icon": "tabs",
+  "description": "Tabs that show the window's pages, one at a time: dropped in, the window gets its first pages (Main and Page 2); the page names are above the window and in the window's menu.",
+  "widget": {
+    "type": "tabs",
+    "w": 240,
+    "h": 30
+  }
+}

@@ -1,0 +1,749 @@
+/* D:\workspace\Fanan_web_hub\src\hub-live.css */
+
+/* The Live Show Studio (hub-live.js): its tabs over it (the show's switches in the middle of their
+   line: Enable streaming, Stream settings, Controller, Mute mics, Mute playback), its rail on the left, DJ show's decks
+   either side of the mixer (the playlist's tabs: the mixer, then the one player), and the live
+   channels, the library and the playlist under them (the pads in the library, for DJ show; the
+   effects channel in a window floating over it; the show's screen a picture in picture). Each
+   deck has its colour (--deck); a channel its track's; a hot cue its own (--cue), a loop its own
+   (--loop). */
+
+.live-page { position: relative; background: #141519; }   /* the effects window floats in it */
+.live-page [hidden] { display: none !important; }
+
+/* Streaming enabled: a red light on the studio's tab, wherever you are. */
+body.live-on-air .studio-tab[data-studio="live"]::after {
+  content: ""; width: 7px; height: 7px; border-radius: 50%; background: #ff3b3b; box-shadow: 0 0 6px #ff3b3b; flex: none;
+}
+
+/* ------------------------------------------------------------------ the head: its tabs, the show's switches in the middle */
+/* Three columns: the title and tabs, the switches centred on the page, the stream's clock and the
+   note. A narrower window gives the left its room first (the switches then sit right after the
+   tabs, never over them); a narrow one puts the switches on a line of their own, over the tabs. */
+.live-head {
+  flex: none; display: grid; grid-template-columns: minmax(max-content, 1fr) auto minmax(0, 1fr);
+  grid-template-areas: "left switches right"; align-items: end; column-gap: 18px;
+  padding: 8px 16px 0; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.live-head-left { grid-area: left; display: flex; align-items: flex-end; gap: 18px; }
+.live-head-right { grid-area: right; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; margin-bottom: 9px; }
+.live-title { flex: none; margin: 0 0 8px; color: var(--bright); font-size: 17px; font-weight: 600; line-height: 1.1; }
+.live-tabs { flex: none; display: flex; gap: 2px; }
+.live-tab {
+  position: relative; height: 32px; padding: 0 16px; border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0;
+  background: transparent; color: var(--muted); font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px;
+}
+.live-tab::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--use); opacity: 0.55; }
+.live-tab:hover { color: var(--bright); background: #1d1f24; }
+.live-tab[aria-selected="true"] { background: #141519; border-color: var(--line); color: var(--bright); margin-bottom: -1px; height: 33px; }
+.live-tab[aria-selected="true"]::before { opacity: 1; box-shadow: 0 0 6px var(--use); }
+.live-tab[aria-selected="true"]::after { content: ""; position: absolute; left: 10px; right: 10px; top: 0; height: 2px; border-radius: 0 0 2px 2px; background: var(--use); }
+.live-note { min-width: 0; margin: 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+
+/* The show's switches: pills alike, each lit in its colour while on (Enable streaming red, its
+   lamp blinking; Stream settings purple while its panel shows; Controller green while its window
+   is open; Monitor teal while it shows; the mutes amber while muted). */
+.live-switches { grid-area: switches; display: flex; align-items: center; justify-content: center; gap: 8px; align-self: center; padding-bottom: 1px; }
+.live-switches-gap { width: 1px; height: 20px; margin: 0 4px; background: var(--line); }
+.live-pill {
+  --pill: #8a8f98;
+  display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 13px 0 11px;
+  border: 1px solid color-mix(in srgb, var(--pill) 45%, transparent); border-radius: 14px; background: #1c1d21; color: #d4d7dc;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap;
+}
+.live-pill:hover { border-color: color-mix(in srgb, var(--pill) 80%, transparent); color: var(--bright); }
+.live-pill-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: color-mix(in srgb, var(--pill) 35%, #202024); }
+.live-pill.on { background: color-mix(in srgb, var(--pill) 55%, #111114); border-color: var(--pill); color: #fff; }
+.live-pill.on .live-pill-dot { background: var(--pill); box-shadow: 0 0 7px var(--pill), 0 0 2px #fff inset; }
+.pill-stream { --pill: #ff4d57; }
+.pill-stream.on .live-pill-dot { animation: live-blink 1.6s ease-in-out infinite; }
+.pill-settings { --pill: #a77bff; }
+.pill-controller { --pill: #46c27a; }
+.pill-monitor { --pill: #2ec4c4; }
+.pill-mute { --pill: #ffcf45; }
+.pill-mute.on { background: #85680f; }
+/* The stream going out: how long. */
+.live-clock { flex: none; display: inline-flex; align-items: center; gap: 6px; color: #ff8c94; font: 700 12px/1 Consolas, "Cascadia Mono", monospace; white-space: nowrap; }
+.live-clock::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #ff3b47; box-shadow: 0 0 6px #ff3b47; animation: live-blink 1s ease-in-out infinite; }
+@media (max-width: 1640px) {
+  .live-title { display: none; }   /* the top bar names the studio already: the switches keep the middle */
+}
+@media (max-width: 1400px) {
+  .live-pill { padding: 0 10px 0 9px; font-size: 10.5px; letter-spacing: 0.03em; }
+  .live-switches { gap: 6px; }
+}
+@media (max-width: 1180px) {
+  .live-head { grid-template-columns: minmax(max-content, 1fr) minmax(0, 1fr); grid-template-areas: "switches switches" "left right"; row-gap: 6px; }
+  .live-switches { padding-bottom: 0; }
+  .live-switches:not(:has(> :not([hidden]))) { display: none; }
+}
+
+/* ------------------------------------------------------------------ the rail */
+.live-main { flex: 1 1 auto; min-height: 0; display: flex; }
+/* Room around each control: the groups apart, their buttons a hand's width from each other. */
+.live-rail {
+  flex: none; width: 108px; display: flex; flex-direction: column; align-items: stretch; gap: 18px; padding: 14px 10px;
+  border-right: 1px solid var(--line); background: #17181c; overflow-y: auto;
+}
+.rail-group { display: flex; flex-direction: column; align-items: stretch; gap: 9px; padding-top: 14px; border-top: 1px solid #45484f; }
+.rail-group.first { padding-top: 0; border-top: none; }
+.rail-caption { color: var(--muted); font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 1px; }
+@keyframes live-blink { 50% { opacity: 0.55; } }
+.live-deckcount { display: flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.live-deckcount button { flex: 1; height: 30px; padding: 0; border: none; background: var(--panel-2); color: var(--muted); font-size: 12px; font-weight: 700; }
+.live-deckcount button + button { border-left: 1px solid var(--line); }
+.live-deckcount button[aria-checked="true"] { background: var(--accent); color: #fff; }
+
+/* Recording the night, and the podcast. */
+.live-rec-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 10px 0 8px; border: 1px solid #4a3034;
+  border-radius: 16px; background: #1f1719; color: #d9b9bc; font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+}
+.live-rec-button:hover { border-color: #8a3a40; }
+.live-rec-dot { width: 9px; height: 9px; border-radius: 50%; background: #6b2b31; }
+.live-rec-button.on { background: #3a0f14; border-color: #ff4d57; color: #fff; }
+.live-rec-button.on .live-rec-dot { background: #ff3b47; box-shadow: 0 0 6px #ff3b47; animation: live-blink 1s ease-in-out infinite; }
+.live-rec-time { min-width: 0; padding: 1px 0; color: #ff8c94; font: 600 12px/1 Consolas, "Cascadia Mono", monospace; text-align: center; }
+.live-rec-time:empty { display: none; }
+.live-stems {
+  height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); color: var(--muted); font-size: 11px; font-weight: 700;
+}
+.live-stems[aria-checked="true"] { border-color: #b98bff; color: #e6dcff; background: #2a2236; }
+.live-podcast {
+  height: 30px; padding: 0 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-2); color: var(--text); font-size: 11.5px; font-weight: 600;
+  white-space: nowrap;
+}
+.live-podcast:hover { border-color: #4b4f57; color: var(--bright); }
+.live-podcast.busy { border-color: var(--accent); color: var(--bright); }
+/* The show's screen (the picture in picture) and its HDMI outputs. */
+.live-screen-button, .live-outputs-button {
+  height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-2); color: var(--text);
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.live-screen-button:hover, .live-outputs-button:hover { border-color: #4b4f57; color: var(--bright); }
+.live-screen-button[aria-pressed="true"] { background: #1d3a52; border-color: #3fa9f5; color: #fff; }
+.live-outputs-button.on { background: #1f6b3e; border-color: #46c27a; color: #fff; }
+
+/* ------------------------------------------------------------------ the body */
+.live-body {
+  position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1.3fr) minmax(0, 1fr); gap: 8px; padding: 8px;
+}
+.live-stage { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; }
+.live-side { min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+/* The playlist's tabs: the mixer, then the one player. */
+.live-stage.single { grid-template-columns: auto minmax(0, 1fr); }
+.live-stage.single #live-left { display: none; }
+.live-deck.player .ld-badge { display: none; }
+
+/* ------------------------------------------------------------------ a deck */
+.live-deck {
+  flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 6px;
+  background: linear-gradient(180deg, #212328 0%, #1b1c20 100%); border: 1px solid #2c2e34; border-top: 3px solid var(--deck);
+}
+.live-deck.drop { outline: 2px dashed var(--deck); outline-offset: -4px; }
+.ld-head { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ld-badge {
+  flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--deck); color: #0b0c0e;
+  font-weight: 800; font-size: 12px;
+}
+.ld-title { flex: 1; min-width: 0; color: var(--bright); font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ld-title.empty { color: var(--muted); font-weight: 400; font-style: italic; }
+.ld-time { flex: none; color: var(--text); font: 600 12px/1 Consolas, "Cascadia Mono", monospace; white-space: pre; }
+/* Its key. */
+.ld-key {
+  flex: none; min-width: 26px; height: 18px; padding: 0 5px; border-radius: 9px; background: #2a2c32; color: var(--bright);
+  font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+}
+.ld-key:empty { display: none; }
+/* A video on it: its picture on the show's screen. */
+.ld-video {
+  flex: none; height: 16px; padding: 0 5px; border-radius: 3px; background: #2a2236; color: #d9c8ff; font-size: 9px; font-weight: 800;
+  letter-spacing: 0.06em; line-height: 16px;
+}
+.ld-key.moved { background: #4a3a12; color: #ffd36a; }
+.ld-caption { color: var(--muted); font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+.ld-small {
+  flex: none; height: 20px; min-width: 20px; padding: 0 5px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel-2);
+  color: var(--text); font-size: 10px; font-weight: 700;
+}
+.ld-small:hover:not(:disabled) { color: var(--bright); border-color: #4b4f57; }
+.ld-small:disabled { opacity: 0.4; }
+
+/* Its tempo now. */
+.ld-bpm-now { flex: none; min-width: 0; color: var(--text); font: 600 11.5px/1 Consolas, "Cascadia Mono", monospace; white-space: nowrap; }
+.ld-bpm-now:empty { display: none; }
+
+/* The tempo row: the player's BPM (its slider) and SYNC. */
+.ld-beat { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ld-sync {
+  flex: none; height: 22px; padding: 0 9px; border: 1px solid var(--deck); border-radius: 4px; background: transparent; color: var(--deck);
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.05em;
+}
+.ld-sync:hover { background: rgba(255, 255, 255, 0.05); }
+.ld-sync[aria-pressed="true"] { background: var(--deck); color: #0d0e10; box-shadow: 0 0 8px color-mix(in srgb, var(--deck) 55%, transparent); }
+.ld-tempo { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.ld-tempo .lv-fader.across { flex: 1; min-width: 60px; }
+.ld-tempo .lv-fader.across.free .lf-cap { opacity: 0.55; }
+.ld-tempo .lv-fader.across.free .lf-slot { background: repeating-linear-gradient(90deg, #0a0b0d 0 4px, #1a1c20 4px 8px); }
+.ld-tempo-text { flex: none; width: 76px; text-align: right; color: var(--text); font: 600 11px/1 Consolas, monospace; }
+.live-deck.synced .ld-tempo-text { color: var(--deck); }
+
+.ld-wave { flex: 1 1 auto; min-height: 36px; width: 100%; border-radius: 4px; background: #0b0c0f; display: block; touch-action: none; }
+.ld-overview { flex: none; height: 30px; width: 100%; border-radius: 3px; background: #0b0c0f; display: block; cursor: pointer; touch-action: none; }
+
+/* The panel under it: Play | Jump to cue | the loops | the track (DJ show) | Eject, a thin line
+   between each. */
+.ld-controls { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+.ld-sep { flex: none; align-self: stretch; width: 1px; min-height: 22px; background: #33363c; }
+.ld-group { flex: none; display: flex; align-items: center; gap: 3px; }
+.ld-group > .ld-caption { margin-right: 3px; }
+.ld-play {
+  flex: none; width: 46px; height: 34px; border-radius: 6px; display: grid; place-items: center; border: 1px solid #2c7a47; background: #15281c; color: #5be08a;
+}
+.ld-play svg { width: 16px; height: 16px; }
+.ld-play .ld-pause-icon { display: none; }
+.ld-play.playing { background: #1f9d4f; color: #fff; border-color: #5be08a; }
+.ld-play.playing .ld-play-icon { display: none; }
+.ld-play.playing .ld-pause-icon { display: inline; }
+/* The playlist's player: back to its start, left of Play. */
+.ld-rewind {
+  flex: none; width: 34px; height: 34px; padding: 0; border-radius: 6px; display: grid; place-items: center;
+  border: 1px solid #2c7a47; background: #15281c; color: #5be08a;
+}
+.ld-rewind svg { width: 14px; height: 14px; fill: currentColor; }
+.ld-rewind:hover:not(:disabled) { background: #1b3424; color: #8af0ad; }
+.ld-rewind:active:not(:disabled) { transform: translateY(1px); }
+.ld-rewind:disabled { opacity: 0.35; }
+/* Jump to cue, and the lock. */
+.ld-hotcue {
+  width: 22px; height: 22px; padding: 0; border: 1px solid var(--cue); border-radius: 4px; background: var(--cue); color: #0d0e10;
+  font-size: 11px; font-weight: 800;
+}
+.ld-hotcue:hover:not(:disabled) { filter: brightness(1.15); }
+.ld-hotcue:active:not(:disabled) { transform: translateY(1px); }
+.ld-hotcue:disabled { opacity: 0.25; }
+.ld-lock {
+  width: 22px; height: 22px; padding: 0; margin-left: 2px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); color: var(--muted);
+  display: grid; place-items: center;
+}
+.ld-lock svg { width: 13px; height: 13px; fill: currentColor; }
+.ld-lock .lock-shackle { fill: none; stroke: currentColor; stroke-width: 1.6; transform: translate(2.5px, 0); }
+.ld-lock.locked { border-color: #ffcf45; color: #ffcf45; background: #2a2414; }
+.ld-lock.locked .lock-shackle { transform: none; }
+/* The loops: a button to put its markers in, one to play round it. */
+.ld-looppair { display: inline-flex; border: 1px solid color-mix(in srgb, var(--loop) 60%, #2c2e34); border-radius: 4px; overflow: hidden; }
+.ld-loop-on, .ld-loop-go { height: 22px; padding: 0; border: none; background: #17181b; color: var(--loop); font-size: 10px; font-weight: 800; }
+.ld-loop-on { width: 22px; }
+.ld-loop-go { width: 20px; border-left: 1px solid #2c2e34; display: grid; place-items: center; }
+.ld-loop-go svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.ld-loop-go svg .fill { fill: currentColor; stroke: none; }
+.ld-loop-on[aria-pressed="true"] { background: color-mix(in srgb, var(--loop) 30%, #17181b); color: #fff; }
+.ld-loop-go[aria-pressed="true"] { background: var(--loop); color: #0d0e10; }
+.ld-loop-on:disabled, .ld-loop-go:disabled { opacity: 0.3; }
+/* The track (DJ show): its tempo, Slider sync, its key and volume. */
+.ld-number {
+  width: 50px; height: 20px; padding: 0 4px; border: 1px solid #34373e; border-radius: 3px; background: #0b0c0f; color: var(--bright);
+  font: 600 12px/18px Consolas, "Cascadia Mono", monospace; text-align: right;
+}
+.ld-number:focus { outline: none; border-color: var(--deck, var(--accent)); }
+.ld-number:disabled { color: var(--muted); opacity: 0.6; }
+.ld-number::placeholder { color: var(--muted); }
+.ld-slidersync { height: 22px; padding: 0 6px; font-size: 9.5px; letter-spacing: 0.04em; }
+.ld-slidersync[aria-pressed="true"] { background: color-mix(in srgb, var(--deck) 28%, #17181b); border-color: var(--deck); color: #fff; }
+.ld-keybox { flex: none; display: flex; align-items: center; gap: 2px; margin-left: 4px; }
+.ld-step { width: 18px; min-width: 18px; padding: 0; height: 22px; font-size: 12px; }
+.ld-key-value { width: 28px; text-align: center; color: var(--muted); font-size: 10.5px; font-weight: 700; cursor: default; }
+.ld-key-value.moved { color: #ffd36a; }
+.ld-track .lv-knob.ld-vol { width: 30px; }
+.ld-track .lv-knob.ld-vol svg { width: 22px; height: 22px; }
+.ld-track .lv-knob.ld-vol .lk-label { font-size: 8.5px; line-height: 9px; }
+.ld-eject {
+  flex: none; margin-left: auto; width: 30px; height: 28px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-2); color: var(--muted);
+  display: grid; place-items: center;
+}
+.ld-eject svg { width: 14px; height: 14px; fill: currentColor; }
+.ld-eject:hover { color: var(--bright); }
+/* A narrow deck (a small window, four decks): its panel's buttons closer and smaller, so Play, the
+   cues and the loops share a row. */
+.live-deck { container-type: inline-size; }
+@container (max-width: 540px) {
+  .ld-controls { gap: 4px 5px; }
+  .ld-group { gap: 2px; }
+  .ld-group > .ld-caption { font-size: 8.5px; margin-right: 2px; letter-spacing: 0.02em; }
+  .ld-play { width: 36px; }
+  .ld-rewind { width: 28px; }
+  .ld-hotcue, .ld-lock { width: 20px; }
+  .ld-loop-on { width: 20px; }
+  .ld-loop-go { width: 17px; }
+  .ld-slidersync { padding: 0 4px; font-size: 9px; }
+  .ld-number { width: 44px; }
+  .ld-tempo-text { width: 64px; }
+}
+.ld-short { display: none; }
+@container (max-width: 470px) {
+  .ld-long { display: none; }
+  .ld-short { display: inline; }
+}
+.live-stage.four .live-deck { padding: 6px 8px; gap: 4px; }
+.live-stage.four .ld-play { height: 26px; width: 36px; }
+.live-stage.four .ld-wave { min-height: 24px; }
+.live-stage.four .ld-overview { height: 22px; }
+
+/* ------------------------------------------------------------------ the mixer */
+.live-mixer {
+  min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 6px;
+  background: linear-gradient(180deg, #1e2024 0%, #191a1e 100%); border: 1px solid #2c2e34;
+}
+.lm-strips { flex: 1 1 auto; min-height: 0; display: flex; gap: 6px; }
+.lm-strip, .lm-master {
+  width: 62px; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 2px 6px;
+  border-radius: 5px; background: #16171a; border-top: 3px solid var(--deck, #9aa0a8);
+}
+.lm-master { width: 74px; --deck: #e3e5e8; }
+.lm-strip.player { width: 74px; }   /* the playlist's tabs: the player's one channel, its name in full */
+.lm-strip.player .lm-fader-row { justify-content: center; }   /* its Gain's slider and its meter, as the master's */
+.lm-name { font-weight: 700; color: var(--bright); font-size: 12px; }
+.lm-knobs { flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.lm-strips { overflow: hidden; }
+.lm-fader-row { flex: 1 1 auto; min-height: 60px; display: flex; align-items: stretch; gap: 4px; }
+.lm-readout { color: var(--muted); font-size: 10px; white-space: nowrap; }
+/* The master's head: its name and the limiter's light, lit while it pulls the sound down. */
+.lm-master-head { display: flex; align-items: center; justify-content: center; gap: 5px; }
+/* Its head as tall as the channels' (their headphones buttons): the faders under them line up,
+   their 0 dB at one height. */
+.lm-strip-head, .lm-master-head { flex: none; height: 18px; }
+.lm-led {
+  flex: none; width: 8px; height: 8px; border-radius: 50%; background: #3a2224; box-shadow: inset 0 0 0 1px #5a2f33;
+}
+.lm-led.lit { background: #ff3b47; box-shadow: 0 0 6px #ff3b47, inset 0 0 0 1px #ff8a8f; }
+/* FX, under the faders and across: the effects channel's window. Dark red while it's closed, lit red
+   while it's open (its words light on both: 11:1 and 5:1 against them). */
+.lm-fx-row { flex: none; display: flex; padding: 0 2px; }
+.lm-fx {
+  flex: 1 1 auto; min-width: 0; height: 30px; margin: 0; padding: 0; border-radius: 4px; border: 1px solid #8c2a32;
+  background: #4a1217; color: #ffd6d9; font: inherit; font-size: 13px; font-weight: 800; letter-spacing: 0.14em; line-height: 28px; cursor: pointer;
+}
+.lm-fx:hover { background: #5e171e; border-color: #b8404a; color: #fff; }
+.lm-fx:focus-visible { outline: 2px solid #ffb3b9; outline-offset: 1px; }
+.lm-fx[aria-expanded="true"] { background: #d32f3a; border-color: #ff8f97; color: #fff; box-shadow: 0 0 10px rgba(211, 47, 58, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.lm-fx[aria-expanded="true"]:hover { background: #dd3843; }
+.lm-cross { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 6px; }
+.lm-cross .lv-fader.across { flex: 1; }
+.lm-cross-side { color: var(--muted); font-weight: 700; font-size: 11px; }
+.lm-curve { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px; }
+.lm-cross-text { color: var(--muted); font-size: 10px; }
+.lm-assign { margin-top: 2px; }
+
+/* The headphones: their output, Mix, level and Split. */
+.lm-phones { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 3px 2px 0; border-top: 1px solid #2a2c31; }
+.lm-phones-head { display: flex; align-items: center; gap: 4px; }
+.lm-phones-head .lv-knob.small { width: 30px; flex: none; }
+.lm-phones-icon { flex: none; display: grid; place-items: center; color: #ffcf45; }
+.lm-phones-icon svg { width: 14px; height: 14px; fill: currentColor; }
+.lm-phones-output { flex: 1; min-width: 0; height: 22px; border: 1px solid var(--line); border-radius: 3px; background: var(--inset); color: var(--text); font-size: 11px; }
+.lm-split { flex: none; height: 22px; padding: 0 5px; font-size: 9.5px; letter-spacing: 0.04em; }
+.lm-split[aria-pressed="true"] { background: #a8862c; border-color: #ffcf45; color: #111; }
+.lm-phones.off .lv-knob, .lm-phones.off .lm-split { opacity: 0.45; }
+
+.lm-assign button { padding: 0 4px; font-size: 9.5px; }
+
+/* ------------------------------------------------------------------ controls */
+.lv-knob { width: 40px; display: flex; flex-direction: column; align-items: center; cursor: ns-resize; outline: none; }
+.lv-knob svg { width: 32px; height: 32px; }
+.lv-knob .lk-arc { fill: none; stroke: #33363c; stroke-width: 3; stroke-linecap: round; }
+.lv-knob .lk-fill { fill: none; stroke: var(--deck, var(--track, var(--point, var(--accent)))); stroke-width: 3; stroke-linecap: round; }
+.lv-knob .lk-cap { fill: #2b2d33; stroke: #4b4e56; stroke-width: 1; }
+.lv-knob .lk-pointer { stroke: #f0f0f0; stroke-width: 2.2; stroke-linecap: round; }
+.lv-knob .lk-centre { fill: #6d7179; }
+.lk-label { margin-top: -2px; color: var(--muted); font-size: 9.5px; line-height: 12px; white-space: nowrap; max-width: 64px; overflow: hidden; text-overflow: ellipsis; }
+.lv-knob.reading .lk-label { color: var(--bright); }
+.lv-knob:focus-visible svg { filter: drop-shadow(0 0 2px var(--accent)); }
+.lv-knob.small { width: 36px; }
+.lv-knob.small svg { width: 26px; height: 26px; }
+
+.lv-fader { position: relative; width: 22px; flex: none; cursor: ns-resize; outline: none; --pos: 0.5; }
+.lv-fader .lf-slot { position: absolute; left: 50%; top: 7px; bottom: 7px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: #0a0b0d; box-shadow: 0 0 0 1px #2c2e33; }
+.lv-fader .lf-zero { position: absolute; left: 2px; right: 2px; height: 1px; background: #5a5e66; bottom: calc(7px + var(--at) * (100% - 14px)); }
+.lv-fader .lf-cap {
+  position: absolute; left: 1px; right: 1px; height: 14px; bottom: calc(var(--pos) * (100% - 14px)); border-radius: 3px;
+  background: linear-gradient(180deg, #d8dade 0%, #9ea2a8 48%, #6d7177 52%, #b8bbc0 100%); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.lv-fader .lf-cap::after { content: ""; position: absolute; left: 3px; right: 3px; top: 6px; height: 2px; background: var(--deck, var(--track, #333)); }
+.lv-fader.across { width: auto; height: 20px; cursor: ew-resize; }
+.lv-fader.across .lf-slot { left: 7px; right: 7px; top: 50%; bottom: auto; width: auto; height: 3px; margin: -1.5px 0 0; }
+.lv-fader.across .lf-cap { top: 1px; bottom: 1px; left: calc(var(--pos) * (100% - 14px)); right: auto; width: 14px; height: auto; }
+.lv-fader.across .lf-cap::after { left: 6px; right: auto; top: 3px; bottom: 3px; width: 2px; height: auto; }
+.lv-fader:focus-visible .lf-cap { outline: 2px solid var(--accent); }
+
+.lv-meter { flex: none; width: 11px; display: flex; gap: 1px; }
+.lv-meter.wide { width: 14px; }
+.lm-bar { position: relative; flex: 1; border-radius: 1px; background: #0a0b0d; overflow: hidden; }
+/* Its colours stay where they are on the meter, the level showing as much of them as it reaches:
+   green to 75% of the way to clipping, yellow to 90%, red from there to the top (clipping). */
+.lm-bar i {
+  position: absolute; inset: 0; clip-path: inset(100% 0 0 0);
+  background: linear-gradient(0deg, #1f9d4f 0%, #3fc46c 75%, #e6d23a 75%, #e6d23a 90%, #ff4d4d 90%, #ff4d4d 100%);
+}
+.lm-bar b { position: absolute; left: 0; right: 0; height: 2px; bottom: 0; background: #d8f5df; }
+.lm-bar b.over { background: #ff4d4d; }
+
+.lv-switch {
+  height: 22px; min-width: 26px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); color: var(--muted);
+  font-size: 11px; font-weight: 700;
+}
+.lv-switch.mute[aria-pressed="true"] { background: var(--mute); border-color: var(--mute); color: #111; }
+
+/* A headphones button: heard there before its fader. */
+.lv-phones { display: inline-grid; place-items: center; width: 26px; padding: 0; }
+.lv-phones svg { width: 13px; height: 13px; fill: currentColor; }
+.lv-phones[aria-pressed="true"] { background: #a8862c; border-color: #ffcf45; color: #111; }
+.lm-strip-head { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.lm-strip-head .lv-phones { width: 22px; height: 18px; min-width: 0; }
+.lc-head .lv-phones { width: 18px; height: 16px; min-width: 0; border-radius: 3px; }
+.lc-head .lv-phones svg { width: 11px; height: 11px; }
+
+.lv-choices { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.lv-choices button { height: 20px; padding: 0 5px; border: none; background: var(--panel-2); color: var(--muted); font-size: 10px; }
+.lv-choices button + button { border-left: 1px solid var(--line); }
+.lv-choices button[aria-checked="true"] { background: var(--deck, var(--accent)); color: #0d0e10; font-weight: 700; }
+.lm-curve-choice button[aria-checked="true"] { background: var(--accent); color: #fff; }
+
+/* ------------------------------------------------------------------ the lower panels */
+.live-lower { min-height: 0; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 8px; }
+.live-page.mode-dj .live-lower { grid-template-columns: minmax(0, 1fr); }
+.live-panel { min-height: 0; display: flex; flex-direction: column; border-radius: 6px; background: var(--panel); border: 1px solid #2c2e34; overflow: hidden; }
+.live-panel-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); min-width: 0; }
+.live-panel-head > .muted { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-playlist-panel .live-panel-head > .muted { flex: 0 1 auto; }
+.live-panel-title { font-weight: 700; color: var(--bright); white-space: nowrap; }
+.live-empty { margin: 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+/* The live channels. */
+.live-channels { flex: 1 1 auto; min-height: 0; display: flex; gap: 6px; padding: 8px; overflow-x: auto; overflow-y: hidden; }
+.lc-strip {
+  flex: none; width: 78px; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 4px 6px;
+  border-radius: 5px; background: #17181b; border-top: 3px solid var(--track);
+}
+.lc-head { width: 100%; display: flex; align-items: center; gap: 2px; min-width: 0; }
+.lc-name { flex: 1; min-width: 0; color: var(--bright); font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lc-remove { flex: none; width: 16px; height: 16px; padding: 0; border: none; border-radius: 3px; background: transparent; color: var(--muted); line-height: 14px; }
+.lc-remove:hover { background: #3a2427; color: #ff8a8a; }
+.lc-warning { padding: 0 4px; border-radius: 3px; background: #4a1f22; color: #ff9b9b; font-size: 9.5px; font-weight: 700; }
+.lc-buttons { display: flex; gap: 3px; }
+
+/* The effects channel: its window floats over the studio (drag it by its head), its effects in tabs
+   (each tab's light is its switch), in the order the sound goes through them. */
+.live-effects-window {
+  position: absolute; z-index: 25; left: 0; top: 0; width: min(940px, calc(100% - 16px)); height: min(500px, calc(100% - 16px));
+  display: flex; flex-direction: column; border: 1px solid #3a3d44; border-radius: 8px; background: #17181c; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+.live-effects-head {
+  flex: none; display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 12px; border-bottom: 1px solid #26282d;
+  cursor: move; user-select: none;
+}
+.live-effects-title { flex: none; font-weight: 700; color: var(--bright); }
+.live-effects-head > .muted { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-effects-tabs { flex: none; display: flex; align-items: flex-end; gap: 2px; padding: 8px 10px 0; border-bottom: 1px solid #2c2e34; }
+.lfx-arrow { align-self: center; padding: 0 2px; color: #4b4f57; font-size: 15px; line-height: 1; }
+.lfx-tab {
+  display: flex; align-items: center; gap: 7px; height: 32px; margin-bottom: -1px; padding: 0 12px 0 10px;
+  border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0;
+}
+.lfx-tab:hover { background: #1b1c20; }
+.lfx-tab.shown { background: #1d1e22; border-color: #2c2e34; box-shadow: inset 0 2px 0 var(--effect); }
+.lfx-led {
+  flex: none; width: 13px; height: 13px; min-width: 0; padding: 0; border-radius: 50%; border: 1px solid #555962; background: #26282d;
+}
+.lfx-led:hover { border-color: var(--effect); }
+.lfx-led[aria-pressed="true"] { background: var(--effect); border-color: var(--effect); box-shadow: 0 0 7px var(--effect); }
+.lfx-name { padding: 0; border: none; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.lfx-tab.shown .lfx-name { color: var(--bright); }
+.lfx-tab:has(.lfx-led[aria-pressed="false"]) .lfx-name { opacity: 0.6; }
+.live-effects-body {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; border-radius: 0 0 8px 8px;
+  background: #1d1e22; overflow: auto; --point: var(--effect);
+}
+.lfx-top { flex: none; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.lfx-on { flex: none; height: 24px; padding: 0 14px; font-size: 11px; font-weight: 800; letter-spacing: 0.04em; }
+.lfx-on[aria-pressed="true"] { background: color-mix(in srgb, var(--effect) 38%, #1d1e22); border-color: var(--effect); color: #fff; }
+.lfx-about { min-width: 0; color: var(--muted); font-size: 11.5px; }
+.lfx-knobs { flex: none; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 16px; padding: 2px; }
+.lfx-knobs .lv-knob { width: 52px; }
+.lfx-knobs .lv-knob svg { width: 38px; height: 38px; }
+.lfx-knobs .lk-label { font-size: 10px; max-width: 70px; }
+.lfx-listen { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.lfx-key { height: 22px; padding: 0 9px; font-size: 11px; border-left: 3px solid var(--track); }
+.lfx-key[aria-pressed="true"] { background: #1f6b3e; border-color: #46c27a; border-left-color: var(--track); color: #fff; }
+.lfx-none { color: var(--muted); font-size: 11.5px; }
+/* The compressor's, the drive's, the width's and the limiter's page: the knobs, and beside them a
+   display (the canvas fills it, so its own size never moves the page). */
+.lfx-row { flex: 1 1 auto; min-height: 0; display: flex; gap: 14px; }
+.lfx-row .lfx-knobs { width: 160px; align-content: flex-start; }
+.lfx-row.three .lfx-knobs { width: 230px; }
+.lfx-display { position: relative; flex: 1 1 0; min-width: 140px; min-height: 90px; border-radius: 4px; background: #0b0c0f; overflow: hidden; }
+.lfx-display canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.live-effects-body > .llm-meter { flex: none; max-width: 600px; }
+/* The width's correlation meter: from -1 (left) to +1 (right), its middle (0) marked; out of phase in red. */
+.llm-bar.correlation b { display: block; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(255, 255, 255, 0.55); }
+
+/* The dynamic EQ's page: its curve, and its points' columns (four bells and the level). */
+.ldk-curve { flex: 1 1 auto; min-height: 110px; width: 100%; border-radius: 4px; background: #0b0c0f; display: block; touch-action: none; }
+.ldk-columns { flex: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.ldk-column { min-width: 0; padding: 4px 4px 2px; border-radius: 4px; background: #17181b; border-top: 2px solid var(--point); }
+.ldk-head { display: flex; align-items: center; gap: 6px; }
+/* Each point's light: its own switch (lit in its colour while it's on). */
+.ldk-led {
+  flex: none; width: 11px; height: 11px; min-width: 0; padding: 0; border-radius: 50%; border: 1px solid #555962; background: #26282d;
+}
+.ldk-led:hover { border-color: var(--point); }
+.ldk-led[aria-pressed="true"] { background: var(--point); border-color: var(--point); box-shadow: 0 0 6px var(--point); }
+.ldk-name { flex: none; font-size: 11px; font-weight: 700; color: var(--bright); }
+/* A bell's Gain and Duck, as its ring and triangle on the curve have them. */
+.ldk-levels { flex: 1; min-width: 0; text-align: right; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ldk-column.off .ldk-name, .ldk-column.off .ldk-levels, .ldk-column.off .ldk-key, .ldk-column.off .ldk-knobs { opacity: 0.45; }
+.ldk-key { position: relative; height: 5px; margin: 4px 0 2px; border-radius: 2px; background: #0a0b0d; overflow: hidden; }
+.ldk-key i { position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); background: #3d7a55; }
+.ldk-key.over i { background: var(--point); }
+.ldk-key b { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; }
+.ldk-knobs { display: flex; flex-wrap: wrap; justify-content: space-between; row-gap: 2px; }
+.ldk-knobs .lv-knob.small { width: 34px; }
+.ldk-knobs .lv-knob.small svg { width: 24px; height: 24px; }
+.ldk-knobs .lk-label { font-size: 9px; max-width: 34px; }
+
+/* An effect's meter: what it pulls down (or how loud it goes in). */
+.llm-meter { display: grid; grid-template-columns: 64px minmax(30px, 1fr) 58px; align-items: center; gap: 8px; }
+.llm-bar { position: relative; height: 8px; border-radius: 3px; background: #0a0b0d; overflow: hidden; }
+.llm-bar i { position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); background: var(--effect, #e0a54a); }
+.llm-bar.level i { background: #3d9a63; }
+.llm-bar.over i { background: #d6232f; }
+.llm-bar b { display: none; }
+.llm-bar.level b { display: block; position: absolute; top: 0; bottom: 0; left: 75%; width: 1px; background: rgba(255, 255, 255, 0.7); }
+.llm-value { font-size: 10px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 900px) {
+  .live-effects-head > .muted { display: none; }
+  .lfx-row { flex-direction: column; }
+  .lfx-row .lfx-knobs, .lfx-row.three .lfx-knobs { width: auto; }
+  .ldk-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* The pads: their fader, and eight in a row. */
+.live-pads { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 10px 2px; min-width: 0; }
+.lp-head { flex: none; display: flex; align-items: center; gap: 6px; }
+.lp-head .lv-fader.across { width: 64px; }
+.lp-grid { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px; }
+.lp-pad {
+  min-width: 0; height: 26px; padding: 0 4px; display: flex; align-items: center; gap: 3px; border: 1px solid #4a3d64; border-radius: 4px;
+  background: #221d2c; color: #e6dcff; font-size: 10px; overflow: hidden;
+}
+.lp-pad b { flex: none; font-size: 10.5px; color: #b98bff; }
+.lp-pad span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-pad:hover { border-color: #b98bff; }
+.lp-pad.empty { border-style: dashed; border-color: #7a6420; background: #2a2412; color: #b89a4a; }
+.lp-pad.empty b { color: #d4b04a; }
+.lp-pad.empty:hover { border-color: #d4b04a; }
+.lp-pad.playing { background: #b98bff; border-color: #e3d2ff; color: #140f1d; box-shadow: 0 0 8px rgba(185, 139, 255, 0.6); }
+.lp-pad.playing b { color: #140f1d; }
+.lp-pad.drop { outline: 2px dashed #b98bff; outline-offset: 1px; }
+
+/* The library. */
+.live-library-panel input#live-search {
+  flex: 0 1 140px; min-width: 56px; width: 140px; margin-left: auto; height: 24px; padding: 0 6px; border: 1px solid var(--line); border-radius: 3px;
+  background: var(--inset); color: var(--bright);
+}
+.live-library-panel .live-panel-head > button { flex: none; }
+.live-path { flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 10px; min-width: 0; color: var(--muted); font-size: 11px; }
+.live-path-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.live-files { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 4px 6px; }
+.lf-row { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 6px; border-radius: 3px; cursor: default; }
+.lf-row:hover { background: var(--panel-2); }
+.lf-row.folder { cursor: pointer; }
+.lf-icon { flex: none; width: 16px; text-align: center; color: var(--muted); }
+.lf-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.lf-bpm { flex: none; width: 46px; text-align: right; color: var(--muted); font: 11px Consolas, "Cascadia Mono", monospace; }
+.lf-key { flex: none; width: 30px; color: #ffd36a; font-size: 11px; font-weight: 700; }
+.lf-load { flex: none; display: none; gap: 2px; }
+.lf-row:hover .lf-load { display: flex; }
+.lf-load button {
+  width: 20px; height: 18px; padding: 0; border: 1px solid var(--deck); border-radius: 3px; background: transparent; color: var(--deck); font-size: 10px; font-weight: 800;
+}
+.lf-load button:hover { background: var(--deck); color: #0d0e10; }
+.lf-load .lf-add { --deck: #46c27a; font-size: 12px; }
+
+/* The playlist: a banner for each track, opening to show its options. */
+.live-playlist { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.live-playlist.drop { outline: 2px dashed #46c27a; outline-offset: -4px; }
+.lpl-item { flex: none; border: 1px solid #2c2e34; border-left: 3px solid #3a3c42; border-radius: 5px; background: #1a1b1f; }
+/* The one in the player. */
+.lpl-item.now { border-color: color-mix(in srgb, #3fa9f5 45%, #2c2e34); border-left-color: #3fa9f5; background: color-mix(in srgb, #3fa9f5 10%, #1a1b1f); }
+/* The one picked to edit (a click on its banner): lit, whatever plays. */
+.lpl-item.selected { border-color: #e2b84e; box-shadow: inset 0 0 0 1px rgba(226, 184, 78, 0.55); background: color-mix(in srgb, #e2b84e 9%, #1a1b1f); }
+.lpl-item.selected.now { border-left-color: #3fa9f5; background: color-mix(in srgb, #3fa9f5 10%, color-mix(in srgb, #e2b84e 7%, #1a1b1f)); }
+.lpl-item.selected .lpl-name { color: #fff; }
+.lpl-item.missing .lpl-name { color: #ff9b9b; text-decoration: line-through; }
+.lpl-banner { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 4px 0 2px; cursor: grab; min-width: 0; }
+.lpl-grip { flex: none; width: 12px; color: var(--muted); text-align: center; }
+.lpl-number { flex: none; width: 18px; color: var(--muted); font-size: 10.5px; text-align: right; }
+/* Its play button (as Playlisted's): into the player. Lit while it's there, its ring breathing while it
+   plays; a blue ring on the one that plays next. */
+.lpl-play {
+  flex: none; width: 22px; height: 22px; padding: 0; display: grid; place-items: center; border: 1px solid #3a3d44; border-radius: 50%;
+  background: #24262b; color: #46c27a; cursor: pointer;
+}
+.lpl-play svg { width: 11px; height: 11px; fill: currentColor; }
+.lpl-play:hover:not(:disabled) { border-color: #46c27a; background: #1f3326; color: #7dffab; }
+.lpl-play:disabled { opacity: 0.35; cursor: default; }
+.lpl-item.now .lpl-play { border-color: #5ee08a; background: #1d4a2c; color: #9dffc0; box-shadow: 0 0 0 1px rgba(94, 224, 138, 0.35); }
+.lpl-item.next .lpl-play { border-color: #3fa9f5; color: #8fcdfa; }
+.lpl-item.playing .lpl-play { animation: lpl-playing 1.6s ease-in-out infinite; }
+@keyframes lpl-playing {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(94, 224, 138, 0.35); }
+  50% { box-shadow: 0 0 0 4px rgba(94, 224, 138, 0.16); }
+}
+@media (prefers-reduced-motion: reduce) { .lpl-item.playing .lpl-play { animation: none; } }
+.lpl-name { flex: 1; min-width: 0; color: var(--bright); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lpl-kind { flex: none; font-size: 11px; line-height: 1; }
+.lpl-kind:empty { display: none; }
+/* Ready behind the player: it plays next. */
+.lpl-next {
+  flex: none; height: 16px; padding: 0 6px; border: 1px solid #3fa9f5; border-radius: 8px; color: #8fcdfa; font-size: 9.5px; font-weight: 800;
+  letter-spacing: 0.04em; line-height: 14px; text-transform: uppercase;
+}
+.lpl-next:empty { display: none; }
+.lpl-bpm { flex: none; color: var(--muted); font: 11px Consolas, "Cascadia Mono", monospace; }
+.lpl-key { flex: none; min-width: 22px; color: #ffd36a; font-size: 11px; font-weight: 700; }
+.lpl-key.moved { color: #ffb340; }
+.lpl-timing { flex: none; color: var(--muted); font: 600 10.5px/1 Consolas, "Cascadia Mono", monospace; }
+.lpl-timing:empty { display: none; }
+.lpl-timing.cross { color: #5ce1e6; }
+.lpl-item.played { opacity: 0.55; }
+.lpl-item.played .lpl-name { color: var(--text); }
+.lpl-unit { color: var(--muted); font-size: 11px; }
+.lpl-timing-input { width: 44px; }
+.live-playlist-auto {
+  margin-left: auto; height: 22px; padding: 0 9px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2); color: var(--muted);
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
+}
+.live-playlist-auto[aria-checked="true"] { background: #1f6b3e; border-color: #46c27a; color: #fff; }
+.lpl-open { flex: none; width: 22px; height: 20px; padding: 0; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--muted); }
+.lpl-open:hover, .lpl-item.open .lpl-open { border-color: var(--line); color: var(--bright); }
+/* Its x, in the banner's top right corner (right of its arrow). */
+.lpl-remove {
+  flex: none; width: 20px; height: 20px; padding: 0; margin-left: -2px; border: 1px solid transparent; border-radius: 3px; background: transparent;
+  color: var(--muted); font-size: 14px; line-height: 18px;
+}
+.lpl-remove:hover { background: #3a2427; border-color: #6b3a3d; color: #ff8a8a; }
+/* Its options, a little lower than the banner, a line between each. */
+.lpl-options { display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding: 12px 10px 10px 22px; border-top: 1px solid #26282d; }
+.lpl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.lpl-sep { flex: none; align-self: stretch; width: 1px; min-height: 20px; background: #33363c; }
+.lpl-field { display: flex; align-items: center; gap: 4px; }
+.lpl-field > .ld-caption { margin-right: 2px; }
+.lpl-sync { height: 22px; font-size: 10.5px; }
+.lpl-sync[aria-pressed="true"] { background: #1f6b3e; border-color: #46c27a; color: #fff; }
+.lpl-volume { flex: 1 1 auto; min-width: 140px; }
+.lpl-range { flex: 1; min-width: 60px; accent-color: #46c27a; }
+.lpl-value { flex: none; width: 58px; text-align: right; color: var(--text); font: 600 11px/1 Consolas, monospace; }
+/* ------------------------------------------------------------------ the live stream panel */
+/* Over the right of the studio: the picture as it goes out, its sources, look, destinations. */
+.live-stream {
+  position: absolute; top: 8px; right: 8px; bottom: 8px; z-index: 20; width: min(500px, 46%); display: flex; flex-direction: column;
+  border: 1px solid #3a3150; border-radius: 8px; background: #17151d; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55); overflow: hidden;
+}
+.live-stream[hidden] { display: none; }
+.ls-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid #2c2838; }
+.ls-title { color: var(--bright); font-weight: 700; }
+.ls-close { width: 24px; height: 24px; padding: 0; border: none; border-radius: 4px; background: transparent; color: var(--muted); font-size: 16px; }
+.ls-close:hover { background: #2c2838; color: var(--bright); }
+.ls-preview { position: relative; flex: none; aspect-ratio: 16 / 9; margin: 8px 10px 0; border-radius: 6px; background: #0b0c0f; overflow: hidden; }
+.ls-preview img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.ls-preview img:not([src]) { visibility: hidden; }
+.ls-badge {
+  position: absolute; right: 8px; bottom: 8px; padding: 1px 7px; border-radius: 3px; background: #2a2c31; color: var(--muted); font-size: 10px; font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.ls-preview.live .ls-badge { background: #e0232f; color: #fff; }
+/* The landscape picture, and the vertical one beside it (TikTok) while a vertical destination is ticked. */
+.ls-previews { flex: none; display: flex; gap: 6px; margin: 8px 10px 0; }
+.ls-previews .ls-preview { flex: 1 1 auto; min-width: 0; margin: 0; }
+.ls-previews.with-tall { --lsp-h: 200px; }
+.ls-previews.with-tall .ls-preview { aspect-ratio: auto; height: var(--lsp-h); }
+.ls-previews.with-tall .ls-preview-tall { flex: none; width: calc(var(--lsp-h) * 9 / 16); }
+.ls-preview-tall .ls-badge { right: 50%; transform: translateX(50%); }
+.ls-problem { margin: 8px 10px 0; padding: 6px 8px; border-radius: 4px; background: #3a1c20; color: #ffb3b8; font-size: 12px; line-height: 1.4; }
+.ls-status { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 6px 10px 4px; font-size: 11.5px; }
+.ls-line.muted { color: var(--muted); }
+.ls-line.on { color: #ff6b74; font: 700 12px/1.4 Consolas, "Cascadia Mono", monospace; }
+.ls-line.warn { color: #ffcf45; }
+.ls-out { display: flex; align-items: center; gap: 6px; color: var(--text); }
+.ls-dot { width: 7px; height: 7px; border-radius: 50%; background: #6d7179; flex: none; }
+.ls-out.live .ls-dot { background: #46c27a; box-shadow: 0 0 5px #46c27a; }
+.ls-out.connecting .ls-dot, .ls-out.retrying .ls-dot { background: #ffcf45; }
+.ls-out.failed .ls-dot { background: #ff4d57; }
+.ls-out-name { font-weight: 600; }
+.ls-out-state { color: var(--muted); }
+.ls-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 10px 8px; }
+.ls-section { padding: 6px 0 8px; border-top: 1px solid #2c2838; }
+.ls-section h4 { margin: 2px 0 6px; color: #b98bff; font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.ls-field { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 28px; }
+.ls-label { color: var(--muted); font-size: 11.5px; }
+.ls-inline { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.ls-select, .ls-input {
+  min-width: 0; height: 24px; padding: 0 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--inset); color: var(--bright); font-size: 12px;
+}
+.ls-inline .ls-select { flex: 1; }
+.ls-input:focus, .ls-select:focus { outline: none; border-color: #b98bff; }
+.ls-choices button { height: 22px; padding: 0 8px; font-size: 11px; }
+.ls-field > .ls-choices, .ls-field > .ls-toggle { justify-self: start; }
+.ls-choices button[aria-checked="true"] { background: #b98bff; color: #140f1d; font-weight: 700; }
+.ls-toggle[aria-pressed="true"] { background: #2a2236; border-color: #b98bff; color: #e6dcff; }
+.ls-file { flex: 1; min-width: 0; color: var(--text); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ls-dest { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
+.ls-dest .ls-select { width: 104px; flex: none; }
+.ls-key { flex: 1; font-family: Consolas, "Cascadia Mono", monospace; }
+.ls-dest-sub { padding-left: 18px; }
+.ls-sub-label { flex: none; width: 104px; padding-left: 4px; color: var(--muted); font-size: 11.5px; }
+.ls-dest-note { margin: 0 0 6px 18px; font-size: 11px; line-height: 1.35; }
+.ls-tall-toggle { flex: none; height: 24px; padding: 0 7px; font-size: 11px; }
+.ls-hint { margin: 2px 0 6px; color: var(--muted); font-size: 11.5px; }
+.ls-inline .ls-hint { margin: 0; flex: 1; min-width: 0; }
+.ls-range { flex: 1; accent-color: #b98bff; }
+.ls-value { width: 56px; text-align: right; color: var(--text); font: 600 11px/1 Consolas, monospace; }
+.ls-footer { flex: none; padding: 8px 10px 10px; border-top: 1px solid #2c2838; }
+.ls-go {
+  width: 100%; height: 36px; border: 1px solid #ff4d57; border-radius: 6px; background: #b3141f; color: #fff; font-size: 13px; font-weight: 800;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.ls-go:hover:not(:disabled) { background: #d01825; }
+.ls-go.live { background: #2a2c31; border-color: #6d7179; }
+.ls-go:disabled { opacity: 0.5; }
+
+/* ------------------------------------------------------------------ shorter windows */
+/* The mixer's knobs two by two, smaller; the decks and mixer take a little more of the height. */
+@media (max-height: 940px) {
+  .live-body { grid-template-rows: minmax(0, 1.45fr) minmax(0, 1fr); gap: 6px; padding: 6px; }
+  .lm-knobs { display: grid; grid-template-columns: repeat(2, 29px); gap: 0 2px; justify-items: center; }
+  .lm-knobs .lv-knob { width: 29px; }
+  .lm-knobs .lv-knob svg { width: 25px; height: 25px; }
+  .lm-knobs .lk-label { font-size: 8.5px; line-height: 10px; max-width: 30px; }
+  .lm-knobs .lv-knob:last-child { grid-column: 1 / span 2; }
+  .lm-strip, .lm-master { padding-top: 2px; }
+  .lm-fader-row { min-height: 40px; }
+  .live-deck { gap: 4px; padding: 6px 8px; }
+  .ld-overview { height: 24px; }
+  .ld-play { height: 26px; width: 40px; }
+  .live-stage.four .ld-overview { height: 18px; }
+  .live-stage.four .live-deck { gap: 3px; padding: 4px 8px; }
+  .live-stage.four .ld-hotcue, .live-stage.four .ld-loop-on, .live-stage.four .ld-loop-go, .live-stage.four .ld-lock, .live-stage.four .ld-step { height: 20px; }
+  .live-head { padding: 5px 14px 0; }
+  .live-title { margin-bottom: 7px; }
+  .live-rail { gap: 14px; padding: 12px 10px; }
+  .rail-group { gap: 8px; padding-top: 12px; }
+  .lc-strip .lv-knob svg { width: 26px; height: 26px; }
+  .lm-phones-head .lv-knob.small { width: 24px; }
+  .lm-phones-head .lv-knob.small svg { width: 22px; height: 22px; }
+  .lm-phones-head .lk-label { display: none; }
+  .lm-strip-head .lv-phones { height: 16px; }
+  .ls-preview { aspect-ratio: auto; height: 27vh; }
+  .ls-previews.with-tall { --lsp-h: 27vh; }
+  .ls-status { padding-top: 4px; }
+}

@@ -1,0 +1,704 @@
+{
+ "width": 960,
+ "height": 456,
+ "background": {
+  "top": "#FF1A1B1F",
+  "bottom": "#FF0D0D10"
+ },
+ "light": {
+  "angle": 120,
+  "altitude": 32
+ },
+ "widgets": [
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 960,
+   "h": 456,
+   "material": "anodized",
+   "color": "#FF15161A",
+   "finish": "satin",
+   "grain": 0.7
+  },
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 960,
+   "h": 64,
+   "color": "#FF0B0B0D"
+  },
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 960,
+   "h": 30,
+   "color": "#10FFFFFF"
+  },
+  {
+   "type": "line",
+   "from": [
+    0,
+    64
+   ],
+   "to": [
+    960,
+    64
+   ],
+   "lineWidth": 1,
+   "color": "#FF2A2B30"
+  },
+  {
+   "type": "line",
+   "from": [
+    0,
+    65
+   ],
+   "to": [
+    960,
+    65
+   ],
+   "lineWidth": 1,
+   "color": "#FF050506"
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 20,
+   "w": 4,
+   "h": 24,
+   "rounding": 1,
+   "color": "#FFF2F4F8",
+   "effects": {
+    "dropShadow": {
+     "color": "#FFFFFFFF",
+     "opacity": 70,
+     "distance": 0,
+     "size": 6
+    }
+   }
+  },
+  {
+   "type": "label",
+   "text": "Sonify Mastering",
+   "x": 40,
+   "y": 14,
+   "w": 360,
+   "h": 28,
+   "size": 20,
+   "bold": true,
+   "font": "Montserrat",
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "label",
+   "text": "TONE  \u00b7  GLUE  \u00b7  FINISH",
+   "x": 41,
+   "y": 41,
+   "w": 420,
+   "h": 14,
+   "size": 9.5,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "preset",
+   "label": "Presets",
+   "x": 644,
+   "y": 18,
+   "w": 220,
+   "h": 28,
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "label",
+   "text": "OUT",
+   "x": 874,
+   "y": 25,
+   "w": 30,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "meter",
+   "source": "out L",
+   "x": 908,
+   "y": 14,
+   "w": 10,
+   "h": 36,
+   "settings": {
+    "display": "segments",
+    "segments": 9,
+    "colorLow": "#FFB9BCC4",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "meter",
+   "source": "out R",
+   "x": 922,
+   "y": 14,
+   "w": 10,
+   "h": 36,
+   "settings": {
+    "display": "segments",
+    "segments": 9,
+    "colorLow": "#FFB9BCC4",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 84,
+   "w": 560,
+   "h": 116,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    34,
+    85
+   ],
+   "to": [
+    574,
+    85
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "TONE",
+   "x": 40,
+   "y": 94,
+   "w": 528,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "rectangle",
+   "x": 40,
+   "y": 106,
+   "w": 528,
+   "h": 84,
+   "radius": 8,
+   "color": "#FF060709",
+   "effects": {
+    "innerShadow": {
+     "opacity": 90,
+     "distance": 3,
+     "size": 10
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF26272C",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "scope",
+   "source": "master.curve",
+   "x": 48,
+   "y": 110,
+   "w": 512,
+   "h": 76,
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "rectangle",
+   "x": 40,
+   "y": 106,
+   "w": 528,
+   "h": 42,
+   "radius": 8,
+   "color": "#0CFFFFFF"
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 212,
+   "w": 560,
+   "h": 220,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    34,
+    213
+   ],
+   "to": [
+    574,
+    213
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "knob",
+   "param": "Low Cut",
+   "label": "Low Cut",
+   "x": 40,
+   "y": 232,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "line",
+   "from": [
+    96,
+    228
+   ],
+   "to": [
+    96,
+    424
+   ],
+   "lineWidth": 1,
+   "color": "#FF1F2025"
+  },
+  {
+   "type": "line",
+   "from": [
+    97,
+    228
+   ],
+   "to": [
+    97,
+    424
+   ],
+   "lineWidth": 1,
+   "color": "#10FFFFFF"
+  },
+  {
+   "type": "knob",
+   "param": "Low",
+   "label": "Low",
+   "x": 120,
+   "y": 232,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Low Freq",
+   "label": "Freq",
+   "x": 126,
+   "y": 320,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Low Mid",
+   "label": "Low Mid",
+   "x": 204,
+   "y": 232,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Low Mid Freq",
+   "label": "Freq",
+   "x": 210,
+   "y": 320,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Mid",
+   "label": "Mid",
+   "x": 288,
+   "y": 232,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Mid Freq",
+   "label": "Freq",
+   "x": 294,
+   "y": 320,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Presence",
+   "label": "Presence",
+   "x": 372,
+   "y": 232,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Presence Freq",
+   "label": "Freq",
+   "x": 378,
+   "y": 320,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Air",
+   "label": "Air",
+   "x": 456,
+   "y": 232,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Air Freq",
+   "label": "Freq",
+   "x": 462,
+   "y": 320,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "line",
+   "from": [
+    536,
+    228
+   ],
+   "to": [
+    536,
+    424
+   ],
+   "lineWidth": 1,
+   "color": "#FF1F2025"
+  },
+  {
+   "type": "line",
+   "from": [
+    537,
+    228
+   ],
+   "to": [
+    537,
+    424
+   ],
+   "lineWidth": 1,
+   "color": "#10FFFFFF"
+  },
+  {
+   "type": "knob",
+   "param": "EQ Amount",
+   "label": "Amount",
+   "x": 540,
+   "y": 232,
+   "size": 40,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "rectangle",
+   "x": 600,
+   "y": 84,
+   "w": 160,
+   "h": 348,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    610,
+    85
+   ],
+   "to": [
+    750,
+    85
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "GLUE",
+   "x": 616,
+   "y": 94,
+   "w": 128,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "knob",
+   "param": "Glue Threshold",
+   "label": "Threshold",
+   "x": 616,
+   "y": 112,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Glue Ratio",
+   "label": "Ratio",
+   "x": 688,
+   "y": 112,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Glue Attack",
+   "label": "Attack",
+   "x": 616,
+   "y": 200,
+   "size": 52,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Glue Release",
+   "label": "Release",
+   "x": 688,
+   "y": 200,
+   "size": 52,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "rectangle",
+   "x": 616,
+   "y": 292,
+   "w": 128,
+   "h": 76,
+   "radius": 8,
+   "color": "#FF060709",
+   "effects": {
+    "innerShadow": {
+     "opacity": 90,
+     "distance": 3,
+     "size": 10
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF26272C",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "meter",
+   "source": "master.glue",
+   "x": 620,
+   "y": 294,
+   "w": 120,
+   "h": 72,
+   "settings": {
+    "display": "vu",
+    "background": "#FF0A0A0C",
+    "colorLow": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A"
+   }
+  },
+  {
+   "type": "rectangle",
+   "x": 616,
+   "y": 292,
+   "w": 128,
+   "h": 38,
+   "radius": 8,
+   "color": "#0CFFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "GLUE  GR",
+   "x": 616,
+   "y": 376,
+   "w": 128,
+   "h": 14,
+   "size": 8.5,
+   "bold": true,
+   "color": "#FF5C6068"
+  },
+  {
+   "type": "rectangle",
+   "x": 776,
+   "y": 84,
+   "w": 160,
+   "h": 348,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    786,
+    85
+   ],
+   "to": [
+    926,
+    85
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "FINISH",
+   "x": 792,
+   "y": 94,
+   "w": 128,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "knob",
+   "param": "Drive",
+   "label": "Drive",
+   "x": 792,
+   "y": 112,
+   "size": 56,
+   "style": "Sonify knob red"
+  },
+  {
+   "type": "knob",
+   "param": "Width",
+   "label": "Width",
+   "x": 864,
+   "y": 112,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Ceiling",
+   "label": "Ceiling",
+   "x": 792,
+   "y": 200,
+   "size": 52,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Limiter Release",
+   "label": "Release",
+   "x": 864,
+   "y": 200,
+   "size": 52,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Output",
+   "label": "Output",
+   "x": 800,
+   "y": 292,
+   "size": 64,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Input",
+   "label": "Input",
+   "x": 876,
+   "y": 300,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "meter",
+   "source": "master.limit",
+   "x": 792,
+   "y": 380,
+   "w": 128,
+   "h": 10,
+   "settings": {
+    "display": "segments",
+    "segments": 16,
+    "colorLow": "#FFF2F4F8",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "label",
+   "text": "LIMIT  GR",
+   "x": 792,
+   "y": 394,
+   "w": 128,
+   "h": 14,
+   "size": 8.5,
+   "bold": true,
+   "color": "#FF5C6068"
+  }
+ ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "3D filter",
+  "category": "Displays",
+  "order": 162,
+  "icon": "filter3d",
+  "description": "The filter opening and closing as you play, rolling back in 3D.",
+  "widget": {
+    "type": "FilterSweep",
+    "w": 400,
+    "h": 200,
+    "label": "Filter",
+    "color": "#FFB347",
+    "settings": {
+      "mode": "lowpass24"
+    }
+  }
+}

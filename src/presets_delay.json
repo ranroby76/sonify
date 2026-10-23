@@ -1,0 +1,160 @@
+{
+ "presets": [
+  {
+   "name": "Default",
+   "values": {
+    "Sync": 1.0,
+    "Note": 6.0,
+    "Time": 375.0,
+    "Feedback": 45.0,
+    "Damping": 5000.0,
+    "Low Cut": 20.0,
+    "Dry": 100.0,
+    "Wet": 35.0
+   }
+  },
+  {
+   "name": "Quarter Echo",
+   "values": {
+    "Sync": 1,
+    "Note": 2,
+    "Time": 375,
+    "Feedback": 35,
+    "Damping": 6000,
+    "Low Cut": 100,
+    "Dry": 100,
+    "Wet": 30
+   }
+  },
+  {
+   "name": "Eighth Ping-Pong",
+   "values": {
+    "Sync": 1,
+    "Note": 3,
+    "Time": 375,
+    "Feedback": 35,
+    "Damping": 7000,
+    "Low Cut": 150,
+    "Dry": 100,
+    "Wet": 28
+   }
+  },
+  {
+   "name": "Triplet Bounce",
+   "values": {
+    "Sync": 1,
+    "Note": 8,
+    "Time": 375,
+    "Feedback": 40,
+    "Damping": 6000,
+    "Low Cut": 150,
+    "Dry": 100,
+    "Wet": 28
+   }
+  },
+  {
+   "name": "Slapback",
+   "values": {
+    "Sync": 0,
+    "Note": 6,
+    "Time": 110,
+    "Feedback": 10,
+    "Damping": 7000,
+    "Low Cut": 100,
+    "Dry": 100,
+    "Wet": 35
+   }
+  },
+  {
+   "name": "Doubler",
+   "values": {
+    "Sync": 0,
+    "Note": 6,
+    "Time": 25,
+    "Feedback": 0,
+    "Damping": 12000,
+    "Low Cut": 100,
+    "Dry": 100,
+    "Wet": 40
+   }
+  },
+  {
+   "name": "Long Dub",
+   "values": {
+    "Sync": 1,
+    "Note": 2,
+    "Time": 375,
+    "Feedback": 70,
+    "Damping": 2500,
+    "Low Cut": 200,
+    "Dry": 100,
+    "Wet": 40
+   }
+  },
+  {
+   "name": "Tape Echo",
+   "values": {
+    "Sync": 0,
+    "Note": 6,
+    "Time": 330,
+    "Feedback": 55,
+    "Damping": 3000,
+    "Low Cut": 150,
+    "Dry": 100,
+    "Wet": 35
+   }
+  },
+  {
+   "name": "Ambient Trails",
+   "values": {
+    "Sync": 1,
+    "Note": 1,
+    "Time": 375,
+    "Feedback": 75,
+    "Damping": 4000,
+    "Low Cut": 300,
+    "Dry": 100,
+    "Wet": 30
+   }
+  },
+  {
+   "name": "Sixteenth Shimmer",
+   "values": {
+    "Sync": 1,
+    "Note": 4,
+    "Time": 375,
+    "Feedback": 30,
+    "Damping": 9000,
+    "Low Cut": 400,
+    "Dry": 100,
+    "Wet": 20
+   }
+  },
+  {
+   "name": "Vocal Throw",
+   "values": {
+    "Sync": 1,
+    "Note": 5,
+    "Time": 375,
+    "Feedback": 35,
+    "Damping": 5000,
+    "Low Cut": 250,
+    "Dry": 100,
+    "Wet": 30
+   }
+  },
+  {
+   "name": "Wet Only",
+   "values": {
+    "Sync": 1,
+    "Note": 2,
+    "Time": 375,
+    "Feedback": 40,
+    "Damping": 6000,
+    "Low Cut": 150,
+    "Dry": 0,
+    "Wet": 100
+   }
+  }
+ ]
+}

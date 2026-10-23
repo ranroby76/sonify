@@ -1,0 +1,220 @@
+{
+ "presets": [
+  {
+   "name": "Default",
+   "values": {
+    "Mix": 100.0,
+    "Soften": 1.0,
+    "Soften Amount": 35.0,
+    "Soften Time": 8.0,
+    "Peak": 1.0,
+    "Peak Ceiling": 12.0,
+    "Peak Ratio": 4.0,
+    "Tame": 1.0,
+    "Tame Depth": 4.0,
+    "Tame Freq": 4000.0,
+    "Round": 1.0,
+    "Round Drive": 25.0,
+    "Round Mix": 100.0
+   }
+  },
+  {
+   "name": "Vocal Sweet",
+   "values": {
+    "Mix": 100,
+    "Soften": 1,
+    "Soften Amount": 40,
+    "Soften Time": 6,
+    "Peak": 1,
+    "Peak Ceiling": 10,
+    "Peak Ratio": 4,
+    "Tame": 1,
+    "Tame Depth": 4,
+    "Tame Freq": 5000,
+    "Round": 1,
+    "Round Drive": 20,
+    "Round Mix": 100
+   }
+  },
+  {
+   "name": "De-Ess Focus",
+   "values": {
+    "Mix": 100,
+    "Soften": 1,
+    "Soften Amount": 15,
+    "Soften Time": 5,
+    "Peak": 1,
+    "Peak Ceiling": 12,
+    "Peak Ratio": 3,
+    "Tame": 1,
+    "Tame Depth": 8,
+    "Tame Freq": 6500,
+    "Round": 0,
+    "Round Drive": 25,
+    "Round Mix": 100
+   }
+  },
+  {
+   "name": "Gentle Polish",
+   "values": {
+    "Mix": 60,
+    "Soften": 1,
+    "Soften Amount": 25,
+    "Soften Time": 8,
+    "Peak": 1,
+    "Peak Ceiling": 12,
+    "Peak Ratio": 3,
+    "Tame": 1,
+    "Tame Depth": 3,
+    "Tame Freq": 4000,
+    "Round": 1,
+    "Round Drive": 20,
+    "Round Mix": 80
+   }
+  },
+  {
+   "name": "Warm Round",
+   "values": {
+    "Mix": 100,
+    "Soften": 1,
+    "Soften Amount": 20,
+    "Soften Time": 8,
+    "Peak": 1,
+    "Peak Ceiling": 12,
+    "Peak Ratio": 4,
+    "Tame": 1,
+    "Tame Depth": 3,
+    "Tame Freq": 4000,
+    "Round": 1,
+    "Round Drive": 50,
+    "Round Mix": 100
+   }
+  },
+  {
+   "name": "Punchy Drums",
+   "values": {
+    "Mix": 100,
+    "Soften": 1,
+    "Soften Amount": -40,
+    "Soften Time": 4,
+    "Peak": 1,
+    "Peak Ceiling": 6,
+    "Peak Ratio": 8,
+    "Tame": 0,
+    "Tame Depth": 4,
+    "Tame Freq": 4000,
+    "Round": 1,
+    "Round Drive": 30,
+    "Round Mix": 70
+   }
+  },
+  {
+   "name": "Smooth Bass",
+   "values": {
+    "Mix": 100,
+    "Soften": 1,
+    "Soften Amount": 50,
+    "Soften Time": 20,
+    "Peak": 1,
+    "Peak Ceiling": 10,
+    "Peak Ratio": 4,
+    "Tame": 0,
+    "Tame Depth": 4,
+    "Tame Freq": 4000,
+    "Round": 1,
+    "Round Drive": 40,
+    "Round Mix": 100
+   }
+  },
+  {
+   "name": "Acoustic Air",
+   "values": {
+    "Mix": 100,
+    "Soften": 1,
+    "Soften Amount": 25,
+    "Soften Time": 8,
+    "Peak": 1,
+    "Peak Ceiling": 12,
+    "Peak Ratio": 3,
+    "Tame": 1,
+    "Tame Depth": 2,
+    "Tame Freq": 7000,
+    "Round": 1,
+    "Round Drive": 15,
+    "Round Mix": 80
+   }
+  },
+  {
+   "name": "Master Sweetener",
+   "values": {
+    "Mix": 50,
+    "Soften": 1,
+    "Soften Amount": 20,
+    "Soften Time": 10,
+    "Peak": 1,
+    "Peak Ceiling": 15,
+    "Peak Ratio": 3,
+    "Tame": 1,
+    "Tame Depth": 2,
+    "Tame Freq": 4500,
+    "Round": 1,
+    "Round Drive": 15,
+    "Round Mix": 60
+   }
+  },
+  {
+   "name": "Tame Harshness",
+   "values": {
+    "Mix": 100,
+    "Soften": 0,
+    "Soften Amount": 35,
+    "Soften Time": 8,
+    "Peak": 1,
+    "Peak Ceiling": 12,
+    "Peak Ratio": 4,
+    "Tame": 1,
+    "Tame Depth": 10,
+    "Tame Freq": 3500,
+    "Round": 0,
+    "Round Drive": 25,
+    "Round Mix": 100
+   }
+  },
+  {
+   "name": "Transient Softener",
+   "values": {
+    "Mix": 100,
+    "Soften": 1,
+    "Soften Amount": 80,
+    "Soften Time": 30,
+    "Peak": 0,
+    "Peak Ceiling": 12,
+    "Peak Ratio": 4,
+    "Tame": 0,
+    "Tame Depth": 4,
+    "Tame Freq": 4000,
+    "Round": 0,
+    "Round Drive": 25,
+    "Round Mix": 100
+   }
+  },
+  {
+   "name": "Analog Glow",
+   "values": {
+    "Mix": 100,
+    "Soften": 0,
+    "Soften Amount": 35,
+    "Soften Time": 8,
+    "Peak": 0,
+    "Peak Ceiling": 12,
+    "Peak Ratio": 4,
+    "Tame": 1,
+    "Tame Depth": 2,
+    "Tame Freq": 5000,
+    "Round": 1,
+    "Round Drive": 70,
+    "Round Mix": 60
+   }
+  }
+ ]
+}

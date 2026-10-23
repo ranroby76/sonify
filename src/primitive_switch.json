@@ -1,0 +1,12 @@
+{
+  "name": "Switch",
+  "category": "Controls",
+  "order": 30,
+  "icon": "switch",
+  "description": "An on/off switch or button: its look decides which.",
+  "widget": {
+    "type": "switch",
+    "w": 48,
+    "h": 66
+  }
+}

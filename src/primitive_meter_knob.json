@@ -1,0 +1,13 @@
+{
+  "name": "Knob with meter",
+  "category": "Controls",
+  "order": 13,
+  "icon": "meterknob",
+  "description": "A big knob on a dial plate with a meter's window above it: the level it watches on a needle, the knob's value marked on the scale, as a threshold.",
+  "widget": {
+    "type": "MeterKnob",
+    "w": 150,
+    "h": 168,
+    "source": "plugin.out L"
+  }
+}

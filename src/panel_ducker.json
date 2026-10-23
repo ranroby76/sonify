@@ -1,0 +1,501 @@
+{
+ "width": 800,
+ "height": 416,
+ "background": {
+  "top": "#FF1A1B1F",
+  "bottom": "#FF0D0D10"
+ },
+ "light": {
+  "angle": 120,
+  "altitude": 32
+ },
+ "widgets": [
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 800,
+   "h": 416,
+   "material": "anodized",
+   "color": "#FF15161A",
+   "finish": "satin",
+   "grain": 0.7
+  },
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 800,
+   "h": 64,
+   "color": "#FF0B0B0D"
+  },
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 800,
+   "h": 30,
+   "color": "#10FFFFFF"
+  },
+  {
+   "type": "line",
+   "from": [
+    0,
+    64
+   ],
+   "to": [
+    800,
+    64
+   ],
+   "lineWidth": 1,
+   "color": "#FF2A2B30"
+  },
+  {
+   "type": "line",
+   "from": [
+    0,
+    65
+   ],
+   "to": [
+    800,
+    65
+   ],
+   "lineWidth": 1,
+   "color": "#FF050506"
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 20,
+   "w": 4,
+   "h": 24,
+   "rounding": 1,
+   "color": "#FFF2F4F8",
+   "effects": {
+    "dropShadow": {
+     "color": "#FFFFFFFF",
+     "opacity": 70,
+     "distance": 0,
+     "size": 6
+    }
+   }
+  },
+  {
+   "type": "label",
+   "text": "Sonify Ducker",
+   "x": 40,
+   "y": 14,
+   "w": 360,
+   "h": 28,
+   "size": 20,
+   "bold": true,
+   "font": "Montserrat",
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "label",
+   "text": "TWO BANDS THAT DIP WHERE THE SIDECHAIN PLAYS",
+   "x": 41,
+   "y": 41,
+   "w": 420,
+   "h": 14,
+   "size": 9.5,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "preset",
+   "label": "Presets",
+   "x": 556,
+   "y": 18,
+   "w": 220,
+   "h": 28,
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 84,
+   "w": 752,
+   "h": 88,
+   "radius": 8,
+   "color": "#FF060709",
+   "effects": {
+    "innerShadow": {
+     "opacity": 90,
+     "distance": 3,
+     "size": 10
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF26272C",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "scope",
+   "source": "duck.curve",
+   "x": 32,
+   "y": 88,
+   "w": 736,
+   "h": 80,
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 84,
+   "w": 752,
+   "h": 44,
+   "radius": 8,
+   "color": "#0CFFFFFF"
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 188,
+   "w": 368,
+   "h": 204,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    34,
+    189
+   ],
+   "to": [
+    382,
+    189
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "LOW BAND",
+   "x": 40,
+   "y": 198,
+   "w": 336,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "toggle",
+   "param": "Low On",
+   "label": "On",
+   "x": 328,
+   "y": 196,
+   "w": 48,
+   "h": 56,
+   "style": "Sonify button"
+  },
+  {
+   "type": "knob",
+   "param": "Low Freq",
+   "label": "Freq",
+   "x": 40,
+   "y": 220,
+   "size": 72,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Low Depth",
+   "label": "Depth",
+   "x": 128,
+   "y": 220,
+   "size": 72,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Low Threshold",
+   "label": "Threshold",
+   "x": 216,
+   "y": 220,
+   "size": 72,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Low Q",
+   "label": "Q",
+   "x": 48,
+   "y": 316,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Low Ratio",
+   "label": "Ratio",
+   "x": 120,
+   "y": 316,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Low Attack",
+   "label": "Attack",
+   "x": 192,
+   "y": 316,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Low Release",
+   "label": "Release",
+   "x": 264,
+   "y": 316,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "meter",
+   "source": "duck.key1",
+   "x": 324,
+   "y": 262,
+   "w": 10,
+   "h": 112,
+   "settings": {
+    "display": "segments",
+    "segments": 14,
+    "colorLow": "#FFB9BCC4",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "meter",
+   "source": "duck.gr1",
+   "x": 350,
+   "y": 262,
+   "w": 10,
+   "h": 112,
+   "settings": {
+    "display": "segments",
+    "segments": 14,
+    "colorLow": "#FFF2F4F8",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "label",
+   "text": "KEY",
+   "x": 316,
+   "y": 378,
+   "w": 26,
+   "h": 14,
+   "size": 8,
+   "bold": true,
+   "color": "#FF5C6068"
+  },
+  {
+   "type": "label",
+   "text": "DIP",
+   "x": 344,
+   "y": 378,
+   "w": 26,
+   "h": 14,
+   "size": 8,
+   "bold": true,
+   "color": "#FF5C6068"
+  },
+  {
+   "type": "rectangle",
+   "x": 408,
+   "y": 188,
+   "w": 368,
+   "h": 204,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    418,
+    189
+   ],
+   "to": [
+    766,
+    189
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "HIGH BAND",
+   "x": 424,
+   "y": 198,
+   "w": 336,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "toggle",
+   "param": "High On",
+   "label": "On",
+   "x": 712,
+   "y": 196,
+   "w": 48,
+   "h": 56,
+   "style": "Sonify button"
+  },
+  {
+   "type": "knob",
+   "param": "High Freq",
+   "label": "Freq",
+   "x": 424,
+   "y": 220,
+   "size": 72,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "High Depth",
+   "label": "Depth",
+   "x": 512,
+   "y": 220,
+   "size": 72,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "High Threshold",
+   "label": "Threshold",
+   "x": 600,
+   "y": 220,
+   "size": 72,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "High Q",
+   "label": "Q",
+   "x": 432,
+   "y": 316,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "High Ratio",
+   "label": "Ratio",
+   "x": 504,
+   "y": 316,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "High Attack",
+   "label": "Attack",
+   "x": 576,
+   "y": 316,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "High Release",
+   "label": "Release",
+   "x": 648,
+   "y": 316,
+   "size": 44,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "meter",
+   "source": "duck.key2",
+   "x": 708,
+   "y": 262,
+   "w": 10,
+   "h": 112,
+   "settings": {
+    "display": "segments",
+    "segments": 14,
+    "colorLow": "#FFB9BCC4",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "meter",
+   "source": "duck.gr2",
+   "x": 734,
+   "y": 262,
+   "w": 10,
+   "h": 112,
+   "settings": {
+    "display": "segments",
+    "segments": 14,
+    "colorLow": "#FFF2F4F8",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "label",
+   "text": "KEY",
+   "x": 700,
+   "y": 378,
+   "w": 26,
+   "h": 14,
+   "size": 8,
+   "bold": true,
+   "color": "#FF5C6068"
+  },
+  {
+   "type": "label",
+   "text": "DIP",
+   "x": 728,
+   "y": 378,
+   "w": 26,
+   "h": 14,
+   "size": 8,
+   "bold": true,
+   "color": "#FF5C6068"
+  }
+ ]
+}

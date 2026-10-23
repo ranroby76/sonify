@@ -1,0 +1,8 @@
+build/
+deps/
+nuget/
+libs/
+wix/bin/
+wix/obj/
+.vs/
+*.user

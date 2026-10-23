@@ -1,0 +1,19 @@
+continuing sonify project. 
+
+
+
+root folder: D:\workspace\Fanan_web_hub
+
+juce 9: D:\workspace\JUCE
+
+clap library: D:\workspace\clap-juce-extensions-main
+
+repo - https://github.com/ranroby76/sonify
+
+all project files goes to src\ folder
+
+output every single fixed file for downloading
+
+no more 1 by 1 fixed files output. output only "all packed in a zip" fixes, even if it 1 file only
+
+read the full code and verify you understand it 

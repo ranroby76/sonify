@@ -1,0 +1,12 @@
+{
+  "name": "Circle",
+  "category": "Pictures & text",
+  "order": 261,
+  "icon": "circle",
+  "description": "A circle (an oval when stretched, lopsided when its middle moves); a flat colour or a material with patterns, relief and a shadow.",
+  "widget": {
+    "type": "circle",
+    "w": 80,
+    "h": 80
+  }
+}

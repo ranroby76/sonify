@@ -1,0 +1,186 @@
+{
+ "presets": [
+  {
+   "name": "Default",
+   "values": {
+    "Threshold": -18.0,
+    "Ratio": 3.0,
+    "Attack": 10.0,
+    "Release": 120.0,
+    "Knee": 6.0,
+    "Makeup": 0.0,
+    "Mix": 100.0,
+    "Detector": 1.0,
+    "Sidechain": 0.0
+   }
+  },
+  {
+   "name": "Gentle Glue",
+   "values": {
+    "Threshold": -20,
+    "Ratio": 2,
+    "Attack": 30,
+    "Release": 200,
+    "Knee": 10,
+    "Makeup": 2,
+    "Mix": 100,
+    "Detector": 1,
+    "Sidechain": 0
+   }
+  },
+  {
+   "name": "Vocal Leveler",
+   "values": {
+    "Threshold": -24,
+    "Ratio": 3,
+    "Attack": 5,
+    "Release": 120,
+    "Knee": 6,
+    "Makeup": 5,
+    "Mix": 100,
+    "Detector": 1,
+    "Sidechain": 0
+   }
+  },
+  {
+   "name": "Vocal Upfront",
+   "values": {
+    "Threshold": -28,
+    "Ratio": 6,
+    "Attack": 2,
+    "Release": 80,
+    "Knee": 3,
+    "Makeup": 8,
+    "Mix": 100,
+    "Detector": 1,
+    "Sidechain": 0
+   }
+  },
+  {
+   "name": "Kick Punch",
+   "values": {
+    "Threshold": -18,
+    "Ratio": 4,
+    "Attack": 25,
+    "Release": 80,
+    "Knee": 3,
+    "Makeup": 3,
+    "Mix": 100,
+    "Detector": 0,
+    "Sidechain": 0
+   }
+  },
+  {
+   "name": "Snare Snap",
+   "values": {
+    "Threshold": -20,
+    "Ratio": 5,
+    "Attack": 8,
+    "Release": 60,
+    "Knee": 2,
+    "Makeup": 4,
+    "Mix": 100,
+    "Detector": 0,
+    "Sidechain": 0
+   }
+  },
+  {
+   "name": "Bass Even",
+   "values": {
+    "Threshold": -22,
+    "Ratio": 4,
+    "Attack": 10,
+    "Release": 150,
+    "Knee": 6,
+    "Makeup": 5,
+    "Mix": 100,
+    "Detector": 1,
+    "Sidechain": 0
+   }
+  },
+  {
+   "name": "Acoustic Smooth",
+   "values": {
+    "Threshold": -20,
+    "Ratio": 2.5,
+    "Attack": 15,
+    "Release": 180,
+    "Knee": 8,
+    "Makeup": 3,
+    "Mix": 100,
+    "Detector": 1,
+    "Sidechain": 0
+   }
+  },
+  {
+   "name": "Mix Bus",
+   "values": {
+    "Threshold": -12,
+    "Ratio": 1.5,
+    "Attack": 30,
+    "Release": 300,
+    "Knee": 12,
+    "Makeup": 1,
+    "Mix": 100,
+    "Detector": 1,
+    "Sidechain": 0
+   }
+  },
+  {
+   "name": "Drum Bus Smash",
+   "values": {
+    "Threshold": -30,
+    "Ratio": 8,
+    "Attack": 5,
+    "Release": 100,
+    "Knee": 2,
+    "Makeup": 8,
+    "Mix": 50,
+    "Detector": 1,
+    "Sidechain": 0
+   }
+  },
+  {
+   "name": "Parallel Crush",
+   "values": {
+    "Threshold": -40,
+    "Ratio": 20,
+    "Attack": 0.5,
+    "Release": 60,
+    "Knee": 0,
+    "Makeup": 12,
+    "Mix": 35,
+    "Detector": 0,
+    "Sidechain": 0
+   }
+  },
+  {
+   "name": "Sidechain Pump",
+   "values": {
+    "Threshold": -30,
+    "Ratio": 6,
+    "Attack": 1,
+    "Release": 150,
+    "Knee": 2,
+    "Makeup": 0,
+    "Mix": 100,
+    "Detector": 1,
+    "Sidechain": 1
+   }
+  },
+  {
+   "name": "Peak Catcher",
+   "values": {
+    "Threshold": -8,
+    "Ratio": 10,
+    "Attack": 0.5,
+    "Release": 50,
+    "Knee": 0,
+    "Makeup": 2,
+    "Mix": 100,
+    "Detector": 0,
+    "Sidechain": 0
+   }
+  }
+ ]
+}

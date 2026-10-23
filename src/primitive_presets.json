@@ -1,0 +1,12 @@
+{
+  "name": "Preset manager",
+  "category": "Controls",
+  "order": 50,
+  "icon": "presets",
+  "description": "The plugin's presets: step through them, or open the list to save, save as, load, and save or load banks.",
+  "widget": {
+    "type": "preset",
+    "w": 220,
+    "h": 28
+  }
+}

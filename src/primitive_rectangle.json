@@ -1,0 +1,13 @@
+{
+  "name": "Rectangle",
+  "category": "Pictures & text",
+  "order": 260,
+  "icon": "rectangle",
+  "description": "A rectangle, its corners rounded by its yellow handle; a flat colour or a material with patterns, relief and a shadow.",
+  "widget": {
+    "type": "rectangle",
+    "w": 120,
+    "h": 72,
+    "radius": 8
+  }
+}

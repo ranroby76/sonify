@@ -1,0 +1,409 @@
+/* D:\workspace\Fanan_web_hub\src\hub-sampling.css */
+
+/* The Sampling Studio (hub-sampling.js): Sampler Arena's Sampling Module, in its colours. The
+   head (its title and four gold tabs), the module's face (the family name, Play/Stop, where it
+   is, the meters, F, the progress line), then a tab: Sampling (the three blue mode buttons and the
+   row's right-hand buttons, Sonify's source row, the zone graph over the keyboard, Clear All Keys
+   and the count, the yellow zone list), Presets (three big buttons), the Loop Editor (its top
+   row, the sample list, the tools, the stereo waveform, the status), or SFZ to Blob (its buttons,
+   the list with each row's progress, where the blobs go, Make Blobs). The pop-ups open at the key
+   (or the button) they're for; the Settings window floats and moves. */
+
+.sampling-page {
+  --sa-bg: rgb(28, 28, 35);
+  --sa-text: #ddd;
+  --sa-muted: rgb(180, 180, 190);
+  --sa-gold: rgb(180, 140, 50);
+  --sa-yellow: rgb(255, 220, 40);
+  background: var(--sa-bg);
+  color: var(--sa-text);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ------------------------------------------------------------------ head */
+.smp-head { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px 8px 0; }
+.smp-title { margin: 0; height: 22px; line-height: 22px; font-size: 15px; font-weight: 700; color: #fff; }
+.smp-tabs { display: flex; gap: 2px; }
+.smp-tab {
+  width: 140px; height: 28px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer;
+  background: rgb(45, 40, 25); color: rgb(220, 200, 140);
+}
+.smp-tab:hover { filter: brightness(1.15); }
+.smp-tab[aria-selected="true"] { background: rgb(180, 140, 50); color: #000; }
+
+/* ------------------------------------------------------------------ the module's face */
+.smp-face {
+  flex: none; position: relative; display: flex; align-items: center; gap: 8px; margin: 8px 8px 0; padding: 6px 8px 9px;
+  border-radius: 6px; background: rgb(36, 36, 44); border: 1px solid rgb(60, 60, 70);
+}
+.smp-family {
+  flex: none; width: 220px; height: 22px; padding: 0 6px; border-radius: 4px; border: 1px solid grey;
+  background: rgb(45, 45, 50); color: #fff; font-size: 11px;
+}
+.smp-family:focus { outline: none; border-color: rgb(220, 180, 60); }
+.smp-play {
+  flex: none; position: relative; width: 32px; height: 32px; border-radius: 6px; cursor: pointer;
+  background: rgb(45, 45, 50); border: 1.5px solid rgb(80, 80, 90);
+}
+.smp-play::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform: translate(-35%, -50%);
+  border-style: solid; border-width: 6.5px 0 6.5px 11px; border-color: transparent transparent transparent rgb(80, 200, 80);
+}
+.smp-play.running { background: rgb(20, 60, 20); border-color: #006400; }
+.smp-play.running::after { width: 10px; height: 10px; border: none; background: rgb(60, 140, 220); transform: translate(-50%, -50%); }
+.smp-play:disabled { opacity: 0.4; cursor: default; }
+.smp-face-status { flex: 1 1 auto; min-width: 120px; text-align: center; font-size: 10px; color: rgb(100, 100, 120); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.smp-face-status.running { color: #90ee90; font-size: 11px; font-weight: 700; }
+.smp-face-status.done { color: rgb(150, 220, 150); font-size: 11px; }
+.smp-face-status.problem { color: rgb(255, 120, 110); font-size: 11px; }
+.smp-face-actions { flex: none; display: flex; gap: 6px; }
+.smp-meter { flex: none; display: flex; gap: 2px; width: 24px; height: 28px; }
+.smp-meter-bar { position: relative; flex: 1; background: rgb(25, 25, 30); }
+.smp-meter-fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: limegreen; }
+.smp-meter-fill.hot { background: yellow; }
+.smp-meter-fill.over { background: red; }
+.smp-small-button {
+  flex: none; width: 26px; height: 20px; border-radius: 4px; border: none; cursor: pointer; font-size: 11px; font-weight: 700;
+  background: rgb(60, 60, 75); color: #fff;
+}
+.smp-face-progress { position: absolute; left: 4px; right: 4px; bottom: 2px; height: 3px; }
+.smp-face-progress-fill { height: 100%; width: 0; background: rgba(40, 180, 80, 0.6); }
+
+.smp-prompt {
+  flex: none; margin: 6px 8px 0; padding: 8px 12px; border-radius: 6px; font-size: 15px; font-weight: 700;
+  background: rgb(40, 52, 30); color: rgb(220, 240, 180); border: 1px solid rgb(100, 140, 60);
+}
+.smp-prompt small { margin-left: 10px; font-size: 12px; font-weight: 400; color: rgb(190, 210, 160); }
+
+/* ------------------------------------------------------------------ buttons */
+.smp-button {
+  height: 26px; padding: 0 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;
+  background: rgb(60, 60, 80); color: #fff;
+}
+.smp-button:hover:not(:disabled) { filter: brightness(1.18); }
+.smp-button:disabled { opacity: 0.45; cursor: default; }
+.smp-button.small { height: 22px; padding: 0 8px; font-size: 11px; }
+
+.smp-pane { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 8px; overflow: auto; }
+.spacer { flex: 1 1 auto; }
+
+/* ------------------------------------------------------------------ Sampling */
+.smp-mode-row { flex: none; display: flex; align-items: center; gap: 4px; height: 30px; }
+.smp-mode {
+  width: 160px; height: 30px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;
+  background: rgb(35, 35, 45); color: rgb(180, 200, 230);
+}
+.smp-mode.on { background: rgb(120, 160, 220); color: #000; }
+.smp-mode-row .smp-button { height: 30px; }
+.smp-chord-types { width: 140px; margin-left: 4px; background: rgb(80, 70, 30); }
+.smp-no-ranges { width: 170px; background: rgb(60, 55, 70); }
+.smp-no-ranges.on { background: rgb(120, 90, 55); }
+.smp-adhoc { width: 150px; margin-left: 4px; background: rgb(50, 70, 70); overflow: hidden; text-overflow: ellipsis; }
+.smp-settings-button { width: 110px; margin-left: 4px; background: rgb(60, 52, 30); color: rgb(230, 210, 150); }
+
+.smp-source-row { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; font-size: 11px; color: var(--sa-muted); }
+.smp-source-label { color: lightgrey; font-weight: 700; }
+.smp-segment { display: flex; padding: 2px; border-radius: 5px; background: rgb(22, 22, 28); border: 1px solid rgb(60, 60, 70); }
+.smp-segment button { height: 22px; padding: 0 10px; border: none; border-radius: 3px; background: transparent; color: rgb(190, 190, 200); font-size: 11px; cursor: pointer; }
+.smp-segment button.on { background: rgb(120, 160, 220); color: #000; }
+.smp-segment button:disabled { cursor: default; }
+.smp-segment button:disabled:not(.on) { opacity: 0.45; }
+.smp-select, .smp-pop select, .smp-settings-window select {
+  height: 22px; padding: 0 4px; border-radius: 3px; border: 1px solid rgb(70, 70, 85); background: rgb(40, 40, 50); color: #fff; font-size: 11px;
+}
+.smp-track { min-width: 220px; max-width: 360px; }
+.smp-inline { display: inline-flex; align-items: center; gap: 4px; }
+.smp-source-hint { flex: 1 1 260px; min-width: 0; color: rgb(140, 140, 155); }
+
+.smp-chord-hint {
+  flex: none; margin-top: 10px; padding: 14px 16px; border-radius: 6px; font-size: 12px; line-height: 1.5;
+  background: rgb(34, 32, 26); border: 1px solid rgb(90, 80, 40); color: rgb(230, 210, 150);
+}
+.smp-chord-hint b { color: var(--sa-yellow); }
+
+.smp-zone-wrap { flex: none; margin-top: 8px; overflow-x: auto; overflow-y: hidden; border: 1px solid rgb(50, 50, 60); }
+.smp-zones { display: block; width: 1800px; height: 290px; }
+.smp-clear-row { flex: none; display: flex; align-items: center; gap: 12px; margin-top: 6px; height: 28px; }
+.smp-clear { width: 140px; height: 28px; background: darkred; }
+.smp-count { flex: 1; text-align: right; font-size: 12px; font-weight: 700; color: rgb(100, 200, 100); }
+/* Under Clear All Keys: the nodes (the Nodes source), and beside them the tabs: the zone list
+   (Sampled Keys) and the MIDI Monitor. */
+.smp-bottom { flex: 1 1 auto; min-height: 230px; display: flex; gap: 8px; margin-top: 6px; }
+.smp-side { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; border: 1px solid rgb(50, 50, 60); border-radius: 4px; overflow: hidden; }
+.smp-side[hidden] { display: none; }
+.smp-nodes:not([hidden]) + .smp-side { flex: 0 0 320px; }
+.smp-side-tabs { flex: none; display: flex; background: rgb(28, 28, 34); border-bottom: 1px solid rgb(50, 50, 60); }
+.smp-side-tab {
+  flex: 1 1 0; height: 27px; padding: 0 6px; border: none; border-bottom: 2px solid transparent; background: transparent;
+  color: rgb(150, 150, 165); font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.smp-side-tab:hover { color: rgb(220, 220, 230); }
+.smp-side-tab[aria-selected="true"] { color: #fff; border-bottom-color: var(--sa-yellow); }
+.smp-side-tab[hidden] { display: none; }
+.smp-zone-list {
+  flex: 1 1 auto; min-width: 0; min-height: 60px; padding: 4px 6px; overflow-y: auto; white-space: pre;
+  font: 700 13px/20px Consolas, "Cascadia Mono", monospace; color: var(--sa-yellow);
+}
+.smp-zone-list[hidden] { display: none; }
+
+/* The MIDI Monitor: the last 20 messages, oldest first; one the MIDI In node doesn't hear is greyed. */
+.smp-monitor { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.smp-monitor[hidden] { display: none; }
+.smp-monitor-head { flex: none; display: flex; align-items: center; gap: 6px; padding: 3px 6px; font-size: 11px; color: rgb(150, 150, 165); }
+.smp-monitor-count { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.smp-monitor-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 6px 4px; font: 11px/18px Consolas, "Cascadia Mono", monospace; }
+.smp-monitor-row { display: grid; grid-template-columns: 34px 20px minmax(0, 1fr) 66px; gap: 0 6px; white-space: nowrap; color: rgb(225, 225, 235); }
+.smp-monitor-row > span { overflow: hidden; text-overflow: ellipsis; }
+.smp-monitor-row .num { color: rgb(120, 120, 135); }
+.smp-monitor-row .ch { color: rgb(170, 170, 185); text-align: right; }
+.smp-monitor-row .src { color: rgb(150, 150, 165); text-align: right; }
+.smp-monitor-row.on .msg { color: rgb(120, 225, 145); }
+.smp-monitor-row.off .msg { color: rgb(200, 160, 120); }
+.smp-monitor-row.unheard, .smp-monitor-row.unheard .msg, .smp-monitor-row.unheard .src { color: rgb(105, 105, 120); }
+.smp-monitor-empty { padding: 8px 0; color: rgb(110, 110, 125); font-family: sans-serif; white-space: normal; }
+
+/* The nodes: Sampler Arena's node system, kept within this area. */
+.smp-nodes { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; border: 1px solid rgb(50, 50, 60); border-radius: 4px; overflow: hidden; }
+.smp-nodes[hidden] { display: none; }
+.smp-nodes-bar { flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: rgb(28, 28, 34); border-bottom: 1px solid rgb(50, 50, 60); font-size: 11px; }
+.smp-nodes-title { color: lightgrey; font-weight: 700; margin-right: 4px; }
+.smp-nodes-formats { display: inline-flex; gap: 4px; }
+.smp-format { min-width: 48px; background: rgb(45, 70, 95); }
+.smp-nodes-status { flex: 1 1 auto; min-width: 0; text-align: right; color: rgb(150, 150, 165); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.smp-nodes-status.ready { color: rgb(100, 200, 100); font-weight: 700; }
+.smp-nodes-main { flex: 1 1 auto; min-height: 0; display: flex; }
+.smp-nodes-wrap { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
+/* The keyboard on the nodes' left: upright, low notes at the bottom, scrolled with the wheel. */
+.smp-vkeys { flex: 0 0 56px; position: relative; overflow-x: hidden; overflow-y: auto; border-right: 1px solid rgb(50, 50, 60); background: rgb(20, 20, 24); scrollbar-width: thin; }
+.smp-vkeys-canvas { display: block; touch-action: none; cursor: pointer; }
+.smp-nodes-canvas { position: absolute; left: 0; top: 0; display: block; outline: none; touch-action: none; }
+
+/* The MIDI In node's list: All inputs, or the ports ticked one by one. */
+.smp-midiin-drop {
+  position: fixed; z-index: 85; padding: 8px 10px; background: rgb(32, 32, 38); border: 1px solid rgb(70, 70, 85); border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55); color: #fff; font-size: 12px;
+}
+.smp-midiin-drop[hidden] { display: none; }
+.smp-midiin-title { margin-bottom: 4px; color: lightgrey; font-weight: 700; }
+.smp-midiin-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer; white-space: nowrap; overflow: hidden; }
+.smp-midiin-row span { overflow: hidden; text-overflow: ellipsis; }
+.smp-midiin-row.port { padding-left: 16px; }
+.smp-midiin-row.gone span { color: rgb(205, 145, 145); }
+.smp-midiin-row input:disabled + span { color: rgb(130, 130, 145); }
+.smp-midiin-note { margin-top: 6px; color: rgb(150, 150, 165); font-size: 11px; line-height: 1.4; white-space: normal; }
+
+/* The browse window: a format's folders and plugins. */
+.smp-browse { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); }
+.smp-browse[hidden] { display: none; }
+.smp-browse-box {
+  width: min(640px, 94vw); height: min(520px, 86vh); display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
+  background: rgb(32, 32, 38); border: 1px solid rgb(70, 70, 85); border-radius: 6px; box-shadow: 0 14px 44px rgba(0, 0, 0, 0.6); color: #fff;
+}
+.smp-browse-head { display: flex; align-items: center; }
+.smp-browse-title { flex: 1 1 auto; font-size: 14px; font-weight: 700; }
+.smp-browse-close { width: 26px; height: 26px; border: none; border-radius: 4px; background: transparent; color: #ddd; font-size: 18px; cursor: pointer; }
+.smp-browse-close:hover { background: rgb(60, 60, 72); }
+.smp-browse-path { display: flex; align-items: center; gap: 6px; }
+.smp-browse-folder {
+  flex: 1 1 auto; min-width: 0; height: 24px; padding: 0 6px; border: 1px solid rgb(70, 70, 85); border-radius: 3px;
+  background: rgb(22, 22, 28); color: #fff; font-size: 12px;
+}
+.smp-browse-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; border: 1px solid rgb(55, 55, 66); border-radius: 4px; background: rgb(24, 24, 30); outline: none; }
+.smp-browse-item { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px; font-size: 12px; cursor: default; user-select: none; }
+.smp-browse-item:hover { background: rgb(40, 40, 50); }
+.smp-browse-item.on { background: rgb(60, 95, 140); }
+.smp-browse-icon { width: 12px; color: rgb(200, 180, 100); }
+.smp-browse-item.plugin .smp-browse-icon { color: rgb(0, 170, 255); }
+.smp-browse-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.smp-browse-kind { color: rgb(140, 140, 155); font-size: 10px; }
+.smp-browse-empty { padding: 12px; color: rgb(140, 140, 155); font-size: 12px; }
+.smp-browse-foot { display: flex; align-items: center; gap: 6px; }
+.smp-browse-hint { flex: 1 1 auto; color: rgb(140, 140, 155); font-size: 11px; }
+.smp-browse-load { background: rgb(50, 100, 70); }
+
+/* ------------------------------------------------------------------ Presets */
+.smp-presets { padding: 30px 40px; gap: 12px; }
+.smp-big-button { flex: none; width: 260px; height: 40px; border: none; border-radius: 4px; cursor: pointer; color: #fff; font-size: 13px; }
+.smp-big-button:hover { filter: brightness(1.15); }
+.smp-preset-save { background: rgb(50, 100, 70); }
+.smp-preset-load { background: rgb(50, 80, 120); }
+.smp-set-folder { background: rgb(70, 70, 50); }
+.smp-folder-text { margin: 4px 0 0; font-size: 11px; color: rgb(160, 160, 170); line-height: 1.6; white-space: pre-wrap; }
+
+/* ------------------------------------------------------------------ SFZ to Blob */
+.smp-blob { gap: 10px; padding: 12px 14px; }
+.sbl-top { flex: none; display: flex; align-items: center; gap: 8px; }
+.sbl-top .smp-button { height: 28px; }
+.sbl-add { background: rgb(50, 80, 120); }
+.sbl-add-folder { background: rgb(50, 70, 100); }
+.sbl-add-last { background: rgb(60, 52, 30); color: rgb(230, 210, 150); }
+.sbl-list {
+  flex: 1 1 auto; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column;
+  background: rgb(25, 25, 32); border: 1px solid rgb(60, 60, 70); border-radius: 4px;
+}
+.sbl-empty { margin: auto; padding: 24px; color: rgb(140, 140, 155); font-size: 12px; text-align: center; }
+.sbl-row {
+  flex: none; display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 6px 10px;
+  border-bottom: 1px solid rgb(45, 45, 55);
+}
+.sbl-row.working { background: rgb(32, 38, 48); }
+.sbl-text { flex: 1 1 auto; min-width: 0; }
+.sbl-name { font-size: 13px; font-weight: 700; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbl-where { margin-top: 2px; font-size: 10.5px; color: rgb(150, 150, 165); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbl-state { flex: 0 1 320px; min-width: 120px; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 11px; }
+.sbl-bar { width: 100%; height: 6px; border-radius: 3px; background: rgb(45, 45, 58); overflow: hidden; }
+.sbl-fill { height: 100%; background: rgb(120, 160, 220); }
+.sbl-percent { color: rgb(170, 190, 220); }
+.sbl-made { color: rgb(140, 210, 150); white-space: nowrap; }
+.sbl-note-text { max-width: 100%; color: rgb(230, 190, 100); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbl-why { max-width: 100%; color: rgb(240, 120, 110); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbl-waiting { color: rgb(150, 150, 165); }
+.sbl-buttons { flex: none; display: flex; gap: 4px; }
+.sbl-reveal { width: 26px; padding: 0; }
+.sbl-remove { width: 26px; padding: 0; font-size: 14px; }
+.sbl-options { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; font-size: 11px; color: var(--sa-muted); }
+.sbl-label { color: lightgrey; font-weight: 700; }
+.sbl-folder-text { flex: 0 1 auto; min-width: 0; max-width: 420px; color: rgb(160, 160, 170); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbl-samples { margin-right: 4px; }
+.sbl-actions { flex: none; display: flex; align-items: center; gap: 14px; }
+.sbl-make { background: rgb(50, 100, 70); }
+.sbl-make.stop { background: rgb(130, 60, 50); }
+.sbl-make:disabled { opacity: 0.45; cursor: default; filter: none; }
+.sbl-status { font-size: 12px; color: rgb(190, 190, 200); }
+.sbl-note { flex: none; margin: 0; font-size: 11px; line-height: 1.5; color: rgb(140, 140, 155); }
+
+/* ------------------------------------------------------------------ the Loop Editor */
+.smp-loop { padding: 4px; background: rgb(28, 30, 35); }
+.sle-top { flex: none; display: flex; align-items: center; gap: 8px; height: 28px; }
+.sle-top .smp-button { height: 28px; }
+.sle-load { width: 120px; background: rgb(50, 80, 100); }
+.sle-batch { width: 110px; background: rgb(70, 120, 95); }
+.sle-ai { background: rgb(110, 80, 150); }
+.sle-ai-scope { height: 28px; }
+.sle-name { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 700; color: #d4a843; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sle-save { width: 60px; background: rgb(40, 80, 40); }
+.sle-save-as { width: 80px; background: rgb(60, 60, 80); }
+.sle-body { flex: 1 1 auto; min-height: 0; display: flex; gap: 4px; margin-top: 4px; }
+.sle-list { flex: none; width: 200px; overflow-y: auto; background: rgb(25, 25, 32); border: 1px solid rgb(60, 60, 70); }
+.sle-row { position: relative; height: 22px; padding-left: 16px; line-height: 22px; font-size: 11px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; background: rgb(28, 28, 35); }
+.sle-row:nth-child(even) { background: rgb(32, 32, 40); }
+.sle-row.selected { background: rgb(60, 60, 80); }
+.sle-row::before { content: ""; position: absolute; left: 4px; top: 7px; width: 6px; height: 6px; border-radius: 50%; border: 1px solid rgb(80, 80, 80); }
+.sle-row.looped::before { background: rgb(40, 220, 40); border-color: rgb(40, 220, 40); }
+.sle-row.missing { color: rgb(200, 120, 110); }
+.sle-row.changed::after { content: "*"; position: absolute; right: 4px; color: rgb(220, 180, 60); }
+.sle-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.sle-tools { flex: none; display: flex; align-items: center; gap: 6px; height: 24px; font-size: 10px; color: lightgrey; }
+.sle-tools .smp-button { height: 24px; padding: 0 6px; }
+.sle-play { width: 50px; background: rgb(30, 100, 30); }
+.sle-play.playing { background: rgb(100, 30, 30); }
+.sle-find { width: 80px; background: rgb(50, 100, 70); }
+.sle-arrow { width: 28px; }
+.sle-candidate { width: 36px; color: lightgrey; }
+.sle-score { width: 110px; font-size: 11px; font-weight: 700; color: lightgreen; white-space: nowrap; }
+.sle-xfade { width: 120px; accent-color: rgb(200, 200, 100); }
+.sle-xfade-ms { width: 46px; height: 18px; padding: 0 2px; border: 1px solid rgb(70, 70, 85); border-radius: 2px; background: rgb(40, 40, 50); color: #fff; font-size: 10px; }
+.sle-on { display: inline-flex; align-items: center; gap: 3px; color: lightgrey; }
+.sle-on input { accent-color: rgb(200, 200, 100); }
+.sle-remove { width: 100px; background: rgb(100, 40, 40); }
+.sle-wave { flex: 1 1 auto; min-height: 120px; width: 100%; display: block; }
+.sle-status { flex: none; height: 16px; font-size: 10px; color: rgb(180, 180, 180); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ------------------------------------------------------------------ pop-ups (Sampler Arena's call-out boxes) */
+.smp-pop {
+  position: fixed; z-index: 400; padding: 10px; border-radius: 6px; font-size: 11px; color: lightgrey;
+  background: rgb(35, 35, 42); border: 1px solid rgb(110, 110, 125); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+}
+.smp-pop::before {
+  content: ""; position: absolute; left: var(--arrow, 50%); width: 10px; height: 10px; transform: translateX(-50%) rotate(45deg);
+  background: rgb(35, 35, 42); border: 1px solid rgb(110, 110, 125);
+}
+.smp-pop.below::before { top: -6px; border-right: none; border-bottom: none; }
+.smp-pop.above::before { bottom: -6px; border-left: none; border-top: none; }
+.smp-pop-title { margin: 0 0 8px; font-size: 14px; font-weight: 700; text-align: center; color: rgb(220, 180, 60); }
+.smp-pop-title.left { text-align: left; font-size: 12px; color: lightgrey; }
+.smp-pop-rows { display: flex; flex-direction: column; gap: 8px; }
+.smp-pop-row { width: 296px; height: 32px; border: none; border-radius: 4px; color: #fff; font-size: 12px; cursor: pointer; }
+.smp-pop-row:hover { filter: brightness(1.2); }
+.smp-pop-line { display: flex; align-items: center; gap: 6px; min-height: 28px; }
+.smp-pop-line + .smp-pop-line { margin-top: 4px; }
+.smp-pop-label { flex: none; width: 30px; font-weight: 700; color: lightgrey; }
+.smp-pop-hint { margin: 0 0 6px; font-size: 10px; color: lightgrey; }
+.smp-pop input[type="text"] { width: 100%; height: 24px; padding: 0 6px; border-radius: 3px; border: 1px solid rgb(120, 220, 140); background: rgb(40, 40, 50); color: #fff; font-size: 12px; }
+.smp-pop .smp-button { height: 24px; }
+.smp-pop-check { display: flex; align-items: center; gap: 6px; height: 22px; color: #fff; cursor: pointer; }
+.smp-pop-check input { accent-color: rgb(220, 180, 60); }
+.smp-pop-text { max-width: 440px; white-space: pre-wrap; font-size: 12.5px; line-height: 1.4; color: #fff; }
+
+/* A slider with its value box (Sampler Arena's text box on the right). */
+.smp-slider { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.smp-slider input[type="range"] { flex: 1 1 auto; min-width: 40px; accent-color: rgb(140, 140, 190); }
+.smp-slider input.smp-value { flex: none; width: 56px; height: 20px; padding: 0 3px; border: 1px solid rgb(70, 70, 85); border-radius: 2px; background: rgb(30, 28, 36); color: #fff; font-size: 11px; text-align: right; }
+.smp-slider.wide input.smp-value { width: 72px; }
+.smp-pop .smp-slider input.smp-value { width: 40px; }
+.smp-pop .smp-slider.wide input.smp-value { width: 72px; }
+
+/* The Sample Slots editor. */
+.smp-slots { width: 600px; }
+.smp-slots-list { max-height: 360px; overflow-y: auto; }
+.smp-slot { display: flex; align-items: center; gap: 8px; height: 50px; padding: 0 2px; }
+.smp-slot + .smp-slot { margin-top: 6px; }
+.smp-slot-load { flex: none; width: 112px; height: 28px; background: rgb(60, 80, 50); }
+.smp-slot-clip { flex: none; height: 28px; background: rgb(70, 60, 90); }
+.smp-slot-drop {
+  flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 6px; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: rgb(180, 160, 120); background: rgb(50, 40, 30); border: 1px solid rgb(140, 100, 60);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.smp-slot-drop.filled { color: #fff; }
+.smp-slot-drop.over { background: rgb(80, 120, 60); border-color: rgb(180, 220, 100); color: #fff; }
+.smp-slot-vel { flex: none; width: 210px; display: flex; flex-direction: column; gap: 2px; }
+.smp-slot-vel-title { text-align: center; font-size: 11px; font-weight: 700; color: rgb(200, 200, 210); }
+.smp-slot-vel-pair { display: flex; gap: 8px; }
+.smp-slot-vel-pair .smp-slider input.smp-value { width: 38px; }
+.smp-slot-remove { flex: none; width: 24px; height: 22px; padding: 0; background: darkred; }
+
+/* ------------------------------------------------------------------ the Settings window */
+.smp-settings-window {
+  position: fixed; z-index: 390; display: flex; flex-direction: column; min-width: 640px; min-height: 300px;
+  width: 800px; height: 640px; resize: both; overflow: hidden;
+  background: rgb(22, 19, 19); border: 1px solid rgb(90, 80, 70); border-radius: 6px; box-shadow: 0 10px 36px rgba(0, 0, 0, 0.65);
+  color: lightgrey; font-size: 11px;
+}
+.smp-settings-head {
+  flex: none; display: flex; align-items: center; height: 30px; padding: 0 6px 0 12px; cursor: move; user-select: none;
+  background: rgb(40, 34, 30); border-bottom: 1px solid rgb(70, 60, 50); color: #fff; font-size: 12px; font-weight: 700;
+}
+.smp-settings-head .smp-settings-mode { margin-left: 10px; font-weight: 400; color: rgb(220, 200, 140); }
+.smp-settings-close { margin-left: auto; width: 26px; height: 22px; border: none; border-radius: 3px; background: transparent; color: #ccc; font-size: 16px; cursor: pointer; }
+.smp-settings-close:hover { background: rgb(120, 40, 40); color: #fff; }
+.smp-settings-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 20px; padding: 14px; align-items: start; }
+.smp-settings-col { display: flex; flex-direction: column; min-width: 0; }
+.smp-sep { height: 3px; margin: 5px 0 8px; background: rgb(240, 210, 60); }
+.smp-group { position: relative; margin-top: 6px; padding: 18px 12px 10px; border: 1px solid rgb(80, 80, 100); border-radius: 5px; }
+.smp-group-title { position: absolute; top: -8px; left: 10px; padding: 0 4px; background: rgb(22, 19, 19); color: rgb(180, 180, 220); font-size: 11px; }
+.smp-group.chords { border-color: rgb(90, 80, 110); }
+.smp-group.chords .smp-group-title { color: rgb(230, 200, 120); }
+.smp-group.sonify { border-color: rgb(110, 90, 150); }
+.smp-group.sonify .smp-group-title { color: rgb(200, 170, 255); }
+.smp-row { display: flex; align-items: center; height: 30px; min-width: 0; }
+.smp-row + .smp-row { margin-top: 2px; }
+.smp-row-label { flex: none; width: 100px; color: lightgrey; font-size: 10.5px; }
+.smp-row select { flex: 1 1 auto; min-width: 0; height: 22px; }
+.smp-row input[type="text"]:not(.smp-value) { flex: 1 1 auto; min-width: 0; height: 22px; padding: 0 6px; border-radius: 3px; border: 1px solid rgb(70, 70, 85); background: rgb(30, 28, 36); color: #fff; font-size: 11px; }
+.smp-wide-button { width: 100%; height: 34px; border: none; border-radius: 4px; cursor: pointer; background: rgb(60, 60, 80); color: #fff; font-size: 12px; }
+.smp-wide-button.mode { height: 30px; background: rgb(60, 80, 60); }
+.smp-toggle { display: flex; align-items: center; gap: 8px; height: 28px; cursor: pointer; color: lightgrey; font-size: 12px; }
+.smp-toggle input { width: 15px; height: 15px; accent-color: rgb(0, 180, 255); }
+.smp-toggle.fade input { accent-color: rgb(255, 160, 60); }
+.smp-speed { display: flex; gap: 6px; align-items: center; }
+.smp-speed button { flex: 1; height: 28px; border: none; border-radius: 4px; cursor: pointer; background: rgb(40, 40, 50); color: lightgrey; font-size: 11px; }
+.smp-speed button.on[data-speed="realtime"] { background: rgb(120, 180, 120); color: #000; }
+.smp-speed button.on[data-speed="turbo"] { background: rgb(220, 180, 60); color: #000; }
+.smp-speed button.on[data-speed="unleashed"] { background: rgb(220, 110, 90); color: #000; }
+.smp-speed .smp-info { flex: none; width: 28px; padding: 0; background: rgb(50, 70, 110); color: #fff; font-weight: 700; }
+.smp-settings-note { margin: 6px 0 0; font-size: 10px; line-height: 1.4; color: rgb(150, 150, 160); }
+.smp-timesig { display: flex; align-items: center; gap: 2px; }
+.smp-timesig select { width: 54px; flex: none; }

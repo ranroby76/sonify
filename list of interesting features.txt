@@ -1,0 +1,36 @@
+Max for Live - A built-in visual programming environment for building your own instruments, effects, MIDI tools and controller logic that can drive Live itself. we already spoke about it and i wanna implement it in a separate tab, using ai. we also open the midi channel to an instant connection to midi tools which sit between the player and the instrument (like midi arps, midi manipulation tools, etc)
+
+MIDI Tools: generators and transformation - A clip panel that writes notes (Rhythm, Seed, Shape, Stacks) or reshapes them (Strum, Span, Ornament, Time Warp); you can add your own. in continue to the the previous phrase, we should seek the web and find already made tools which we can instantly adopt and seed in to sonify and "build in tools" which sit in the server
+
+Tempo Follower-Listens to a live audio input, such as a drummer's mic, and keeps changing the song's tempo to follow the band. we'll do something else: every imported \ generated audio file will have an editor, just like the midi clip has the piano roll editor (which opened with F2 key). so we'll create that editor (and indeed, a dedicated button for it near the midi editor button in the right bottom corner). as a result, in the right side of the audio clip in the audio editor, we'll put an audio menu where we can apply settings and special features on the selected audio clip. so one of the features will be "sync tempo". the user writes the clip's original tempo and the destination tempo and the clip is streched to the destination one. we already made it in one of our projects. 
+
+we should also include the midi learn drag & drop link which we already implemented nicely in grex project. i want it to work in sonify in the exact way. we can add its window in the right side of the tools buttons header (where the pencil, eraser buttons live). we should also adopt from fender studio the toggle snap button (will live at the same line with tools button header). toggle snap will allow free manual audio\midi clips shifting\resizing without the dependence on snap
+
+Omnivocal-Type lyrics onto notes in the Key Editor and a Yamaha-based virtual singer sings them (beta). we should check whether there is already good implementable solution ready to seed outhere (github, etc) regarding this feature. if so, we'll adopt
+
+VST Connect	Remote recording built in: a musician joins over the internet with video and talkback while the studio records their takes. the latency is a huge stopper here. but we should check a possibility to adopt, if any. especially when they already did it somehow. 
+
+Scratch Pads	Extra timelines next to the song for parking and trying alternate parts; the transport can play a pad instead of the song.we'll do it other way: we'll launch a feature called "song by items" (or we can find better name if you help me with that). we'll add into the right click menu and option called "make the selected clips an item for "song by items". the user selects a batch selection of items with the mouse and can make them a packed item which linked to a pad. then he can use those pads in kinda pad studio (which lives in its own pop up window) to build entire song by creating a sequence of them. 
+
+Show page	A live-performance mode inside the DAW: setlists of backing tracks, per-song patches and mixes, section jumps, on-screen lyrics and remote control - this one can be a part of the "song by items"! the method is very similar: creating a backing track from ad hoc musical clips, midi and audio)
+
+mouse functionaly - we should add to the functionality usage of shift+drag->select for batch selection of clips, channels and tracks without loosing the previous selection. 
+
+youtube\any other media tracks - a special track with a screen and contrlos that allows playing online videos straight from a pasted link. we should chack how we implement this, with allowness of streaming the audio throw the insrted effects and the master channel
+
+bus channels - live in the mixer, called by right click -> menu pop up -> add bus channel. user can route audio\instrument channels to then using the mixer banner's destination drop list
+
+Automatable project key	The song's key and scale can change by automation or modulators, and arpeggiators, note effects and the Grid follow live.this one is a good basis idea: global song channel. in this channel, user can change global things like tempo automations, time signature automatios, gain, etc. 
+
+mp3 exports stemps and mixdown exports and not only wav. files. this is a must
+
+an alternative analog style mixing board with buit in effects which completely ignores the inserts and uses its own tools to mix. just an idea. 
+
+V-Racks	Racks of instruments and buses that live outside any one sequence and are shared by all of them, so instruments load once. we already implemented similar to this in colosseum but i think we called them containers. anyway, this is also a good idea we should check. 
+
+a playback vsti instrument that can play a playlist of audio content with timed jumps, like we did in "on stage" project. we already have the knowlwdge. 
+
+video support: i think we can do it correctly. we already done. 
+
+
+

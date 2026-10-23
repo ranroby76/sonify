@@ -1,0 +1,12 @@
+{
+  "name": "Line",
+  "category": "Pictures & text",
+  "order": 264,
+  "icon": "line",
+  "description": "A line from one point to another: drag it to bow it through its bend point (it can stay straight), drag its ends to move them, right-drag it to move it all. Width, arrowheads, a flat colour or a material in its menu.",
+  "widget": {
+    "type": "line",
+    "w": 160,
+    "h": 32
+  }
+}

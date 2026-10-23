@@ -1,0 +1,284 @@
+{
+ "width": 616,
+ "height": 288,
+ "background": {
+  "top": "#FF1A1B1F",
+  "bottom": "#FF0D0D10"
+ },
+ "light": {
+  "angle": 120,
+  "altitude": 32
+ },
+ "widgets": [
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 616,
+   "h": 288,
+   "material": "anodized",
+   "color": "#FF15161A",
+   "finish": "satin",
+   "grain": 0.7
+  },
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 616,
+   "h": 64,
+   "color": "#FF0B0B0D"
+  },
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 616,
+   "h": 30,
+   "color": "#10FFFFFF"
+  },
+  {
+   "type": "line",
+   "from": [
+    0,
+    64
+   ],
+   "to": [
+    616,
+    64
+   ],
+   "lineWidth": 1,
+   "color": "#FF2A2B30"
+  },
+  {
+   "type": "line",
+   "from": [
+    0,
+    65
+   ],
+   "to": [
+    616,
+    65
+   ],
+   "lineWidth": 1,
+   "color": "#FF050506"
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 20,
+   "w": 4,
+   "h": 24,
+   "rounding": 1,
+   "color": "#FFF2F4F8",
+   "effects": {
+    "dropShadow": {
+     "color": "#FFFFFFFF",
+     "opacity": 70,
+     "distance": 0,
+     "size": 6
+    }
+   }
+  },
+  {
+   "type": "label",
+   "text": "Sonify Auto-Wah",
+   "x": 40,
+   "y": 14,
+   "w": 360,
+   "h": 28,
+   "size": 20,
+   "bold": true,
+   "font": "Montserrat",
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "label",
+   "text": "ENVELOPE + LFO  \u00b7  RESONANT BAND-PASS",
+   "x": 41,
+   "y": 41,
+   "w": 420,
+   "h": 14,
+   "size": 9.5,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "preset",
+   "label": "Presets",
+   "x": 372,
+   "y": 18,
+   "w": 220,
+   "h": 28,
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 84,
+   "w": 300,
+   "h": 180,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    34,
+    85
+   ],
+   "to": [
+    314,
+    85
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "ENVELOPE",
+   "x": 40,
+   "y": 94,
+   "w": 268,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "knob",
+   "param": "Sensitivity",
+   "label": "Sensitivity",
+   "x": 40,
+   "y": 112,
+   "size": 80,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Frequency",
+   "label": "Frequency",
+   "x": 144,
+   "y": 112,
+   "size": 80,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Resonance",
+   "label": "Resonance",
+   "x": 248,
+   "y": 124,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "rectangle",
+   "x": 340,
+   "y": 84,
+   "w": 252,
+   "h": 180,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    350,
+    85
+   ],
+   "to": [
+    582,
+    85
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "LFO  \u00b7  MIX",
+   "x": 356,
+   "y": 94,
+   "w": 220,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "knob",
+   "param": "LFO Rate",
+   "label": "Rate",
+   "x": 356,
+   "y": 116,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "LFO Depth",
+   "label": "Depth",
+   "x": 428,
+   "y": 116,
+   "size": 56,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Mix",
+   "label": "Mix",
+   "x": 500,
+   "y": 104,
+   "size": 80,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "lamp",
+   "source": "out",
+   "threshold": 0.05,
+   "display": "dome",
+   "color": "#FFF2F4F8",
+   "follow": true,
+   "x": 364,
+   "y": 214,
+   "w": 22,
+   "h": 22
+  },
+  {
+   "type": "label",
+   "text": "SIGNAL",
+   "x": 392,
+   "y": 218,
+   "w": 60,
+   "h": 14,
+   "size": 9,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  }
+ ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "3D A/B blend",
+  "category": "Displays",
+  "order": 161,
+  "icon": "morph3d",
+  "description": "Two oscillators and the blend between them as one 3D surface, the mix lit as it plays.",
+  "widget": {
+    "type": "MorphSurface",
+    "w": 440,
+    "h": 220,
+    "label": "A / B",
+    "color": "#38E0D0",
+    "settings": {
+      "engineA": "Analog",
+      "engineB": "Fm",
+      "colorB": "#FF4FD8"
+    }
+  }
+}

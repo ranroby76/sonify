@@ -1,0 +1,17 @@
+{
+  "name": "3D waterfall",
+  "category": "Displays",
+  "order": 163,
+  "icon": "waterfall3d",
+  "description": "The sound live as a 3D waterfall: its spectrum rolling back as it plays.",
+  "widget": {
+    "type": "SoundWaterfall",
+    "w": 420,
+    "h": 210,
+    "label": "Output",
+    "color": "#7C9CFF",
+    "settings": {
+      "mode": "spectrum"
+    }
+  }
+}

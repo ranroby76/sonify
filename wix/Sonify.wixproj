@@ -1,0 +1,17 @@
+<!-- D:\workspace\Fanan_web_hub\wix\Sonify.wixproj -->
+<!-- Sonify's Windows installer (an MSI). Build Sonify with CMake first (Release), then, online
+     (NuGet brings the WiX toolset the first time), from D:\workspace\Fanan_web_hub:
+       dotnet build wix\Sonify.wixproj -c Release -p:Platform=x64
+     The installer lands in wix\bin\x64\Release\Sonify-Setup.msi.
+     Version: keep it in step with project(FananWebHub VERSION ...) in CMakeLists.txt by hand. -->
+<Project Sdk="WixToolset.Sdk/5.0.2">
+  <PropertyGroup>
+    <OutputName>Sonify-Setup</OutputName>
+    <DefineConstants>Version=0.2.0.0</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
+  </ItemGroup>
+</Project>

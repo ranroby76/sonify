@@ -1,0 +1,121 @@
+{
+ "presets": [
+  {
+   "name": "Default",
+   "values": {
+    "Rate": 0.6,
+    "Depth": 50.0,
+    "Mix": 60.0,
+    "Output": 0.0
+   }
+  },
+  {
+   "name": "Juno I",
+   "values": {
+    "Rate": 0.5,
+    "Depth": 50,
+    "Mix": 50,
+    "Output": 0
+   }
+  },
+  {
+   "name": "Juno II",
+   "values": {
+    "Rate": 0.83,
+    "Depth": 70,
+    "Mix": 50,
+    "Output": 0
+   }
+  },
+  {
+   "name": "Juno I+II",
+   "values": {
+    "Rate": 1.0,
+    "Depth": 40,
+    "Mix": 55,
+    "Output": 0
+   }
+  },
+  {
+   "name": "Subtle Width",
+   "values": {
+    "Rate": 0.3,
+    "Depth": 25,
+    "Mix": 35,
+    "Output": 0
+   }
+  },
+  {
+   "name": "Lush Pad",
+   "values": {
+    "Rate": 0.4,
+    "Depth": 85,
+    "Mix": 60,
+    "Output": 0
+   }
+  },
+  {
+   "name": "Fast Shimmer",
+   "values": {
+    "Rate": 2.5,
+    "Depth": 30,
+    "Mix": 40,
+    "Output": 0
+   }
+  },
+  {
+   "name": "Vibrato",
+   "values": {
+    "Rate": 1.8,
+    "Depth": 100,
+    "Mix": 100,
+    "Output": -1
+   }
+  },
+  {
+   "name": "Slow Swirl",
+   "values": {
+    "Rate": 0.15,
+    "Depth": 100,
+    "Mix": 55,
+    "Output": 0
+   }
+  },
+  {
+   "name": "Guitar Chorus",
+   "values": {
+    "Rate": 0.8,
+    "Depth": 55,
+    "Mix": 45,
+    "Output": 0
+   }
+  },
+  {
+   "name": "Bass Chorus",
+   "values": {
+    "Rate": 0.6,
+    "Depth": 35,
+    "Mix": 30,
+    "Output": 0
+   }
+  },
+  {
+   "name": "Seasick",
+   "values": {
+    "Rate": 3.0,
+    "Depth": 100,
+    "Mix": 70,
+    "Output": -2
+   }
+  },
+  {
+   "name": "Thickener",
+   "values": {
+    "Rate": 0.25,
+    "Depth": 40,
+    "Mix": 50,
+    "Output": 0
+   }
+  }
+ ]
+}

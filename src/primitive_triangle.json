@@ -1,0 +1,12 @@
+{
+  "name": "Triangle",
+  "category": "Pictures & text",
+  "order": 262,
+  "icon": "triangle",
+  "description": "A triangle, its top point moved by its yellow handle; a flat colour or a material with patterns, relief and a shadow.",
+  "widget": {
+    "type": "triangle",
+    "w": 80,
+    "h": 70
+  }
+}

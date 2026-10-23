@@ -1,0 +1,548 @@
+{
+ "width": 800,
+ "height": 360,
+ "background": {
+  "top": "#FF1A1B1F",
+  "bottom": "#FF0D0D10"
+ },
+ "light": {
+  "angle": 120,
+  "altitude": 32
+ },
+ "widgets": [
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 800,
+   "h": 360,
+   "material": "anodized",
+   "color": "#FF15161A",
+   "finish": "satin",
+   "grain": 0.7
+  },
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 800,
+   "h": 64,
+   "color": "#FF0B0B0D"
+  },
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 0,
+   "w": 800,
+   "h": 30,
+   "color": "#10FFFFFF"
+  },
+  {
+   "type": "line",
+   "from": [
+    0,
+    64
+   ],
+   "to": [
+    800,
+    64
+   ],
+   "lineWidth": 1,
+   "color": "#FF2A2B30"
+  },
+  {
+   "type": "line",
+   "from": [
+    0,
+    65
+   ],
+   "to": [
+    800,
+    65
+   ],
+   "lineWidth": 1,
+   "color": "#FF050506"
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 20,
+   "w": 4,
+   "h": 24,
+   "rounding": 1,
+   "color": "#FFF2F4F8",
+   "effects": {
+    "dropShadow": {
+     "color": "#FFFFFFFF",
+     "opacity": 70,
+     "distance": 0,
+     "size": 6
+    }
+   }
+  },
+  {
+   "type": "label",
+   "text": "Sonify Sweetener",
+   "x": 40,
+   "y": 14,
+   "w": 360,
+   "h": 28,
+   "size": 20,
+   "bold": true,
+   "font": "Montserrat",
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "label",
+   "text": "SOFTEN  \u00b7  PEAK  \u00b7  TAME  \u00b7  ROUND",
+   "x": 41,
+   "y": 41,
+   "w": 420,
+   "h": 14,
+   "size": 9.5,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "preset",
+   "label": "Presets",
+   "x": 400,
+   "y": 18,
+   "w": 220,
+   "h": 28,
+   "color": "#FFF2F4F8"
+  },
+  {
+   "type": "knob",
+   "param": "Mix",
+   "label": "Mix",
+   "x": 740,
+   "y": 2,
+   "size": 40,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "rectangle",
+   "x": 0,
+   "y": 66,
+   "w": 800,
+   "h": 12,
+   "material": "bordowood",
+   "finish": "polished",
+   "effects": {
+    "bevel": {
+     "size": 3,
+     "depth": 120
+    },
+    "dropShadow": {
+     "opacity": 60,
+     "distance": 3,
+     "size": 6
+    }
+   }
+  },
+  {
+   "type": "rectangle",
+   "x": 24,
+   "y": 92,
+   "w": 176,
+   "h": 244,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    34,
+    93
+   ],
+   "to": [
+    190,
+    93
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "SOFTEN",
+   "x": 40,
+   "y": 102,
+   "w": 144,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "toggle",
+   "param": "Soften",
+   "label": "On",
+   "x": 148,
+   "y": 100,
+   "w": 40,
+   "h": 56,
+   "style": "Sonify button"
+  },
+  {
+   "type": "knob",
+   "param": "Soften Amount",
+   "label": "Amount",
+   "x": 72,
+   "y": 124,
+   "size": 80,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Soften Time",
+   "label": "Time",
+   "x": 40,
+   "y": 236,
+   "size": 48,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "meter",
+   "source": "sweet.soften",
+   "x": 104,
+   "y": 256,
+   "w": 80,
+   "h": 8,
+   "settings": {
+    "display": "segments",
+    "segments": 10,
+    "colorLow": "#FFF2F4F8",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "label",
+   "text": "ACTION",
+   "x": 104,
+   "y": 268,
+   "w": 80,
+   "h": 14,
+   "size": 8.5,
+   "bold": true,
+   "color": "#FF5C6068"
+  },
+  {
+   "type": "rectangle",
+   "x": 216,
+   "y": 92,
+   "w": 176,
+   "h": 244,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    226,
+    93
+   ],
+   "to": [
+    382,
+    93
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "PEAK",
+   "x": 232,
+   "y": 102,
+   "w": 144,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "toggle",
+   "param": "Peak",
+   "label": "On",
+   "x": 340,
+   "y": 100,
+   "w": 40,
+   "h": 56,
+   "style": "Sonify button"
+  },
+  {
+   "type": "knob",
+   "param": "Peak Ceiling",
+   "label": "Ceiling",
+   "x": 264,
+   "y": 124,
+   "size": 80,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Peak Ratio",
+   "label": "Ratio",
+   "x": 232,
+   "y": 236,
+   "size": 48,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "meter",
+   "source": "sweet.peak",
+   "x": 296,
+   "y": 256,
+   "w": 80,
+   "h": 8,
+   "settings": {
+    "display": "segments",
+    "segments": 10,
+    "colorLow": "#FFF2F4F8",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "label",
+   "text": "ACTION",
+   "x": 296,
+   "y": 268,
+   "w": 80,
+   "h": 14,
+   "size": 8.5,
+   "bold": true,
+   "color": "#FF5C6068"
+  },
+  {
+   "type": "rectangle",
+   "x": 408,
+   "y": 92,
+   "w": 176,
+   "h": 244,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    418,
+    93
+   ],
+   "to": [
+    574,
+    93
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "TAME",
+   "x": 424,
+   "y": 102,
+   "w": 144,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "toggle",
+   "param": "Tame",
+   "label": "On",
+   "x": 532,
+   "y": 100,
+   "w": 40,
+   "h": 56,
+   "style": "Sonify button"
+  },
+  {
+   "type": "knob",
+   "param": "Tame Depth",
+   "label": "Depth",
+   "x": 456,
+   "y": 124,
+   "size": 80,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "knob",
+   "param": "Tame Freq",
+   "label": "Freq",
+   "x": 424,
+   "y": 236,
+   "size": 48,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "meter",
+   "source": "sweet.tame",
+   "x": 488,
+   "y": 256,
+   "w": 80,
+   "h": 8,
+   "settings": {
+    "display": "segments",
+    "segments": 10,
+    "colorLow": "#FFF2F4F8",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "label",
+   "text": "ACTION",
+   "x": 488,
+   "y": 268,
+   "w": 80,
+   "h": 14,
+   "size": 8.5,
+   "bold": true,
+   "color": "#FF5C6068"
+  },
+  {
+   "type": "rectangle",
+   "x": 600,
+   "y": 92,
+   "w": 176,
+   "h": 244,
+   "radius": 10,
+   "color": "#FF0F1013",
+   "effects": {
+    "innerShadow": {
+     "opacity": 80,
+     "distance": 3,
+     "size": 8
+    },
+    "stroke": {
+     "size": 1,
+     "position": "inside",
+     "color": "#FF1E1F24",
+     "opacity": 100
+    }
+   }
+  },
+  {
+   "type": "line",
+   "from": [
+    610,
+    93
+   ],
+   "to": [
+    766,
+    93
+   ],
+   "lineWidth": 1,
+   "color": "#14FFFFFF"
+  },
+  {
+   "type": "label",
+   "text": "ROUND",
+   "x": 616,
+   "y": 102,
+   "w": 144,
+   "h": 14,
+   "size": 9.5,
+   "bold": true,
+   "color": "#FF9A9DA4"
+  },
+  {
+   "type": "toggle",
+   "param": "Round",
+   "label": "On",
+   "x": 724,
+   "y": 100,
+   "w": 40,
+   "h": 56,
+   "style": "Sonify button"
+  },
+  {
+   "type": "knob",
+   "param": "Round Drive",
+   "label": "Drive",
+   "x": 648,
+   "y": 124,
+   "size": 80,
+   "style": "Sonify knob red"
+  },
+  {
+   "type": "knob",
+   "param": "Round Mix",
+   "label": "Mix",
+   "x": 616,
+   "y": 236,
+   "size": 48,
+   "style": "Sonify knob"
+  },
+  {
+   "type": "meter",
+   "source": "sweet.round",
+   "x": 680,
+   "y": 256,
+   "w": 80,
+   "h": 8,
+   "settings": {
+    "display": "segments",
+    "segments": 10,
+    "colorLow": "#FFF2F4F8",
+    "colorMid": "#FFF2F4F8",
+    "colorHigh": "#FFFF4A4A",
+    "background": "#FF0A0A0C"
+   }
+  },
+  {
+   "type": "label",
+   "text": "ACTION",
+   "x": 680,
+   "y": 268,
+   "w": 80,
+   "h": 14,
+   "size": 8.5,
+   "bold": true,
+   "color": "#FF5C6068"
+  }
+ ]
+}

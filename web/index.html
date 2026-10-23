@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<!-- C:\workspace\Fanan_web_hub\web\index.html -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fanan Web Hub</title>
+<style>
+  :root {
+    --bg: #1b1d21;
+    --panel: #24272d;
+    --inset: #15171a;
+    --line: #30343b;
+    --text: #e8e9eb;
+    --muted: #8c929b;
+    --accent: #3fc8d6;
+    --accent-deep: #268f9a;
+    --safe: #00c853;
+    --hot: #ffb300;
+    --clip: #d50000;
+    --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --num: "Bahnschrift", "DIN Alternate", "Segoe UI", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; margin: 0; }
+
+  body {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px 16px 16px;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.45 var(--ui);
+    user-select: none;
+    overflow: hidden;
+  }
+
+  button {
+    font: inherit;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0d2327; font-weight: 600; }
+
+  header { display: flex; align-items: center; gap: 18px; }
+  header h1 { margin: 0 auto 0 0; font: 600 21px/1 var(--num); letter-spacing: 0.01em; }
+
+  .led { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+  .led i { width: 9px; height: 9px; border-radius: 50%; background: #3a3e45; }
+  .led.on i { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+  main { display: grid; grid-template-columns: 1.2fr 0.9fr 1.3fr; gap: 12px; }
+
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; min-width: 0; }
+
+  h2 { margin: 0 0 10px; font: 500 13px/1.2 var(--ui); color: var(--muted); }
+
+  dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 18px; margin: 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Latency: the one loud element on the page */
+  #latency-value { font: 400 64px/1 var(--num); font-variant-numeric: tabular-nums; }
+  #latency-value small { margin-left: 6px; font-size: 22px; color: var(--muted); }
+
+  .ruler { position: relative; height: 34px; margin: 14px 0 16px; }
+  .ruler .track, .ruler .fill { position: absolute; left: 0; top: 8px; height: 6px; border-radius: 3px; }
+  .ruler .track { right: 0; background: var(--inset); }
+  .ruler .fill { width: 0; background: var(--accent); transition: width 120ms linear; }
+  .ruler .tick { position: absolute; top: 20px; transform: translateX(-50%); font: 11px/1 var(--num); color: var(--muted); }
+  .ruler .tick:first-of-type { transform: none; }
+  .ruler .tick:last-of-type { transform: translateX(-100%); }
+
+  .note { margin: 10px 0 0; color: var(--hot); min-height: 1.45em; }
+  .empty { margin: 8px 0 0; color: var(--muted); max-width: 40ch; }
+
+  body.no-device .has-device { display: none; }
+  body:not(.no-device) .empty { display: none; }
+
+  /* Meters: fixed green / amber / red scale, uncovered from the left */
+  .meters { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 8px 10px; align-items: center; margin-bottom: 18px; color: var(--muted); }
+  .meter { position: relative; height: 12px; border-radius: 3px; overflow: hidden;
+           background: linear-gradient(90deg, var(--safe) 0 80%, var(--hot) 80% 95%, var(--clip) 95% 100%); }
+  .meter .cover { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; background: var(--inset); }
+
+  /* Plugin slot: the parameter list takes whatever height the row has and scrolls */
+  .plugin { display: flex; flex-direction: column; gap: 10px; }
+  .plugin-bar { display: flex; align-items: center; gap: 8px; }
+  .plugin-bar h2 { margin: 0 auto 0 0; }
+  .plugin-bar button { padding: 4px 10px; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button:disabled:hover { border-color: var(--line); }
+  .plugin-name { font: 500 17px/1.25 var(--num); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .plugin-meta { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .plugin-empty { margin: 0; color: var(--muted); }
+  .plugin .note { margin: 0; }
+  .plugin .note:empty { display: none; }
+
+  select {
+    width: 100%;
+    margin-top: 8px;
+    font: inherit;
+    color: var(--text);
+    background: var(--inset);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 5px 8px;
+  }
+  select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .params { flex: 1 1 0; min-height: 110px; overflow-y: auto; margin-right: -8px; padding-right: 8px; }
+  .params:empty { display: none; }
+  .param { display: grid; grid-template-columns: minmax(64px, 32%) minmax(0, 1fr) 76px; align-items: center; gap: 10px; min-height: 30px; }
+  .param-name { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .param-value { text-align: right; font: 13px/1 var(--num); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .param-none { margin: 0; color: var(--muted); }
+
+  .param input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; margin: 0; background: transparent; --fill: 0%; }
+  .param input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent-deep) var(--fill), var(--inset) var(--fill));
+  }
+  .param input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .param input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .param input[type="range"]:disabled::-webkit-slider-thumb { background: var(--muted); }
+
+  /* Test synth */
+  .synth { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; min-height: 0; }
+  .synth-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .synth-bar h2 { margin: 0; }
+  .synth-bar .route { color: var(--accent); font-weight: 500; max-width: 42ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .synth-bar .hint { margin-right: auto; color: var(--muted); }
+  .octave { display: inline-flex; align-items: center; gap: 6px; }
+  .octave button { width: 34px; padding: 6px 0; }
+  .octave span { min-width: 76px; text-align: center; font-family: var(--num); font-variant-numeric: tabular-nums; }
+
+  #keyboard {
+    --w: calc(100% / 22);
+    --bw: calc(100% / 22 * 0.62);
+    position: relative;
+    height: 100%;
+    min-height: 110px;
+    max-height: 240px;
+    touch-action: none;
+  }
+  .key { position: absolute; top: 0; }
+  .key.white { width: var(--w); height: 100%; background: #dfe1e4; border: 1px solid #9ea3aa; border-radius: 0 0 5px 5px; }
+  .key.black { width: var(--bw); height: 62%; background: #2a2d33; border-radius: 0 0 4px 4px; z-index: 1; }
+  .key.white.down { background: var(--accent); border-color: var(--accent-deep); }
+  .key.black.down { background: var(--accent-deep); }
+  .key .label { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font: 11px/1 var(--num); color: #5d636b; pointer-events: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ruler .fill { transition: none; }
+  }
+</style>
+</head>
+<body class="no-device">
+
+<header>
+  <h1>Fanan Web Hub</h1>
+  <span class="led" id="midi-led"><i></i>MIDI in</span>
+  <button class="primary" id="settings">Audio settings</button>
+</header>
+
+<main>
+  <section>
+    <h2>Output latency</h2>
+    <div class="has-device">
+      <div id="latency-value"><span id="latency-number">0.0</span><small>ms</small></div>
+      <div class="ruler" aria-hidden="true">
+        <div class="track"></div>
+        <div class="fill" id="ruler-fill"></div>
+        <span class="tick" style="left: 0%">0</span>
+        <span class="tick" style="left: 12.5%">5</span>
+        <span class="tick" style="left: 25%">10</span>
+        <span class="tick" style="left: 50%">20</span>
+        <span class="tick" style="left: 75%">30</span>
+        <span class="tick" style="left: 100%">40 ms</span>
+      </div>
+      <dl>
+        <dt>Driver</dt><dd id="driver"></dd>
+        <dt>Device</dt><dd id="device"></dd>
+        <dt>Sample rate</dt><dd id="rate"></dd>
+        <dt>Buffer</dt><dd id="buffer"></dd>
+      </dl>
+      <p class="note" id="state"></p>
+    </div>
+    <p class="empty" id="empty-message">Starting audio…</p>
+  </section>
+
+  <section>
+    <h2>Output level</h2>
+    <div class="meters">
+      <span>L</span><div class="meter"><div class="cover" id="meter-l"></div></div>
+      <span>R</span><div class="meter"><div class="cover" id="meter-r"></div></div>
+    </div>
+    <dl>
+      <dt>CPU</dt><dd id="cpu">0 %</dd>
+      <dt>Dropouts</dt><dd id="xruns"></dd>
+      <dt>MIDI inputs</dt><dd id="midi-inputs"></dd>
+    </dl>
+  </section>
+
+  <section class="plugin">
+    <div class="plugin-bar">
+      <h2>Plugin</h2>
+      <button id="plugin-load">Load plugin…</button>
+      <button id="plugin-unload" hidden>Unload</button>
+    </div>
+    <div id="plugin-info" hidden>
+      <div class="plugin-name" id="plugin-name"></div>
+      <div class="plugin-meta" id="plugin-meta"></div>
+      <select id="plugin-choice" aria-label="Plugin in this file" hidden></select>
+    </div>
+    <p class="plugin-empty" id="plugin-empty">Load a WCLAP plugin: a .wasm file, a .wclap.tar.gz bundle, or the module.wasm inside a .wclap folder.</p>
+    <div class="params" id="plugin-params"></div>
+    <p class="note" id="plugin-message"></p>
+  </section>
+</main>
+
+<section class="synth">
+  <div class="synth-bar">
+    <h2>Keyboard</h2>
+    <span class="route" id="route">→ Test synth</span>
+    <span class="hint">Mouse, or the A to L row of your computer keyboard. Z and X change the octave.</span>
+    <span class="octave">
+      <button id="oct-down" aria-label="Octave down">−</button>
+      <span id="octave-range"></span>
+      <button id="oct-up" aria-label="Octave up">+</button>
+    </span>
+    <button id="panic">Stop all notes</button>
+  </div>
+  <div id="keyboard"></div>
+</section>
+
+<script>
+(() => {
+  "use strict";
+
+  const backend = window.__JUCE__ && window.__JUCE__.backend;
+  const send = (eventId, payload = {}) => { if (backend) backend.emitEvent(eventId, payload); };
+  const $ = (id) => document.getElementById(id);
+
+  const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const noteName = (n) => NAMES[n % 12] + (Math.floor(n / 12) - 1);
+  const clamp01 = (x) => Math.min(Math.max(x, 0), 1);
+
+  // ---------------------------------------------------------------- keyboard
+  const keyboard = $("keyboard");
+  const RANGE = 36;                 // three octaves, C to C
+  const LOWEST_BASE = 12, HIGHEST_BASE = 84;
+  let base = 48;                    // C3
+
+  const held = new Map();           // note -> number of local holders
+  const pointerNotes = new Map();   // pointerId -> note
+  const keyNotes = new Map();       // KeyboardEvent.code -> note
+  let engineNotes = new Set();      // notes the engine reports as sounding (includes hardware MIDI)
+
+  function paintKeys() {
+    for (const key of keyboard.children) {
+      const note = Number(key.dataset.note);
+      key.classList.toggle("down", held.has(note) || engineNotes.has(note));
+    }
+  }
+
+  function hold(note, velocity) {
+    held.set(note, (held.get(note) || 0) + 1);
+    send("noteOn", { note, velocity });
+    paintKeys();
+  }
+
+  function unhold(note) {
+    const count = (held.get(note) || 0) - 1;
+    if (count > 0) held.set(note, count); else held.delete(note);
+    send("noteOff", { note });
+    paintKeys();
+  }
+
+  function releaseAll() {
+    for (const note of pointerNotes.values()) unhold(note);
+    for (const note of keyNotes.values()) unhold(note);
+    pointerNotes.clear();
+    keyNotes.clear();
+  }
+
+  function buildKeyboard() {
+    keyboard.textContent = "";
+    let whiteIndex = 0;
+
+    for (let note = base; note <= base + RANGE; note++) {
+      const isBlack = [1, 3, 6, 8, 10].includes(note % 12);
+      const key = document.createElement("div");
+      key.className = "key " + (isBlack ? "black" : "white");
+      key.dataset.note = String(note);
+
+      if (isBlack) {
+        key.style.left = `calc(${whiteIndex} * var(--w) - var(--bw) / 2)`;
+      } else {
+        key.style.left = `calc(${whiteIndex} * var(--w))`;
+        whiteIndex++;
+
+        if (note % 12 === 0) {
+          const label = document.createElement("span");
+          label.className = "label";
+          label.textContent = noteName(note);
+          key.appendChild(label);
+        }
+      }
+
+      keyboard.appendChild(key);
+    }
+
+    $("octave-range").textContent = `${noteName(base)}–${noteName(base + RANGE)}`;
+    paintKeys();
+  }
+
+  function shiftOctave(direction) {
+    const next = base + direction * 12;
+    if (next < LOWEST_BASE || next > HIGHEST_BASE) return;
+    releaseAll();
+    base = next;
+    buildKeyboard();
+  }
+
+  // Lower on the key plays louder, like a real key.
+  function velocityAt(event, key) {
+    const r = key.getBoundingClientRect();
+    return 0.35 + 0.65 * clamp01((event.clientY - r.top) / r.height);
+  }
+
+  keyboard.addEventListener("pointerdown", (event) => {
+    const key = event.target.closest(".key");
+    if (!key) return;
+    event.preventDefault();
+    const note = Number(key.dataset.note);
+    pointerNotes.set(event.pointerId, note);
+    hold(note, velocityAt(event, key));
+  });
+
+  // Dragging across keys plays each one in turn.
+  keyboard.addEventListener("pointermove", (event) => {
+    if (!pointerNotes.has(event.pointerId)) return;
+    const hit = document.elementFromPoint(event.clientX, event.clientY);
+    const key = hit && hit.closest ? hit.closest(".key") : null;
+    const note = key ? Number(key.dataset.note) : null;
+    const current = pointerNotes.get(event.pointerId);
+    if (note === current) return;
+
+    unhold(current);
+
+    if (note === null) {
+      pointerNotes.delete(event.pointerId);
+      return;
+    }
+
+    pointerNotes.set(event.pointerId, note);
+    hold(note, velocityAt(event, key));
+  });
+
+  const endPointer = (event) => {
+    const note = pointerNotes.get(event.pointerId);
+    if (note === undefined) return;
+    pointerNotes.delete(event.pointerId);
+    unhold(note);
+  };
+  window.addEventListener("pointerup", endPointer);
+  window.addEventListener("pointercancel", endPointer);
+
+  // Physical key positions, so it works with any keyboard layout (Hebrew included).
+  const KEY_OFFSETS = {
+    KeyA: 0, KeyW: 1, KeyS: 2, KeyE: 3, KeyD: 4, KeyF: 5, KeyT: 6, KeyG: 7, KeyY: 8,
+    KeyH: 9, KeyU: 10, KeyJ: 11, KeyK: 12, KeyO: 13, KeyL: 14, KeyP: 15, Semicolon: 16, Quote: 17
+  };
+
+  window.addEventListener("keydown", (event) => {
+    if (event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
+    if (event.target instanceof HTMLSelectElement) return;   // letters pick options there
+    if (event.code === "KeyZ") { shiftOctave(-1); return; }
+    if (event.code === "KeyX") { shiftOctave(1); return; }
+
+    const offset = KEY_OFFSETS[event.code];
+    if (offset === undefined || keyNotes.has(event.code)) return;
+    event.preventDefault();
+
+    const note = base + 12 + offset;   // computer keys start at the middle octave
+    keyNotes.set(event.code, note);
+    hold(note, 0.8);
+  });
+
+  window.addEventListener("keyup", (event) => {
+    const note = keyNotes.get(event.code);
+    if (note === undefined) return;
+    keyNotes.delete(event.code);
+    unhold(note);
+  });
+
+  window.addEventListener("blur", releaseAll);
+
+  $("settings").addEventListener("click", () => send("openAudioSettings"));
+  $("panic").addEventListener("click", () => { releaseAll(); send("allNotesOff"); });
+  $("oct-down").addEventListener("click", () => shiftOctave(-1));
+  $("oct-up").addEventListener("click", () => shiftOctave(1));
+
+  // ---------------------------------------------------------------- status
+  const meters = [$("meter-l"), $("meter-r")].map((cover) => ({ cover, level: 0 }));
+  const METER_FALL = 0.022;         // per update at 20 updates a second, about 26 dB/s
+  let lastNoteOns = null;
+  let ledTimer = 0;
+
+  function flashLed() {
+    const led = $("midi-led");
+    led.classList.add("on");
+    clearTimeout(ledTimer);
+    ledTimer = setTimeout(() => led.classList.remove("on"), 150);
+  }
+
+  function formatRate(hz) {
+    const khz = hz / 1000;
+    return (Number.isInteger(khz) ? khz.toFixed(0) : khz.toFixed(1)) + " kHz";
+  }
+
+  function render(s) {
+    document.body.classList.toggle("no-device", !s.deviceOpen);
+
+    if (s.deviceOpen) {
+      $("latency-number").textContent = s.outputLatencyMs.toFixed(1);
+      $("ruler-fill").style.width = clamp01(s.outputLatencyMs / 40) * 100 + "%";
+      $("driver").textContent = s.typeName;
+      $("device").textContent = s.deviceName;
+      $("device").title = s.deviceName;
+      $("rate").textContent = formatRate(s.sampleRate);
+      $("buffer").textContent = `${s.bufferSize} samples (${s.bufferMs.toFixed(1)} ms)`;
+      $("state").textContent = s.running ? "" : "The device is open but not running. Check it in Audio settings.";
+    } else {
+      $("empty-message").textContent = "No audio device is open. Choose a driver and device in Audio settings.";
+    }
+
+    [s.peakLeft, s.peakRight].forEach((peak, i) => {
+      const db = 20 * Math.log10(Math.max(peak, 1e-6));
+      const meter = meters[i];
+      meter.level = Math.max(clamp01((db + 60) / 60), meter.level - METER_FALL);
+      meter.cover.style.width = (1 - meter.level) * 100 + "%";
+    });
+
+    $("cpu").textContent = Math.round(s.cpu * 100) + " %";
+    $("xruns").textContent = s.xruns < 0 ? "Not reported by this driver" : String(s.xruns);
+    $("midi-inputs").textContent = s.midiInputs.length ? s.midiInputs.join(", ") : "None enabled";
+    $("midi-inputs").title = $("midi-inputs").textContent;
+
+    if (lastNoteOns !== null && s.hardwareNoteOns !== lastNoteOns) flashLed();
+    lastNoteOns = s.hardwareNoteOns;
+
+    engineNotes = new Set(s.notes);
+    paintKeys();
+  }
+
+  // ---------------------------------------------------------------- plugin
+  const ROLE_LABELS = { instrument: "Instrument", effect: "Effect", noAudio: "Note effect, no audio" };
+  let plugin = { status: "empty" };
+  let paramRows = new Map();        // parameter index -> { input, value }
+
+  function channelsText(count) {
+    return count === 1 ? "mono" : count === 2 ? "stereo" : `${count} channels`;
+  }
+
+  function setFill(input) {
+    const min = Number(input.min), max = Number(input.max);
+    const fraction = max > min ? (Number(input.value) - min) / (max - min) : 0;
+    input.style.setProperty("--fill", clamp01(fraction) * 100 + "%");
+  }
+
+  function buildParams(params) {
+    const list = $("plugin-params");
+    list.textContent = "";
+    paramRows = new Map();
+
+    if (plugin.status === "loaded" && params.length === 0) {
+      const none = document.createElement("p");
+      none.className = "param-none";
+      none.textContent = "This plugin has no parameters.";
+      list.appendChild(none);
+      return;
+    }
+
+    for (const p of params) {
+      const row = document.createElement("div");
+      row.className = "param";
+
+      const name = document.createElement("span");
+      name.className = "param-name";
+      name.textContent = p.name;
+      name.title = p.name;
+
+      const input = document.createElement("input");
+      input.type = "range";
+      input.min = String(p.min);
+      input.max = String(p.max);
+      input.step = p.stepped ? "1" : String((p.max - p.min) / 1000 || 0.001);
+      input.value = String(p.value);
+      input.disabled = p.readOnly;
+      input.setAttribute("aria-label", p.name);
+      input.addEventListener("input", () => {
+        setFill(input);
+        send("setParam", { index: p.index, value: Number(input.value) });
+      });
+
+      const value = document.createElement("span");
+      value.className = "param-value";
+      value.textContent = p.text;
+      value.title = p.text;
+
+      row.append(name, input, value);
+      list.appendChild(row);
+      paramRows.set(p.index, { input, value });
+      setFill(input);
+    }
+  }
+
+  function renderRoute() {
+    let route = "Test synth";
+
+    if (plugin.status === "loaded" && plugin.role === "instrument") route = plugin.name;
+    if (plugin.status === "loaded" && plugin.role === "effect") route = `Test synth → ${plugin.name}`;
+
+    $("route").textContent = "→ " + route;
+    $("route").title = route;
+  }
+
+  function renderPlugin(state) {
+    plugin = state;
+    const loaded = state.status === "loaded";
+    const loading = state.status === "loading";
+
+    $("plugin-load").textContent = loaded ? "Replace…" : "Load plugin…";
+    $("plugin-load").disabled = loading;
+    $("plugin-unload").hidden = !loaded;
+    $("plugin-info").hidden = !(loaded || loading);
+    $("plugin-empty").hidden = loaded || loading;
+    $("plugin-choice").hidden = true;
+
+    if (loading) {
+      $("plugin-name").textContent = "Loading…";
+      $("plugin-meta").textContent = state.message;
+      $("plugin-meta").title = state.message;
+      $("plugin-message").textContent = "";
+      buildParams([]);
+      renderRoute();
+      return;
+    }
+
+    $("plugin-message").textContent = state.message || "";
+
+    if (loaded) {
+      $("plugin-name").textContent = state.name;
+      $("plugin-name").title = state.name;
+
+      const details = [state.vendor, ROLE_LABELS[state.role] || state.role];
+      if (state.outputs > 0) details.push(channelsText(state.outputs));
+      $("plugin-meta").textContent = details.filter(Boolean).join(" · ");
+      $("plugin-meta").title = state.file + (state.version ? ` · version ${state.version}` : "");
+
+      const choice = $("plugin-choice");
+      choice.textContent = "";
+
+      for (const entry of state.plugins) {
+        const option = document.createElement("option");
+        option.value = entry.id;
+        option.textContent = entry.name;
+        option.selected = entry.id === state.id;
+        choice.appendChild(option);
+      }
+
+      choice.hidden = state.plugins.length < 2;
+    }
+
+    buildParams(loaded ? state.params : []);
+    renderRoute();
+  }
+
+  function renderParam(reply) {
+    const row = paramRows.get(reply.index);
+    if (!row) return;
+    row.value.textContent = reply.text;
+    row.value.title = reply.text;
+  }
+
+  $("plugin-load").addEventListener("click", () => send("loadPlugin"));
+  $("plugin-unload").addEventListener("click", () => send("unloadPlugin"));
+  $("plugin-choice").addEventListener("change", (event) => {
+    event.target.blur();
+    send("selectPlugin", { id: event.target.value });
+  });
+
+  buildKeyboard();
+
+  if (backend) {
+    backend.addEventListener("status", render);
+    backend.addEventListener("plugin", renderPlugin);
+    backend.addEventListener("param", renderParam);
+    send("uiReady");
+  } else {
+    $("empty-message").textContent = "Open this page inside Fanan Web Hub to connect it to the audio engine.";
+  }
+})();
+</script>
+</body>
+</html>
