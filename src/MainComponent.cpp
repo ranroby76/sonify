@@ -74,7 +74,7 @@ namespace
     /** One browser profile for every tab: cookies and sign-ins last between sessions. */
     juce::File browserProfileFolder()
     {
-        return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Fanan Web Hub").getChildFile ("Browser");
+        return SettingsFolder::folder ("Browser", "Browser");
     }
 }
 
@@ -435,12 +435,7 @@ MainComponent::MainComponent()
 
     // The Sampling Studio, and the Sonify Sampler's window (MainSampling.cpp).
     setupSampling();
-   #if JUCE_WINDOWS
-    const auto localData = juce::File::getSpecialLocation (juce::File::windowsLocalAppData);   // not roamed
-   #else
-    const auto localData = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory);
-   #endif
-    VideoMedia::setCacheFolder (localData.getChildFile ("Fanan Web Hub").getChildFile ("Video Cache"));
+    VideoMedia::setCacheFolder (SettingsFolder::folder ("Video Cache", "Video Cache"));
     VideoMedia::tidyCache();
 
     // Sonify's settings first: the user data folder, the external MIDI devices and the rest.
@@ -2539,7 +2534,7 @@ void MainComponent::previewContent (const juce::String& id)
     if (found == contentItems.end())
         return;
 
-    const auto cache = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Fanan Web Hub").getChildFile ("Previews");
+    const auto cache = SettingsFolder::folder ("Previews", "Previews");
 
     cloud->fetchPreview (found->second, cache, [this, id] (const juce::Result& result, const juce::var& value)
     {

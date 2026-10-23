@@ -38,9 +38,8 @@ juce::File Settings::getDataFolder()
 
 juce::File Settings::getCacheFolder()
 {
-    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-               .getChildFile ("Fanan Web Hub")
-               .getChildFile ("Plugins Creator");
+    // With everything else of Sonify's (SettingsFolder: AppData\Fanan\Sonify).
+    return SettingsFolder::folder ("Plugins Creator", "Plugins Creator");
 }
 
 juce::File Settings::getDefaultProjectsFolder()

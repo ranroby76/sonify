@@ -141,6 +141,11 @@ namespace SettingsFolder
     /** A settings file there. One a Sonify kept beside Sonify.exe before (as oldName) is copied
         over the first time it's asked for (the old one is left where it was). */
     juce::File file (const juce::String& name, const juce::String& oldName = {});
+
+    /** A folder there (made when asked for). One a Sonify kept under AppData\Fanan Web Hub
+        before (oldName, in roaming or, on Windows, local AppData) is moved over the first time
+        it's asked for, and the old Fanan Web Hub folder goes once nothing is left in it. */
+    juce::File folder (const juce::String& name, const juce::String& oldName = {});
 }
 
 //==============================================================================

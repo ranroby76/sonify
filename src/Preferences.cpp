@@ -3,6 +3,7 @@
 #include "Preferences.h"
 
 #include <algorithm>
+#include <vector>
 
 namespace
 {
@@ -100,6 +101,36 @@ juce::File SettingsFolder::file (const juce::String& name, const juce::String& o
         }
     }
 
+    return target;
+}
+
+juce::File SettingsFolder::folder (const juce::String& name, const juce::String& oldName)
+{
+    const auto target = get().getChildFile (name);
+
+    // Kept under AppData\Fanan Web Hub before: moved over, once (where it can't be, it starts afresh).
+    if (oldName.isNotEmpty() && ! target.exists())
+    {
+        std::vector<juce::File> oldHomes { juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Fanan Web Hub") };
+
+       #if JUCE_WINDOWS
+        oldHomes.push_back (juce::File::getSpecialLocation (juce::File::windowsLocalAppData).getChildFile ("Fanan Web Hub"));
+       #endif
+
+        for (const auto& home : oldHomes)
+        {
+            const auto old = home.getChildFile (oldName);
+
+            if (old.isDirectory() && ! target.exists())
+                old.moveFileTo (target);
+
+            // The old folder goes once nothing is left in it.
+            if (home.isDirectory() && home.getNumberOfChildFiles (juce::File::findFilesAndDirectories | juce::File::ignoreHiddenFiles) == 0)
+                home.deleteRecursively();
+        }
+    }
+
+    target.createDirectory();
     return target;
 }
 

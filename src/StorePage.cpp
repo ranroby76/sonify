@@ -2,6 +2,7 @@
 
 #include "StorePage.h"
 #include "StellaLookAndFeel.h"
+#include "Preferences.h"   // SettingsFolder: Sonify's folder in AppData
 
 #include <juce_gui_extra/juce_gui_extra.h>
 
@@ -59,8 +60,7 @@ namespace
 <body><iframe src="https://www.youtube-nocookie.com/embed/)" + videoId + R"(?autoplay=1&rel=0&playsinline=1&modestbranding=1" title="Demo video"
 allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></body></html>)";
 
-            const auto folder = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                                    .getChildFile ("Fanan Web Hub").getChildFile ("Store video");
+            const auto folder = SettingsFolder::folder ("Store video", "Store video");
 
             return Options{}
                 .withBackend (Options::Backend::webview2)

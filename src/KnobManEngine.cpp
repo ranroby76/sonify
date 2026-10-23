@@ -8,8 +8,9 @@
 
 #include "KnobManEngine.h"
 
-#include <charconv>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <map>
 
 namespace KnobManEngine
@@ -2916,11 +2917,33 @@ namespace KnobManEngine
 
     //==========================================================================
     // Control.SaveLayer / SaveExec: the document written as KnobMan writes it.
+    // The shortest text that reads back as the same number (what std::to_chars gives, which a Mac
+    // only has for doubles from macOS 13.3 on, after Sonify's oldest macOS), with a '.' whatever the
+    // C locale says.
     std::string num (double v)
     {
-        char buffer[64];
-        const auto result = std::to_chars (buffer, buffer + sizeof (buffer), v);
-        std::string text (buffer, result.ptr);
+        char buffer[64] {};
+
+        if (! std::isfinite (v))
+        {
+            std::snprintf (buffer, sizeof (buffer), "%g", v);
+        }
+        else
+        {
+            for (int digits = 1; digits <= 17; ++digits)
+            {
+                std::snprintf (buffer, sizeof (buffer), "%.*g", digits, v);
+
+                if (std::strtod (buffer, nullptr) == v)   // read in the same locale it was written in
+                    break;
+            }
+
+            for (auto* c = buffer; *c != 0; ++c)
+                if (*c == ',')
+                    *c = '.';
+        }
+
+        std::string text (buffer);
 
         if (text.find_first_of (".eEn") == std::string::npos)
             text += ".0";
