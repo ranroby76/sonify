@@ -4,6 +4,7 @@
 #include "BuiltinPlugins.h"
 #include "Looks.h"
 #include "PluginCanvas.h"
+#include "PluginHeader.h"
 #include "Preferences.h"
 #include "PresetLibrary.h"
 #include "SonifyPanels.h"
@@ -28,6 +29,33 @@ namespace
         return t > 0.0 && t < 1.0 ? static_cast<float> (std::log (0.5) / std::log (t)) : 1.0f;
     }
 
+    /** The pictures built in with the panels (Sonify's logo) into the folder the canvas reads
+        its pictures from, when they're not there yet or have changed. */
+    void unpackPictures (const juce::File& folder)
+    {
+        for (int i = 0; i < SonifyPanels::namedResourceListSize; ++i)
+        {
+            const juce::String fileName (SonifyPanels::getNamedResourceOriginalFilename (SonifyPanels::namedResourceList[i]));
+
+            if (! fileName.endsWithIgnoreCase (".png") && ! fileName.endsWithIgnoreCase (".jpg"))
+                continue;
+
+            int size = 0;
+            const auto* data = SonifyPanels::getNamedResource (SonifyPanels::namedResourceList[i], size);
+
+            if (data == nullptr || size <= 0)
+                continue;
+
+            const auto file = folder.getChildFile (fileName);
+
+            if (file.existsAsFile() && file.getSize() == (juce::int64) size)
+                continue;
+
+            folder.createDirectory();
+            file.replaceWithData (data, (size_t) size);
+        }
+    }
+
     //==============================================================================
     class PanelWindow final : public juce::DocumentWindow,
                               private juce::Timer
@@ -42,6 +70,7 @@ namespace
             // Pictures would come from a gui folder; the built-ins' panels have none (their
             // materials are drawn), but the canvas wants one to draw at all.
             const auto gui = UserData::getFolder().getChildFile ("Panels");
+            unpackPictures (gui.getChildFile (GuiLayout::imagesFolder));
             looks.setGuiFolder (gui);
             canvas.setLooks (looks);
             canvas.setPanelOnly (true);
@@ -95,11 +124,12 @@ namespace
             pushParameters (true);
             canvas.setPresets (presets.getMenu());
 
+            PluginHeader::attach (*this, plugin);    // ON/OFF over the panel; the shape below is the panel's
             setContentNonOwned (&canvas, false);
             canvas.setSize (layout.width, layout.height);
             setContentComponentSize (layout.width, layout.height);
             setResizable (true, false);
-            setResizeLimits (juce::jmax (120, layout.width / 3), juce::jmax (90, layout.height / 3), layout.width * 3, layout.height * 3);
+            getConstrainer()->setSizeLimits (juce::jmax (120, layout.width / 3), juce::jmax (90, layout.height / 3), layout.width * 3, layout.height * 3);
             getConstrainer()->setFixedAspectRatio (static_cast<double> (layout.width) / layout.height);
             centreWithSize (getWidth(), getHeight());
 
@@ -319,7 +349,7 @@ namespace
                 p.def = static_cast<float> (spec.defaultValue);
                 p.value = static_cast<float> (shown[i]);
                 p.skew = skewFor (spec);
-                p.decimals = BuiltinPlugin::decimalsOf (spec);
+                p.decimals = BuiltinPlugin::isLogRange (spec) ? -1 : BuiltinPlugin::decimalsOf (spec);   // -1: by the value's size
                 params.add (p);
             }
 

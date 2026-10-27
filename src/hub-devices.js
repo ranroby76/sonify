@@ -3,7 +3,7 @@
 // Sonify devices: MIDI devices made by asking Sonify AI in the Plugins Creator Studio's Build with AI
 // (type MIDI FX), the way Max for Live devices are built. A device sits in an instrument track's MIDI
 // FX, hears the notes, plays its own, and can move Sonify's controls. Every device made is kept in My
-// Devices (Documents\Sonify\Devices, one .sonidev file each), which the MIDI FX menus list.
+// Devices (Documents\Sonify\Plugins, one .sip file each, kind "midi"), which the MIDI FX menus list.
 //
 // This page keeps what the rest of it needs to know about them (My Devices, whether devices can be
 // built here) and sends the Plugins Creator Studio a device to work on: the one in a track's MIDI FX

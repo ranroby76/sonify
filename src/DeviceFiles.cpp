@@ -1,6 +1,7 @@
 // D:\workspace\Fanan_web_hub\src\DeviceFiles.cpp
 
 #include "DeviceFiles.h"
+#include "SipFiles.h"
 #include "SonifyAiData.h"
 
 #include <juce_cryptography/juce_cryptography.h>
@@ -220,6 +221,15 @@ juce::Result DeviceFile::write (const juce::File& file) const
         zip.addEntry (std::make_unique<juce::MemoryInputStream> (utf8.getAddress(), utf8.sizeInBytes() - 1, true), 9, path, now);
     };
 
+    // What kind of Sonify plugin it is, first: a MIDI FX.
+    Sip::Manifest sip;
+    sip.kind = Sip::Kind::midi;
+    sip.id = id;
+    sip.name = name;
+    sip.vendor = vendor;
+    sip.version = version;
+    addText (Sip::manifestName, Sip::manifestText (sip));
+
     addText ("device.json", juce::JSON::toString (juce::var (manifest.get())));
 
     for (const auto& [fileName, text] : sources)
@@ -290,26 +300,28 @@ juce::File myDevicesFolder()
     return folder;
 }
 
+juce::File devicesFolder()
+{
+    return Sip::folder();
+}
+
+bool isDeviceFile (const juce::File& file)
+{
+    if (file.hasFileExtension (oldFileExtension))
+        return file.existsAsFile();
+
+    Sip::Manifest manifest;
+    return Sip::isSipFile (file) && Sip::readManifest (file, manifest) && manifest.kind == Sip::Kind::midi;
+}
+
 juce::Array<juce::File> listMyDevices()
 {
-    auto files = myDevicesFolder().findChildFiles (juce::File::findFiles, false, juce::String ("*") + fileExtension);
-    std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b)
-    {
-        return a.getFileNameWithoutExtension().compareNatural (b.getFileNameWithoutExtension()) < 0;
-    });
-    return files;
+    return Sip::list (Sip::Kind::midi);
 }
 
 juce::File freeFileFor (const juce::String& name, const juce::File& except)
 {
-    const auto folder = myDevicesFolder();
-    const auto base = cleanName (name);
-    auto file = folder.getChildFile (base + fileExtension);
-
-    for (int n = 2; file.exists() && file != except && n < 1000; ++n)
-        file = folder.getChildFile (base + " " + juce::String (n) + fileExtension);
-
-    return file;
+    return Sip::freeFile (cleanName (name), except);
 }
 
 juce::File protectionFolderOf (const juce::String& deviceId)

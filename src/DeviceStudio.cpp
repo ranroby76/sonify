@@ -190,7 +190,7 @@ juce::Result DeviceStudio::open (const juce::File& source)
 {
     juce::File inLibrary = source;
 
-    if (source.getParentDirectory() != Devices::myDevicesFolder())
+    if (source.getParentDirectory() != Devices::devicesFolder() || ! source.hasFileExtension (Devices::fileExtension))
         if (const auto result = import (source, inLibrary); result.failed())
             return result;
 
@@ -635,7 +635,7 @@ juce::var DeviceStudio::getState()
     }
 
     f->setProperty ("library", list);
-    f->setProperty ("folder", Devices::myDevicesFolder().getFullPathName());
+    f->setProperty ("folder", Devices::devicesFolder().getFullPathName());
 
     if (! opened)
         return state;

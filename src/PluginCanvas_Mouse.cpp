@@ -6,6 +6,7 @@
 #include "PluginCanvasMenu.h"
 #include "PanelParts.h"
 #include "StellaLookAndFeel.h"
+#include "KnobStudio.h"   // the Gallery
 
 namespace
 {
@@ -2130,16 +2131,35 @@ bool PluginCanvas::keyPressed (const juce::KeyPress& key)
 // Primitives from the toolbox
 bool PluginCanvas::isInterestedInDragSource (const SourceDetails& details)
 {
-    return design && hasPanel() && PrimitiveLibrary::idFromDrag (details.description).isNotEmpty();
+    return design && hasPanel()
+        && (PrimitiveLibrary::idFromDrag (details.description).isNotEmpty()
+            || KnobStudio::galleryDragFile (details.description) != juce::File());
 }
 
 void PluginCanvas::itemDragEnter (const SourceDetails& details)
 {
-    showDropGhost (PrimitiveLibrary::idFromDrag (details.description), details.localPosition.toFloat());
+    itemDragMove (details);
 }
 
 void PluginCanvas::itemDragMove (const SourceDetails& details)
 {
+    // A Gallery item: over a knob, slider or switch, that control (it takes the item's look);
+    // elsewhere, a new control's place.
+    if (KnobStudio::galleryDragFile (details.description) != juce::File())
+    {
+        repaintDropGhost();
+        const auto at = toPlugin (details.localPosition.toFloat());
+        const auto over = widgetAt (at, false);
+
+        if (over >= 0 && Looks::takesLook (layout.widgets[(size_t) over]))
+            dropGhost = layout.widgets[(size_t) over].bounds;
+        else
+            dropGhost = placed (defaultBounds (GuiWidget::Type::knob, 0, 0), at);
+
+        repaintDropGhost();
+        return;
+    }
+
     showDropGhost (PrimitiveLibrary::idFromDrag (details.description), details.localPosition.toFloat());
 }
 
@@ -2153,6 +2173,19 @@ void PluginCanvas::itemDropped (const SourceDetails& details)
 {
     dropGhost.reset();
     repaint();
+
+    if (const auto file = KnobStudio::galleryDragFile (details.description); file != juce::File())
+    {
+        const auto at = toPlugin (details.localPosition.toFloat());
+        const auto over = widgetAt (at, false);
+
+        if (over >= 0 && Looks::takesLook (layout.widgets[(size_t) over]))
+            useGalleryItem (over, file);   // dropped on a control: it wears the item
+        else
+            addGalleryItem (file, at);     // on the panel: a new control wearing it
+
+        return;
+    }
 
     if (const auto* primitive = PrimitiveLibrary::get().find (PrimitiveLibrary::idFromDrag (details.description)))
         addPrimitive (*primitive, toPlugin (details.localPosition.toFloat()));

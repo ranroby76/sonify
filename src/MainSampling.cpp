@@ -42,6 +42,8 @@
 #include "PageDropZone.h"
 #include "SamplerScreen.h"
 #include "SonifySampler.h"
+#include "TomahawkScreen.h"
+#include "TomahawkSampler.h"
 
 namespace
 {
@@ -139,13 +141,16 @@ void MainComponent::setupSampling()
     SamplerScreen::install();
     Samplers::setUserFolder ([] { return UserData::getFolder(); });
 
-    // The choices and folders kept from last time.
+    // The Tomahawk opens its own window, and keeps its settings and presets with the user's things.
+    TomahawkScreen::install();
+    Tomahawks::setUserFolder ([] { return UserData::getFolder(); });
+
+    // The folders and the nodes kept from last time. The settings start fresh every time: a setup
+    // comes back only by Load Preset (nothing is loaded by itself).
     const auto kept = juce::JSON::parse (samplingSettingsFile());
 
     if (kept.isObject())
     {
-        if (const auto settings = kept.getProperty ("settings", {}); settings.isObject())
-            samplingSettings = Sampling::Settings::fromVar (settings).toVar();
 
         if (const juce::File folder (kept.getProperty ("folder", {}).toString()); juce::File::isAbsolutePath (folder.getFullPathName()))
             samplingModuleFolder = folder;
@@ -153,8 +158,7 @@ void MainComponent::setupSampling()
         if (const juce::File folder (kept.getProperty ("loopFolder", {}).toString()); juce::File::isAbsolutePath (folder.getFullPathName()))
             loopEdit.folder = folder;
 
-        // The nodes as they were: their plugins load when the studio first shows.
-        samplingRackKept = kept.getProperty ("rack", {});
+        // The nodes start empty: no plugin loads until the user loads one (a preset brings its own).
     }
 
     if (! samplingSettings.isObject())
@@ -200,7 +204,6 @@ void MainComponent::keepSampling()
     kept->setProperty ("settings", samplingSettings);
     kept->setProperty ("folder", samplingModuleFolder.getFullPathName());
     kept->setProperty ("loopFolder", loopEdit.folder.getFullPathName());
-    kept->setProperty ("rack", samplingRack != nullptr ? samplingRack->toVar (true) : samplingRackKept);
     samplingSettingsFile().replaceWithText (juce::JSON::toString (juce::var (kept.get()), true));
 }
 
@@ -1294,6 +1297,7 @@ void MainComponent::loadSamplingPlugin (const juce::String& format, const juce::
         return;
 
     juce::String error;
+    Plugin::approve (file);   // picked by the user in the Sampling Studio's own folder list
     auto plugin = Plugin::loadFormat (file, format, pluginId, error);
 
     if (plugin == nullptr)
@@ -2228,7 +2232,7 @@ void MainComponent::sendLoopAi (int generation, std::shared_ptr<std::vector<SfzL
     message->setProperty ("content", juce::Array<juce::var> { juce::var (text.get()) });
 
     auto body = object();
-    body->setProperty ("mode", "chat");
+    body->setProperty ("mode", "pick");   // it picks the best of the loops already found: the quickest model
     body->setProperty ("purpose", "loop_points");
     body->setProperty ("guide", SfzLoops::aiGuide());
     body->setProperty ("context", "Sonify's Sampling Studio, Loop Editor: " + le.patch.file.getFileName());

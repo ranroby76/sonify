@@ -1,3 +1,6 @@
+# D:\workspace\Fanan_web_hub\.gitignore
+
+# Builds and downloaded libraries
 build/
 deps/
 nuget/
@@ -6,3 +9,24 @@ wix/bin/
 wix/obj/
 .vs/
 *.user
+
+# The Tomahawk library (~13 GB, hosted on Cloudflare R2): never in git
+Tomahawk_Sampler/
+
+# Archives, built apps and big sound files: the build needs none of them (GitHub refuses files over 100 MB)
+*.zip
+*.rar
+*.7z
+*.dmg
+*.msi
+*.frb
+axis nam files/
+
+# Secrets: never in git (the repository is public)
+store_secrets.txt
+*secrets*.txt
+tomahawk sampler info.txt
+*token*.txt
+*.p12
+*.pem
+.env

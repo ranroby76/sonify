@@ -14,6 +14,7 @@
 #include "PanelParts.h"
 #include "StellaLookAndFeel.h"
 #include "WasmElements.h"
+#include "KnobStudio.h"   // the Gallery
 #include "stella_keys.h"
 
 namespace
@@ -27,8 +28,13 @@ namespace
     juce::String valueText (float value, const PluginCanvas::Param& p)
     {
         const auto range = p.max - p.min;
+        const auto unit = p.unit.trim();
+        // a log range (a frequency, a time): by the value's size, not the range's
+        const auto logRange = (unit == "Hz" || unit == "ms") && p.min > 0.0f && p.max / p.min >= 8.0f;
+        const auto size = std::abs (value);
         const auto decimals = p.decimals >= 0 ? juce::jmin (2, p.decimals)
-                                              : (p.unit.trim() == "%" || range >= 100.0f ? 0 : (range >= 10.0f ? 1 : 2));
+                            : logRange ? (size < 10.0f ? 2 : (size < 100.0f ? 1 : 0))
+                            : (unit == "%" || range >= 100.0f ? 0 : (range >= 10.0f ? 1 : 2));
         return juce::String (value, decimals) + (p.unit.isNotEmpty() ? " " + p.unit : juce::String());
     }
 }
@@ -1233,6 +1239,126 @@ juce::String PluginCanvas::giveOwnLook (int widgetIndex)
     w.style = name;
     edited();
     return name;
+}
+
+//==============================================================================
+// The Gallery's knobs, sliders and switches
+juce::String PluginCanvas::lookFromGallery (const juce::File& file, Looks::Kind& kind)
+{
+    if (looks == nullptr)
+        return {};
+
+    LayerDoc doc;
+    juce::String credits, error;
+    bool commercialSafe = true;
+
+    if (! KnobStudio::readGalleryItem (file, doc, kind, credits, commercialSafe, error))
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Gallery",
+                                                "Couldn't use " + file.getFileName() + ": " + error + ".");
+        return {};
+    }
+
+    // Named after the item, never the name of a look the panel's controls wear already.
+    juce::StringArray worn;
+
+    for (const auto& other : layout.widgets)
+        if (Looks::takesLook (other))
+            worn.addIfNotAlreadyThere (looks->lookFor (other).name);
+
+    auto base = file.getFileNameWithoutExtension().trim();
+
+    if (credits.startsWith ("From the KnobMan gallery"))
+        base = Looks::kindDisplayName (kind).substring (0, 1).toUpperCase() + Looks::kindDisplayName (kind).substring (1)
+             + " #" + base;   // its number: the gallery's own name for it is in the credits
+
+    const auto name = looks->freeName (base.isNotEmpty() ? base : juce::String ("Gallery look"), worn);
+    looks->setProjectLook (name, kind, doc, credits);
+
+    // A licence that doesn't allow selling: said, once, as it goes onto the panel.
+    if (! commercialSafe)
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Its licence",
+                                                credits + "\n\nThis licence doesn't allow it in a plugin that's sold (or changed, for ND). "
+                                                "It's fine in a free plugin; for one with a price, pick an item without the NC mark.");
+    return name;
+}
+
+void PluginCanvas::chooseGalleryItem (int widgetIndex)
+{
+    if (! juce::isPositiveAndBelow (widgetIndex, (int) layout.widgets.size()) || ! Looks::takesLook (layout.widgets[(size_t) widgetIndex]))
+        return;
+
+    const auto kind = Looks::kindDisplayName (Looks::kindOf (layout.widgets[(size_t) widgetIndex]));
+
+    KnobStudio::showGallery ("Replace this " + kind + " with a gallery " + kind,
+                             [safeThis = juce::Component::SafePointer<PluginCanvas> (this), widgetIndex] (const juce::File& file)
+                             {
+                                 if (safeThis != nullptr)
+                                     safeThis->useGalleryItem (widgetIndex, file);
+                             },
+                             true, false, this);
+}
+
+bool PluginCanvas::useGalleryItem (int widgetIndex, const juce::File& file)
+{
+    if (! design || ! juce::isPositiveAndBelow (widgetIndex, (int) layout.widgets.size()))
+        return false;
+
+    const auto wanted = Looks::kindOf (layout.widgets[(size_t) widgetIndex]);
+
+    if (! Looks::takesLook (layout.widgets[(size_t) widgetIndex]))
+        return false;
+
+    // Only the same kind: the control stays what it is (its size, place and settings too).
+    LayerDoc doc;
+    juce::String credits, error;
+    bool commercialSafe = true;
+    Looks::Kind kind = wanted;
+
+    if (KnobStudio::readGalleryItem (file, doc, kind, credits, commercialSafe, error) && kind != wanted)
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Gallery",
+                                                file.getFileNameWithoutExtension() + " is a " + Looks::kindDisplayName (kind)
+                                                + ", and this is a " + Looks::kindDisplayName (wanted)
+                                                + ": pick a " + Looks::kindDisplayName (wanted) + " to replace it with.");
+        return false;
+    }
+
+    const auto name = lookFromGallery (file, kind);
+
+    if (name.isEmpty())
+        return false;
+
+    useLook (widgetIndex, name);
+    repaint();
+    return true;
+}
+
+void PluginCanvas::addGalleryItem (const juce::File& file, std::optional<juce::Point<float>> centre)
+{
+    if (! design || ! hasPanel())
+        return;
+
+    Looks::Kind kind = Looks::Kind::knob;
+    const auto name = lookFromGallery (file, kind);
+
+    if (name.isEmpty())
+        return;
+
+    GuiWidget w;
+    w.type = kind == Looks::Kind::button ? GuiWidget::Type::toggle
+           : kind == Looks::Kind::knob   ? GuiWidget::Type::knob
+                                         : GuiWidget::Type::slider;
+    w.vertical = kind != Looks::Kind::sliderAcross;
+    w.bounds = defaultBounds (w.type, 0, 0);
+
+    if (kind == Looks::Kind::sliderAcross)
+        w.bounds = { 0, 0, w.bounds.getHeight(), w.bounds.getWidth() };   // lying down
+
+    w.style = name;
+    addElement (w, centre);
+    edited();
+    repaint();
 }
 
 juce::String PluginCanvas::commonLook (const GuiWidget& widget) const
@@ -2683,6 +2809,7 @@ void PluginCanvas::drawPicture (juce::Graphics& g, const juce::String& name, juc
 
     const auto placement = mode == "stretch" ? juce::RectanglePlacement (juce::RectanglePlacement::stretchToFit)
                          : mode == "fit"     ? juce::RectanglePlacement (juce::RectanglePlacement::centred)
+                         : mode == "fitLeft" ? juce::RectanglePlacement (juce::RectanglePlacement::xLeft | juce::RectanglePlacement::yMid)
                          : mode == "centre"  ? juce::RectanglePlacement (juce::RectanglePlacement::centred | juce::RectanglePlacement::doNotResize)
                                              : juce::RectanglePlacement (juce::RectanglePlacement::centred | juce::RectanglePlacement::fillDestination);
     g.drawImage (image, area, placement);

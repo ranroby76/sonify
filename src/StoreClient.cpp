@@ -522,7 +522,7 @@ StoreClient::Unpacked StoreClient::unpack (const juce::MemoryBlock& package, con
         const auto* entry = zip.getEntry (i);
         total += entry->uncompressedSize;
 
-        if (! isSafePath (entry->filename) || total > maxUnpacked)
+        if (! isSafePath (entry->filename) || entry->isSymbolicLink || total > maxUnpacked)
         {
             result.error = "The download isn't one Sonify can read.";
             return result;
@@ -544,7 +544,8 @@ StoreClient::Unpacked StoreClient::unpack (const juce::MemoryBlock& package, con
     {
         // A MIDI FX: its file, as this ad's (its id from the ad's), without code or conversation.
         // Its license.soni, when it's protected, travels inside its file (DeviceFile).
-        const auto found = files.findChildFiles (juce::File::findFiles, false, juce::String ("*") + Devices::fileExtension);
+        // A .sip, or a .sonidev as packages were before.
+        const auto found = files.findChildFiles (juce::File::findFiles, false, juce::String ("*") + Devices::fileExtension + ";*" + Devices::oldFileExtension);
         Devices::DeviceFile device;
 
         if (found.size() != 1 || device.read (found.getFirst()).failed() || device.wasm.isEmpty())
@@ -573,7 +574,7 @@ StoreClient::Unpacked StoreClient::unpack (const juce::MemoryBlock& package, con
     }
 
     // A plugin: its folder (with its license.soni when it's protected), as this ad's.
-    const auto folders = files.findChildFiles (juce::File::findDirectories, false, juce::String ("*") + MadePlugins::extension);
+    const auto folders = files.findChildFiles (juce::File::findDirectories, false, juce::String ("*") + MadePlugins::folderExtension);
     const auto info = folders.size() == 1 ? folders.getFirst().getChildFile ("plugin.json") : juce::File();
     auto json = info.existsAsFile() ? juce::JSON::parse (info) : juce::var();
 
@@ -639,6 +640,25 @@ void StoreClient::finishInstall (const Ad& ad, Unpacked unpacked, Done done)
 void StoreClient::hide (const Ad& ad, bool hidden, Done done)
 {
     call (hidden ? "hide" : "unhide", fields ({ { "ad", ad.id } }), [done] (const juce::Result& result, const juce::var&)
+    {
+        if (done != nullptr)
+            done (result);
+    });
+}
+
+const juce::StringArray& StoreClient::reportReasons()
+{
+    // The same words as sonifyStore's REPORT_REASONS.
+    static const juce::StringArray reasons { "Hate or harassment", "Rude or insulting", "Sexual content", "Violence",
+                                             "Scam, phishing or a dangerous link", "Stolen work or pretending to be someone",
+                                             "Spam", "Something else" };
+    return reasons;
+}
+
+void StoreClient::report (const Ad& ad, const juce::String& reason, const juce::String& note, Done done)
+{
+    call ("report", fields ({ { "ad", ad.id }, { "reason", reason }, { "note", note.trim().substring (0, 500) } }),
+          [done] (const juce::Result& result, const juce::var&)
     {
         if (done != nullptr)
             done (result);

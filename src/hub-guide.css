@@ -122,3 +122,24 @@
   .guide-search { width: 200px; }
   .guide-page-text { padding: 18px 20px 22px; }
 }
+
+/* Translate this page to: the language, the button, and a note (credits, or why not) */
+.guide-translate { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
+.guide-lang {
+  height: 28px; max-width: 220px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--inset); color: var(--bright); font-size: 12.5px;
+}
+.guide-lang:focus-visible { outline: 2px solid var(--guide); outline-offset: 2px; }
+.guide-translate-note { min-width: 0; font-size: 12px; }
+.guide-translate-error { color: #ff8f8f; }
+
+/* Save to PDF: only the translated page is printed */
+#guide-print { display: none; }
+@media print {
+  body > *:not(#guide-print) { display: none !important; }
+  html, body { background: #fff !important; overflow: visible !important; height: auto !important; }
+  #guide-print { display: block !important; color: #000; }
+  #guide-print .guide-page-text { max-width: none; margin: 0; padding: 0; color: #000; font-size: 12pt; line-height: 1.5; }
+  #guide-print .guide-crumb, #guide-print .guide-tip-mark { color: #444; }
+  #guide-print .guide-title, #guide-print .guide-heading, #guide-print strong { color: #000; }
+}

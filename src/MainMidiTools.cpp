@@ -362,7 +362,7 @@ void MainComponent::addMidiToolTrack (const juce::var& event)
         if (engine.loadPlugin (id, juce::File (best->file), best->id, -1, 0, slot).wasOk())
             library.markUsed (best->file, best->id);
         else
-            note = best->name + " didn't load, so the new track plays the Test Synth.";
+            note = best->name + " didn't load, so the new track plays Cayman.";
     }
 
     const auto name = event.getProperty ("name", {}).toString().substring (0, 60).trim();

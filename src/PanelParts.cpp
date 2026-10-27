@@ -388,6 +388,95 @@ namespace
         return { area.getX() + (float) i * w, area.getY(), w, area.getHeight() };
     }
 
+    /** Console keys in a table: "columns" (settings) > 1 lays the positions out in that many
+        columns, row by row (0: one row, or one column when the box is tall). */
+    int selectorColumns (const GuiWidget& w, bool vertical, int count)
+    {
+        const auto found = w.settings.find ("columns");
+        const int columns = found != w.settings.end() && ! found->second.isVoid() ? (int) found->second : 0;
+        return columns > 1 ? juce::jlimit (1, count, columns) : (vertical ? 1 : count);
+    }
+
+    juce::Rectangle<float> gridCellOf (juce::Rectangle<float> area, int columns, int i, int count)
+    {
+        columns = juce::jlimit (1, juce::jmax (1, count), columns);
+        const int rows = (count + columns - 1) / columns;
+        const auto w = area.getWidth() / (float) columns, h = area.getHeight() / (float) rows;
+        return { area.getX() + (float) (i % columns) * w, area.getY() + (float) (i / columns) * h, w, h };
+    }
+
+    /** A waveform's or a filter's picture by its name (Sine, Saw, Square, Pulse, Triangle, Noise,
+        Random, Classic; Low Pass, High Pass, Band Pass, Notch, Off): drawn as a line in box,
+        true when the name is one of them. */
+    bool drawGlyph (juce::Graphics& g, const juce::String& name, juce::Rectangle<float> box, juce::Colour colour)
+    {
+        const auto key = name.toLowerCase().removeCharacters (" -_");
+        const auto b = box.reduced (box.getWidth() * 0.12f, box.getHeight() * 0.2f);
+        const float x0 = b.getX(), x1 = b.getRight(), yc = b.getCentreY(), a = b.getHeight() * 0.5f, w = b.getWidth();
+        juce::Path p;
+
+        if (key == "sine" || key == "sin")
+        {
+            p.startNewSubPath (x0, yc);
+            for (int i = 1; i <= 24; ++i) { const float t = (float) i / 24.0f; p.lineTo (x0 + w * t, yc - a * std::sin (t * juce::MathConstants<float>::twoPi)); }
+        }
+        else if (key == "triangle" || key == "tri")
+        {
+            p.startNewSubPath (x0, yc); p.lineTo (x0 + w * 0.25f, yc - a); p.lineTo (x0 + w * 0.75f, yc + a); p.lineTo (x1, yc);
+        }
+        else if (key == "saw" || key == "sawtooth" || key == "ramp")
+        {
+            p.startNewSubPath (x0, yc + a); p.lineTo (x0 + w * 0.5f, yc - a); p.lineTo (x0 + w * 0.5f, yc + a); p.lineTo (x1, yc - a);
+        }
+        else if (key == "square")
+        {
+            p.startNewSubPath (x0, yc + a); p.lineTo (x0, yc - a); p.lineTo (x0 + w * 0.5f, yc - a); p.lineTo (x0 + w * 0.5f, yc + a); p.lineTo (x1, yc + a); p.lineTo (x1, yc - a);
+        }
+        else if (key == "pulse")
+        {
+            p.startNewSubPath (x0, yc + a); p.lineTo (x0, yc - a); p.lineTo (x0 + w * 0.22f, yc - a); p.lineTo (x0 + w * 0.22f, yc + a);
+            p.lineTo (x0 + w * 0.6f, yc + a); p.lineTo (x0 + w * 0.6f, yc - a); p.lineTo (x0 + w * 0.82f, yc - a); p.lineTo (x0 + w * 0.82f, yc + a); p.lineTo (x1, yc + a);
+        }
+        else if (key == "classic" || key == "super" || key == "supersaw")
+        {
+            // a saw with a sine on it: the classic blend
+            p.startNewSubPath (x0, yc + a);
+            for (int i = 1; i <= 24; ++i) { const float t = (float) i / 24.0f; p.lineTo (x0 + w * t, yc + a - 2.0f * a * t - a * 0.28f * std::sin (t * juce::MathConstants<float>::twoPi * 2.0f)); }
+        }
+        else if (key == "noise" || key == "random" || key == "sh" || key == "sampleandhold")
+        {
+            const float ys[] = { 0.3f, -0.8f, 0.5f, -0.2f, 0.9f, -0.6f, 0.1f };
+            p.startNewSubPath (x0, yc - a * ys[0]);
+            for (int i = 1; i < 7; ++i) { const float xs = x0 + w * (float) i / 6.0f; p.lineTo (xs, yc - a * ys[i - 1]); p.lineTo (xs, yc - a * ys[i]); }
+        }
+        else if (key == "lowpass" || key == "lp" || key == "low")
+        {
+            p.startNewSubPath (x0, yc - a * 0.4f); p.lineTo (x0 + w * 0.55f, yc - a * 0.4f); p.lineTo (x0 + w * 0.66f, yc - a); p.lineTo (x1, yc + a);
+        }
+        else if (key == "highpass" || key == "hp" || key == "high")
+        {
+            p.startNewSubPath (x0, yc + a); p.lineTo (x0 + w * 0.34f, yc - a); p.lineTo (x0 + w * 0.45f, yc - a * 0.4f); p.lineTo (x1, yc - a * 0.4f);
+        }
+        else if (key == "bandpass" || key == "bp" || key == "band")
+        {
+            p.startNewSubPath (x0, yc + a); p.lineTo (x0 + w * 0.4f, yc - a * 0.8f); p.lineTo (x0 + w * 0.6f, yc - a * 0.8f); p.lineTo (x1, yc + a);
+        }
+        else if (key == "notch" || key == "nt" || key == "bandreject")
+        {
+            p.startNewSubPath (x0, yc - a * 0.4f); p.lineTo (x0 + w * 0.4f, yc - a * 0.4f); p.lineTo (x0 + w * 0.5f, yc + a); p.lineTo (x0 + w * 0.6f, yc - a * 0.4f); p.lineTo (x1, yc - a * 0.4f);
+        }
+        else if (key == "off" || key == "bypass" || key == "none")
+        {
+            p.startNewSubPath (x0, yc); p.lineTo (x1, yc);
+        }
+        else
+            return false;
+
+        g.setColour (colour);
+        g.strokePath (p, juce::PathStrokeType (juce::jlimit (1.2f, 2.2f, b.getHeight() * 0.09f), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        return true;
+    }
+
     void drawName (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> box, juce::Colour colour, const juce::Font& font,
                    juce::Justification justification = juce::Justification::centred)
     {
@@ -602,6 +691,45 @@ namespace
         g.fillRect (shadow);
     }
 
+    /** Dark naturals under light grey sharps: the sharps carry the contrast. */
+    void paintGraphiteKeys (juce::Graphics& g, const GuiWidget& w)
+    {
+        const auto b = w.bounds.toFloat();
+        g.setColour (juce::Colour (0xff0a0b0d));
+        g.fillRect (b);
+
+        for (int note = w.lowNote; note <= w.highNote; ++note)
+        {
+            if (stella::keys::isBlack (note))
+                continue;
+
+            const auto key = keyArea (w, note).reduced (1.0f, 0.0f).withTrimmedBottom (1.0f);
+            const auto r = juce::jmin (4.0f, key.getWidth() * 0.18f);
+            juce::Path shape;
+            shape.addRoundedRectangle (key.getX(), key.getY(), key.getWidth(), key.getHeight(), r, r, false, false, true, true);
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1c1f22), key.getX(), key.getY(), juce::Colour (0xff2b2f34), key.getX(), key.getBottom(), false));
+            g.fillPath (shape);
+            g.setColour (juce::Colour (0xff3a3f46));
+            g.fillRect (key.withTop (key.getBottom() - juce::jmax (1.5f, key.getHeight() * 0.035f)).reduced (r * 0.5f, 0.0f));
+        }
+
+        for (int note = w.lowNote; note <= w.highNote; ++note)
+        {
+            if (! stella::keys::isBlack (note))
+                continue;
+
+            const auto key = keyArea (w, note).reduced (0.5f, 0.0f);
+            g.setColour (juce::Colours::black.withAlpha (0.7f));
+            g.fillRoundedRectangle (key.expanded (1.0f, 0.0f).translated (0.0f, 1.5f), 2.5f);
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xffc9ccd2), key.getX(), key.getY(), juce::Colour (0xff8e939b), key.getX(), key.getBottom(), false));
+            g.fillRoundedRectangle (key, 2.0f);
+
+            const auto face = key.reduced (key.getWidth() * 0.16f, 0.0f).withTrimmedBottom (key.getHeight() * 0.14f).withTrimmedTop (2.0f);
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xffe6e9ee), face.getX(), face.getY(), juce::Colour (0xffd4d8de), face.getX(), face.getBottom(), false));
+            g.fillRoundedRectangle (face, 1.5f);
+        }
+    }
+
     void paintModernKeys (juce::Graphics& g, const GuiWidget& w)
     {
         const auto b = w.bounds.toFloat();
@@ -769,12 +897,15 @@ void PanelParts::paintSelector (juce::Graphics& g, juce::Rectangle<float> area, 
 
     if (display == "keys")
     {
+        const int columns = selectorColumns (w, vertical, count);
+        const bool icons = flagSetting (w, "icons", false);   // waveforms and filters drawn, not named
         const float pitch = (vertical ? area.getHeight() : area.getWidth()) / (float) count;
         const float gap = juce::jlimit (2.0f, 6.0f, pitch * 0.08f);
 
         for (int i = 0; i < count; ++i)
         {
-            const auto key = cellOf (area, vertical, i, count).reduced (vertical ? 1.0f : gap * 0.5f, vertical ? gap * 0.5f : 1.0f).withTrimmedBottom (1.5f);
+            const auto cell = columns > 1 || (! vertical && columns < count) ? gridCellOf (area, columns, i, count) : cellOf (area, vertical, i, count);
+            const auto key = (columns > 1 ? cell.reduced (2.0f, 2.0f) : cell.reduced (vertical ? 1.0f : gap * 0.5f, vertical ? gap * 0.5f : 1.0f)).withTrimmedBottom (1.5f);
             const bool on = i == chosen;
             const auto corner = juce::jmin (key.getWidth(), key.getHeight()) * 0.12f;
 
@@ -799,7 +930,10 @@ void PanelParts::paintSelector (juce::Graphics& g, juce::Rectangle<float> area, 
             g.drawHorizontalLine (juce::roundToInt (key.getY() + 1.0f), key.getX() + corner, key.getRight() - corner);
 
             const auto size = juce::jlimit (9.0f, 14.0f, juce::jmin (key.getHeight() * 0.42f, key.getWidth() * 0.32f));
-            drawName (g, nameOf (i), key.reduced (3.0f, 1.0f), on ? inkOn (accent) : ink.withAlpha (0.82f), FontLibrary::font (w.font, size, true));
+            const auto inkHere = on ? inkOn (accent) : ink.withAlpha (0.82f);
+
+            if (! (icons && drawGlyph (g, nameOf (i), key.reduced (juce::jmax (4.0f, key.getWidth() * 0.18f), juce::jmax (3.0f, key.getHeight() * 0.22f)), inkHere)))
+                drawName (g, nameOf (i), key.reduced (3.0f, 1.0f), inkHere, FontLibrary::font (w.font, size, true));
         }
 
         return;
@@ -935,6 +1069,18 @@ int PanelParts::selectorPick (const GuiWidget& w, juce::Rectangle<float> area, i
     }
 
     const bool vertical = selectorVertical (display, area, count);
+
+    if (display == "keys")
+    {
+        if (const int columns = selectorColumns (w, vertical, count); columns > 1 && columns < count)
+        {
+            const int rows = (count + columns - 1) / columns;
+            const int col = juce::jlimit (0, columns - 1, (int) std::floor ((at.x - area.getX()) / juce::jmax (1.0f, area.getWidth()) * (float) columns));
+            const int row = juce::jlimit (0, rows - 1, (int) std::floor ((at.y - area.getY()) / juce::jmax (1.0f, area.getHeight()) * (float) rows));
+            return juce::jlimit (0, count - 1, row * columns + col);
+        }
+    }
+
     const auto along = vertical ? (at.y - area.getY()) / juce::jmax (1.0f, area.getHeight()) : (at.x - area.getX()) / juce::jmax (1.0f, area.getWidth());
     return juce::jlimit (0, count - 1, (int) std::floor (along * (float) count));
 }
@@ -942,13 +1088,13 @@ int PanelParts::selectorPick (const GuiWidget& w, juce::Rectangle<float> area, i
 //==============================================================================
 const juce::StringArray& PanelParts::keyboardDisplays()
 {
-    static const juce::StringArray ids { "classic", "reverse", "modern" };
+    static const juce::StringArray ids { "classic", "reverse", "modern", "graphite" };
     return ids;
 }
 
 const juce::StringArray& PanelParts::keyboardDisplayNames()
 {
-    static const juce::StringArray names { "Classic ivory", "Reverse colours", "Modern slate" };
+    static const juce::StringArray names { "Classic ivory", "Reverse colours", "Modern slate", "Graphite (grey sharps)" };
     return names;
 }
 
@@ -957,15 +1103,17 @@ juce::String PanelParts::keyboardDisplayOf (const GuiWidget& w)
     return pick (displayOf (w), keyboardDisplays(), { { "ivory", "classic" }, { "standard", "classic" }, { "piano", "classic" },
                                                       { "reversed", "reverse" }, { "inverted", "reverse" }, { "harpsichord", "reverse" },
                                                       { "black", "reverse" }, { "slate", "modern" }, { "flat", "modern" }, { "soft", "modern" },
-                                                      { "dark", "modern" }, { "glow", "modern" } });
+                                                      { "dark", "modern" }, { "glow", "modern" }, { "grey", "graphite" }, { "gray", "graphite" },
+                                                      { "greysharps", "graphite" }, { "charcoal", "graphite" } });
 }
 
 void PanelParts::paintKeyboard (juce::Graphics& g, const GuiWidget& w)
 {
     const auto display = keyboardDisplayOf (w);
 
-    if (display == "reverse")      paintReverseKeys (g, w);
-    else if (display == "modern")  paintModernKeys (g, w);
+    if (display == "reverse")        paintReverseKeys (g, w);
+    else if (display == "modern")    paintModernKeys (g, w);
+    else if (display == "graphite")  paintGraphiteKeys (g, w);
     else                           paintClassicKeys (g, w);
 
     if (display != "classic")
@@ -982,7 +1130,7 @@ void PanelParts::paintKeyboard (juce::Graphics& g, const GuiWidget& w)
 void PanelParts::paintKeysDown (juce::Graphics& g, const GuiWidget& w, const std::function<bool (int)>& isDown, juce::Colour accent)
 {
     const auto display = keyboardDisplayOf (w);
-    const bool modern = display == "modern";
+    const bool modern = display == "modern" || display == "graphite";
     bool whiteDown = false;
 
     for (int note = w.lowNote; note <= w.highNote; ++note)
@@ -1216,9 +1364,15 @@ void PanelParts::paintLabel (juce::Graphics& g, const GuiWidget& w, const juce::
         g.fillPath (heads);
     }
 
+    // "align": "centre" or "right" in its settings; left unless it says.
+    const auto align = setting (w, "align").toLowerCase();
+    const auto justification = align == "centre" || align == "center" ? juce::Justification::centred
+                             : align == "right" ? juce::Justification::centredRight
+                             : juce::Justification::centredLeft;
+
     g.setColour (ink);
     g.setFont (font);
-    g.drawText (text, area, juce::Justification::centredLeft, true);
+    g.drawText (text, area, justification, true);
 }
 
 //==============================================================================

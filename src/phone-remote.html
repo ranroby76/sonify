@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<!-- D:\workspace\Fanan_web_hub\src\phone-remote.html -->
+<!--
+  Sonify Remote, in the studio: the page Sonify serves to phones on the local network
+  (PhoneRemote.cpp). The phone opens it from the QR code in Sonify's AI panel, whose address
+  carries the pairing key (?k=...): the page keeps it, and sends it with every call.
+
+    GET  api/state?k=&since=   { ok, name, online, pending, stateAt, state | unchanged }
+    POST api/send?k=           { kind: ask | stop | shortcut_save | shortcut_delete, text, name } -> { ok, id }
+
+  state: { busy, credits, taken, shortcuts: [{ id, name, text }], entries: [{ role, text, steps?, spoken? }] }
+
+  Two tabs: CHAT (Fanan AI's conversation, and where the last request is: sent, arrived, Sonify
+  generating an answer, received, with a sound when it's received) and SHORTCUTS (texts saved as
+  buttons: a press asks first, then sends). Kept in Sonify, so every phone has the same ones.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#1b1c20">
+<title>Sonify Remote</title>
+<style>
+  :root {
+    --bg: #1b1c20; --panel: #2b2c30; --panel-2: #34363b; --text: #eceded; --muted: #8e939a;
+    --green: #25984d; --mine: #275533; --ask: #f2cf3c; --problem: #f0a7a9; --line: #3a3c42;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+               font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { display: flex; flex-direction: column; height: 100dvh; }
+  button { font: inherit; color: inherit; border: none; cursor: pointer; }
+
+  header { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 14px 8px;
+           padding-top: max(10px, env(safe-area-inset-top)); border-bottom: 1px solid var(--line); }
+  .brand { flex: 1 1 auto; min-width: 0; }
+  .brand h1 { margin: 0; font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .brand .by { color: var(--muted); font-size: 13px; font-weight: 400; }
+  .brand .logo { height: 18px; width: auto; display: block; }
+  .brand .logo-text { font-size: 15px; }
+  .bubble, .shortcut { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .bubble.pressed, .shortcut.pressed { filter: brightness(1.25); }
+  .menu-item { width: 100%; height: 52px; border-radius: 12px; background: var(--panel-2); font-size: 17px; text-align: left; padding: 0 16px; }
+  .menu-item.danger { color: var(--problem); }
+  .where { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; min-width: 0; }
+  .where span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #666; flex: none; }
+  .dot.on { background: #46d17a; box-shadow: 0 0 6px #46d17a; }
+  .bell { width: 40px; height: 40px; border-radius: 20px; background: var(--panel); font-size: 18px; flex: none; }
+  .bell.off { opacity: 0.45; }
+
+  nav { flex: none; display: flex; gap: 6px; padding: 8px 14px; }
+  nav button { flex: 1; height: 40px; border-radius: 10px; background: var(--panel); color: var(--muted); font-weight: 600; letter-spacing: 0.03em; }
+  nav button.on { background: var(--mine); color: var(--text); }
+  .credits { color: var(--muted); font-size: 12px; padding: 0 14px; }
+
+  main { flex: 1 1 auto; overflow-y: auto; padding: 8px 14px 12px; -webkit-overflow-scrolling: touch; }
+  .empty { color: var(--muted); text-align: center; margin-top: 30%; padding: 0 20px; }
+  .empty b { color: var(--text); display: block; margin-bottom: 6px; font-size: 17px; }
+
+  .entry { display: flex; margin: 8px 0; }
+  .entry.user { justify-content: flex-end; }
+  .bubble { max-width: 86%; padding: 9px 12px; border-radius: 14px; background: var(--panel); overflow-wrap: anywhere; }
+  .user .bubble { background: var(--mine); border-bottom-right-radius: 4px; white-space: pre-wrap; }
+  .assistant .bubble { border-bottom-left-radius: 4px; }
+  .bubble.faded { opacity: 0.55; }
+  .notice { color: var(--problem); font-size: 13px; margin: 6px 0; }
+  .step { color: var(--muted); font-size: 13px; }
+  .step::before { content: "\2713  "; color: #46d17a; }
+  .line { min-height: 1.2em; }
+  .line.heading { font-weight: 700; }
+  .line.bullet { padding-left: 14px; position: relative; }
+  .line.bullet::before { content: "\2022"; position: absolute; left: 2px; }
+  .ask { color: var(--ask); }
+
+  .status { display: flex; align-items: center; justify-content: flex-end; gap: 8px; color: var(--muted); font-size: 13px; margin: 2px 2px 8px; }
+  .status.done { color: #8fd8a6; }
+  .status.problem { color: var(--problem); }
+  .status button { background: var(--panel-2); border-radius: 8px; padding: 4px 10px; font-size: 13px; }
+  .spinner { width: 12px; height: 12px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .stop { display: block; margin: 6px auto; background: #5a2a2c; color: #ffd9da; border-radius: 10px; padding: 8px 22px; font-weight: 600; }
+
+  .shortcuts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .shortcut { position: relative; min-height: 74px; border-radius: 12px; background: var(--panel); padding: 12px 30px 12px 12px;
+              text-align: left; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+  .shortcut:active { background: var(--panel-2); }
+  .shortcut .name { font-weight: 600; }
+  .shortcut .words { color: var(--muted); font-size: 13px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .shortcut .remove { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 14px; background: transparent; color: var(--muted); font-size: 16px; }
+  .add { grid-column: 1 / -1; min-height: 52px; border-radius: 12px; border: 1px dashed var(--line); background: transparent; color: var(--muted); }
+
+  .problem-line { flex: none; color: var(--problem); font-size: 14px; padding: 0 14px 6px; }
+  .problem-line:empty { display: none; }
+  footer { flex: none; display: flex; gap: 8px; padding: 8px 10px; padding-bottom: max(8px, env(safe-area-inset-bottom));
+           border-top: 1px solid var(--line); background: var(--bg); }
+  footer textarea { flex: 1 1 auto; min-width: 0; resize: none; height: 46px; max-height: 120px; padding: 11px 12px; border-radius: 12px;
+                    border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; }
+  footer button { flex: none; height: 46px; border-radius: 12px; }
+  .send { padding: 0 18px; background: var(--green); font-weight: 700; }
+  .star { width: 46px; background: var(--panel); font-size: 20px; }
+  footer button:disabled, footer textarea:disabled { opacity: 0.45; }
+  footer[hidden] { display: none; }
+
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: flex-end; justify-content: center; z-index: 10; }
+  .modal[hidden] { display: none; }
+  .sheet { width: 100%; max-width: 520px; background: var(--panel); border-radius: 18px 18px 0 0; padding: 18px 16px;
+           padding-bottom: max(18px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; }
+  .sheet h2 { margin: 0; font-size: 17px; }
+  .sheet .quote { background: var(--bg); border-radius: 10px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow-y: auto; }
+  .sheet input, .sheet textarea { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+  .sheet textarea { min-height: 90px; resize: vertical; }
+  .sheet label { color: var(--muted); font-size: 13px; }
+  .choices { display: flex; gap: 10px; }
+  .choices button { flex: 1; height: 50px; border-radius: 12px; background: var(--panel-2); font-weight: 600; font-size: 17px; }
+  .choices .yes { background: var(--green); }
+  .toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); background: #111; color: var(--text); padding: 8px 14px; border-radius: 10px; font-size: 14px; z-index: 20; }
+  .toast[hidden] { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>Sonify Remote <span class="by">by</span>
+      <img class="logo" src="fanan-logo.png" alt="Fanan"
+           onerror="this.replaceWith(Object.assign(document.createElement('span'), { className: 'logo-text', textContent: 'Fanan' }))"></h1>
+  </div>
+  <div class="where"><div id="dot" class="dot"></div><span id="name">Looking for Sonify…</span></div>
+  <button id="bell" class="bell" type="button" aria-label="Sound when an answer arrives">🔔</button>
+</header>
+<nav>
+  <button id="tab-chat" class="on" type="button">CHAT</button>
+  <button id="tab-shortcuts" type="button">SHORTCUTS</button>
+</nav>
+<div id="credits" class="credits"></div>
+<main id="main"></main>
+<div id="problem" class="problem-line" dir="auto"></div>
+<footer id="footer">
+  <button id="star" class="star" type="button" aria-label="Save as a shortcut" title="Save as a shortcut">☆</button>
+  <textarea id="input" rows="1" placeholder="Ask Sonify…" dir="auto" enterkeyhint="send"></textarea>
+  <button id="send" class="send" type="button">Send</button>
+</footer>
+
+<div id="modal" class="modal" hidden><div id="sheet" class="sheet"></div></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const make = (tag, className, text) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+
+  // ------------------------------------------------------------- pairing
+  const params = new URLSearchParams(location.search);
+  const store = {
+    get(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : v; } catch { return fallback; } },
+    set(key, value) { try { localStorage.setItem(key, value); } catch {} },
+  };
+  if (params.get("k")) store.set("sonify-remote-key", params.get("k"));
+  const key = store.get("sonify-remote-key", "");
+
+  // ------------------------------------------------------------- what's shown
+  let tab = "chat";
+  let state = null;                 // Sonify's conversation
+  let stateAt = 0;
+  let online = false, pending = false, name = "";
+  let problem = "";
+  let lastOk = 0;
+  let request = null;               // the last ask: { id, text, phase, at, lastAnswer }
+  let soundOn = store.get("sonify-remote-sound", "on") !== "off";
+  let busySending = false;
+
+  const lastAnswerOf = (s) => {
+    const entries = (s && s.entries) || [];
+    for (let i = entries.length - 1; i >= 0; i--)
+      if (entries[i].role === "assistant") return JSON.stringify([entries[i].text, entries[i].steps]);
+    return "";
+  };
+
+  // ------------------------------------------------------------- the server
+  async function call(path, body) {
+    const url = path + (path.includes("?") ? "&" : "?") + "k=" + encodeURIComponent(key);
+    const response = await fetch(url, body === undefined ? { cache: "no-store" }
+                                                         : { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    return response.json();
+  }
+
+  async function poll() {
+    if (document.hidden) return;
+
+    try {
+      const answer = await call("api/state?since=" + stateAt);
+      lastOk = Date.now();
+
+      if (!answer.ok) {
+        problem = answer.message || "Sonify couldn't answer.";
+        online = false;
+        render();
+        return;
+      }
+
+      problem = "";
+      online = answer.online;
+      pending = answer.pending;
+      name = answer.name || "Sonify";
+
+      if (!answer.unchanged) {
+        stateAt = answer.stateAt;
+        state = answer.state;
+      }
+
+      follow();
+      render();
+    } catch {
+      online = false;
+      problem = "No connection to Sonify. Is the phone on the studio's Wi-Fi? Trying again…";
+      render();
+    }
+  }
+
+  // Where the last request is: sent, arrived, Sonify generating an answer, received. A step
+  // shows for a moment at least, even when Sonify is quicker than that (it often is, here).
+  const PHASES = ["sent", "arrived", "generating", "received"];
+  const DWELL_MS = 700;
+
+  function follow() {
+    if (!request || !state || request.phase === "lost") return;
+
+    let reached = PHASES.indexOf(request.reached || "sent");
+
+    if (reached < 1 && state.taken === request.id) reached = 1;
+    if (reached >= 1 && reached < 2 && state.busy) reached = 2;
+    if (reached >= 1 && !state.busy && lastAnswerOf(state) !== request.lastAnswer) reached = 3;
+    request.reached = PHASES[reached];
+
+    const shown = PHASES.indexOf(request.phase);
+
+    if (reached > shown && Date.now() - request.phaseAt >= DWELL_MS) {
+      request.phase = PHASES[shown + 1];
+      request.phaseAt = Date.now();
+      if (request.phase === "received") chime();
+    }
+
+    if (request.phase === "sent" && reached === 0 && Date.now() - request.at > 10000)
+      request.phase = "lost";
+  }
+
+  // Steps waiting for their moment move on without waiting for the next answer.
+  setInterval(() => { if (request && request.reached && request.reached !== request.phase) { follow(); render(); } }, 200);
+
+  // A second request right after another (its turn comes once Sonify took the first).
+  async function sendWhenFree(kind, text, extra) {
+    for (let tries = 0; tries < 20; tries++) {
+      if (!pending && !busySending) return send(kind, text, extra);
+      await new Promise((r) => setTimeout(r, 250));
+      await poll();
+    }
+    return send(kind, text, extra);
+  }
+
+  async function send(kind, text, extra) {
+    if (busySending) return false;
+    busySending = true;
+
+    try {
+      const answer = await call("api/send", { kind, text, ...(extra || {}) });
+
+      if (!answer.ok) {
+        problem = answer.message || "That didn't go through.";
+        render();
+        return false;
+      }
+
+      problem = "";
+
+      if (kind === "ask")
+        request = { id: answer.id, text, phase: "sent", reached: "sent", at: Date.now(), phaseAt: Date.now(), lastAnswer: lastAnswerOf(state) };
+
+      render();
+      setTimeout(poll, 150);
+      return answer.id;
+    } catch {
+      problem = "No connection to Sonify. Try again.";
+      render();
+      return false;
+    } finally {
+      busySending = false;
+    }
+  }
+
+  // ------------------------------------------------------------- the sound
+  let audio = null;
+  function unlockAudio() {
+    try {
+      if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === "suspended") audio.resume();
+    } catch {}
+  }
+  document.addEventListener("pointerdown", unlockAudio, { passive: true });
+
+  function chime() {
+    if (!soundOn || !audio) return;
+    try {
+      const now = audio.currentTime;
+      [880, 1318.5].forEach((frequency, i) => {
+        const osc = audio.createOscillator(), gain = audio.createGain();
+        osc.type = "sine";
+        osc.frequency.value = frequency;
+        gain.gain.setValueAtTime(0.0001, now + i * 0.14);
+        gain.gain.exponentialRampToValueAtTime(0.35, now + i * 0.14 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.14 + 0.35);
+        osc.connect(gain).connect(audio.destination);
+        osc.start(now + i * 0.14);
+        osc.stop(now + i * 0.14 + 0.4);
+      });
+      if (navigator.vibrate) navigator.vibrate(60);
+    } catch {}
+  }
+
+  // ------------------------------------------------------------- Fanan AI's replies, as Sonify shows them
+  const FENCE = "`".repeat(3);
+  function replyLines(text) {
+    const lines = [];
+    let inCode = false;
+    for (const line of String(text || "").split(/\r?\n/)) {
+      if (line.trimStart().startsWith(FENCE)) inCode = !inCode;
+      else if (!inCode) lines.push(line);
+    }
+    while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+    const marked = String(text || "").includes("==");
+
+    return lines.map((original) => {
+      let line = original;
+      const trimmed = line.trimStart();
+      let kind = "";
+      if (trimmed === "---" || trimmed === "***" || trimmed === "___") line = "";
+      else if (trimmed.startsWith("#")) { line = trimmed.replace(/^#+\s*/, ""); kind = "heading"; }
+      else if (/^([-*]|•) /.test(trimmed)) { line = trimmed.slice(2); kind = "bullet"; }
+      else if (trimmed.startsWith("> ")) line = trimmed.slice(2);
+      if (!marked) line = markQuestions(line);
+      return { kind, runs: parseLine(line, kind === "heading") };
+    });
+  }
+
+  function parseLine(line, bold) {
+    const runs = [];
+    let italic = false, code = false, ask = false;
+    let current = { text: "", bold, italic, ask };
+    const flush = () => { if (current.text) runs.push(current); current = { text: "", bold, italic, ask }; };
+    const closedLater = (mark, from) => line.indexOf(mark, from) >= 0;
+
+    for (let i = 0; i < line.length;) {
+      const rest = line.slice(i);
+      if (!code && rest.startsWith("**") && (bold || closedLater("**", i + 2))) { flush(); bold = !bold; current.bold = bold; i += 2; }
+      else if (!code && rest.startsWith("==") && (ask || closedLater("==", i + 2))) { flush(); ask = !ask; current.ask = ask; i += 2; }
+      else if (line[i] === "`" && (code || closedLater("`", i + 1))) { flush(); code = !code; i += 1; }
+      else if (!code && line[i] === "*" && (italic || (i + 1 < line.length && line[i + 1] !== " " && closedLater("*", i + 1)))) { flush(); italic = !italic; current.italic = italic; i += 1; }
+      else { current.text += line[i]; i += 1; }
+    }
+    flush();
+    return runs;
+  }
+
+  function markQuestions(line) {
+    let result = "", sentence = "";
+    for (let i = 0; i < line.length; i++) {
+      sentence += line[i];
+      const end = line[i] === "." || line[i] === "!" || line[i] === "?";
+      if (end && (i + 1 === line.length || line[i + 1] === " ")) {
+        const trimmed = sentence.trim();
+        result += line[i] === "?" && trimmed ? sentence.slice(0, sentence.length - trimmed.length) + "==" + trimmed + "==" : sentence;
+        sentence = "";
+      }
+    }
+    return result + sentence;
+  }
+
+  function replyNode(text) {
+    const box = make("div");
+    for (const line of replyLines(text)) {
+      const div = make("div", "line" + (line.kind ? " " + line.kind : ""));
+      div.dir = "auto";
+      for (const run of line.runs) {
+        const span = make("span", run.ask ? "ask" : "", run.text);
+        if (run.bold) span.style.fontWeight = "700";
+        if (run.italic) span.style.fontStyle = "italic";
+        div.append(span);
+      }
+      box.append(div);
+    }
+    return box;
+  }
+
+  // ------------------------------------------------------------- long press
+  // A long press (over half a second, without moving) opens a menu; a short one is a tap. The
+  // page isn't redrawn while a finger is down, so the press isn't lost under it.
+  let pressing = false, redrawLater = false;
+  // The finger lifted anywhere (over the menu that opened, say): the press is over.
+  window.addEventListener("pointerup", () => { if (pressing) setTimeout(() => { pressing = false; if (redrawLater) { redrawLater = false; render(); } }, 0); });
+
+  function longPress(node, onLong, onTap) {
+    let timer = 0, fired = false, x = 0, y = 0;
+    const cancel = () => { clearTimeout(timer); timer = 0; node.classList.remove("pressed"); };
+    const release = () => {
+      cancel();
+      pressing = false;
+      if (redrawLater) { redrawLater = false; setTimeout(render, 0); }
+    };
+
+    node.addEventListener("pointerdown", (event) => {
+      fired = false; x = event.clientX; y = event.clientY;
+      pressing = true;
+      node.classList.add("pressed");
+      timer = setTimeout(() => {
+        fired = true;
+        timer = 0;
+        node.classList.remove("pressed");
+        pressing = false;   // the menu takes over: the page may draw again under it
+        if (navigator.vibrate) navigator.vibrate(25);
+        onLong();
+      }, 550);
+    });
+    node.addEventListener("pointermove", (event) => { if (Math.abs(event.clientX - x) > 10 || Math.abs(event.clientY - y) > 10) cancel(); });
+    node.addEventListener("pointerup", () => { const wasLong = fired; release(); if (!wasLong && onTap) onTap(); });
+    node.addEventListener("pointercancel", release);
+    node.addEventListener("pointerleave", () => { if (timer) cancel(); });
+    node.addEventListener("contextmenu", (event) => event.preventDefault());
+  }
+
+  // ------------------------------------------------------------- drawing
+  function render() {
+    if (pressing) { redrawLater = true; return; }
+
+    $("dot").className = "dot" + (online ? " on" : "");
+    $("name").textContent = online ? name : (key ? "Looking for Sonify…" : "Not paired");
+    $("bell").className = "bell" + (soundOn ? "" : " off");
+    $("bell").textContent = soundOn ? "🔔" : "🔕";
+    $("tab-chat").className = tab === "chat" ? "on" : "";
+    $("tab-shortcuts").className = tab === "shortcuts" ? "on" : "";
+    $("credits").textContent = state && typeof state.credits === "number" ? `${state.credits} credits` : "";
+    $("problem").textContent = !key ? "Scan the QR code in Sonify's AI panel to pair this phone." : problem;
+
+    const working = Boolean(state && state.busy);
+    const blocked = !online || working || pending || (request && request.reached === "sent" && request.phase !== "lost");
+    $("input").disabled = !online;
+    $("send").disabled = blocked;
+    $("footer").hidden = tab !== "chat";
+
+    const main = $("main");
+    const atBottom = main.scrollHeight - main.scrollTop - main.clientHeight < 60;
+    main.replaceChildren(tab === "chat" ? chatView() : shortcutsView());
+    if (tab === "chat" && atBottom) main.scrollTop = main.scrollHeight;
+  }
+
+  function chatView() {
+    const box = make("div");
+    const entries = (state && state.entries) || [];
+
+    if (!entries.length && !request) {
+      const empty = make("div", "empty");
+      empty.append(make("b", "", "Tell Sonify what you want in your song."), "Type it below, or press one of your shortcuts.");
+      box.append(empty);
+    }
+
+    for (const entry of entries) {
+      if (entry.role === "notice") { box.append(make("div", "notice", entry.text)); continue; }
+
+      const row = make("div", "entry " + (entry.role === "user" ? "user" : "assistant"));
+      const bubble = make("div", "bubble");
+      bubble.dir = "auto";
+
+      if (entry.role === "user") {
+        bubble.textContent = (entry.spoken ? "🎤 " : "") + entry.text;
+        longPress(bubble, () => messageMenu(entry.text));
+      } else {
+        for (const step of entry.steps || []) bubble.append(make("div", "step", step));
+        bubble.append(replyNode(entry.text));
+      }
+
+      row.append(bubble);
+      box.append(row);
+    }
+
+    // The request on its way, until Sonify has it.
+    if (request && (request.reached === "sent" || request.phase === "lost")) {
+      const row = make("div", "entry user");
+      const bubble = make("div", "bubble faded", request.text);
+      bubble.dir = "auto";
+      row.append(bubble);
+      box.append(row);
+    }
+
+    if (request) box.append(statusView());
+
+    if (state && state.busy) {
+      const stop = make("button", "stop", "Stop");
+      stop.type = "button";
+      stop.addEventListener("click", () => send("stop", ""));
+      box.append(stop);
+    }
+
+    return box;
+  }
+
+  function statusView() {
+    const line = make("div", "status");
+    const phase = request.phase;
+
+    if (phase === "sent") line.append(make("div", "spinner"), "Message sent");
+    else if (phase === "arrived") line.append(make("div", "spinner"), "Message arrived");
+    else if (phase === "generating") line.append(make("div", "spinner"), "Sonify is generating an answer…");
+    else if (phase === "received") { line.classList.add("done"); line.append("✓ Message received"); }
+    else if (phase === "lost") {
+      line.classList.add("problem");
+      const again = make("button", "", "Try again");
+      again.type = "button";
+      again.addEventListener("click", () => { const text = request.text; request = null; send("ask", text); });
+      line.append("Sonify didn't get that.", again);
+    }
+
+    return line;
+  }
+
+  function shortcutsView() {
+    const box = make("div", "shortcuts");
+    const list = (state && state.shortcuts) || [];
+
+    if (!list.length) {
+      const empty = make("div", "empty");
+      empty.style.gridColumn = "1 / -1";
+      empty.style.marginTop = "18%";
+      empty.append(make("b", "", "No shortcuts yet."), "Save a text you send often (the ☆ by the chat's box, or New shortcut), and it's a button here.");
+      box.append(empty);
+    }
+
+    for (const item of list) {
+      const button = make("button", "shortcut");
+      button.type = "button";
+      button.dir = "auto";
+      if (item.name) button.append(make("div", "name", item.name));
+      button.append(make("div", "words", item.text));
+      longPress(button, () => shortcutMenu(item), () => confirmSend(item));
+
+      const remove = make("button", "remove", "✕");
+      remove.type = "button";
+      remove.setAttribute("aria-label", "Delete this shortcut");
+      remove.addEventListener("pointerdown", (event) => event.stopPropagation());
+      remove.addEventListener("pointerup", (event) => event.stopPropagation());
+      remove.addEventListener("click", (event) => { event.stopPropagation(); confirmDelete(item); });
+      button.append(remove);
+      box.append(button);
+    }
+
+    const add = make("button", "add", "+ New shortcut");
+    add.type = "button";
+    add.addEventListener("click", () => editShortcut(""));
+    box.append(add);
+    return box;
+  }
+
+  // ------------------------------------------------------------- sheets
+  function sheet(build) {
+    const box = $("sheet");
+    box.replaceChildren();
+    build(box);
+    $("modal").hidden = false;
+  }
+  function closeSheet() { $("modal").hidden = true; }
+  $("modal").addEventListener("click", (event) => { if (event.target === $("modal")) closeSheet(); });
+
+  function choices(noText, yesText, onYes) {
+    const row = make("div", "choices");
+    const no = make("button", "", noText), yes = make("button", "yes", yesText);
+    no.type = yes.type = "button";
+    no.addEventListener("click", closeSheet);
+    yes.addEventListener("click", () => { closeSheet(); onYes(); });
+    row.append(no, yes);
+    return row;
+  }
+
+  function confirmSend(item) {
+    const working = Boolean(state && state.busy) || pending || (request && request.reached === "sent" && request.phase !== "lost");
+
+    sheet((box) => {
+      box.append(make("h2", "", working ? "Sonify is still busy" : "Send this to Sonify?"));
+      const quote = make("div", "quote", item.text);
+      quote.dir = "auto";
+      box.append(quote);
+      if (working) box.append(choices("Close", "Stop it", () => send("stop", "")));
+      else box.append(choices("No", "Yes, send", async () => { tab = "chat"; render(); await send("ask", item.text); }));
+    });
+  }
+
+  function menu(title, items) {
+    sheet((box) => {
+      const heading = make("h2", "", title);
+      heading.dir = "auto";
+      heading.style.overflow = "hidden";
+      heading.style.textOverflow = "ellipsis";
+      heading.style.whiteSpace = "nowrap";
+      box.append(heading);
+      for (const [label, action, danger] of items) {
+        const button = make("button", "menu-item" + (danger ? " danger" : ""), label);
+        button.type = "button";
+        button.addEventListener("click", () => { closeSheet(); action(); });
+        box.append(button);
+      }
+      const cancel = make("button", "menu-item", "Cancel");
+      cancel.type = "button";
+      cancel.style.textAlign = "center";
+      cancel.addEventListener("click", closeSheet);
+      box.append(cancel);
+    });
+  }
+
+  // A message of the user's, held down.
+  function messageMenu(text) {
+    menu(text, [
+      ["☆  Add to shortcuts", () => editShortcut(text)],
+      ["↻  Send again", () => confirmSend({ text })],
+      ["⧉  Copy", () => copyText(text)],
+    ]);
+  }
+
+  // A shortcut, held down.
+  function shortcutMenu(item) {
+    menu(item.name || item.text, [
+      ["➤  Send", () => confirmSend(item)],
+      ["✎  Edit", () => editShortcut(item.text, item)],
+      ["✕  Delete", () => confirmDelete(item), true],
+    ]);
+  }
+
+  function copyText(text) {
+    const done = () => toast("Copied");
+    if (navigator.clipboard && window.isSecureContext)
+      navigator.clipboard.writeText(text).then(done, () => fallback());
+    else fallback();
+
+    function fallback() {
+      const area = make("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.append(area);
+      area.select();
+      try { document.execCommand("copy"); done(); } catch { toast("Couldn't copy"); }
+      area.remove();
+    }
+  }
+
+  function confirmDelete(item) {
+    sheet((box) => {
+      box.append(make("h2", "", "Delete this shortcut?"));
+      const quote = make("div", "quote", (item.name ? item.name + "\n" : "") + item.text);
+      quote.dir = "auto";
+      box.append(quote);
+      box.append(choices("No", "Delete", async () => { if (await send("shortcut_delete", item.id)) toast("Shortcut deleted"); }));
+    });
+  }
+
+  function editShortcut(text, existing) {
+    sheet((box) => {
+      box.append(make("h2", "", existing ? "Edit the shortcut" : "Save as a shortcut"));
+      const words = make("textarea");
+      words.value = text;
+      words.dir = "auto";
+      words.placeholder = "What it sends to Sonify";
+      const label1 = make("label", "", "Text");
+      const nameField = make("input");
+      nameField.dir = "auto";
+      nameField.maxLength = 40;
+      nameField.placeholder = "Button name (optional)";
+      if (existing) nameField.value = existing.name || "";
+      const label2 = make("label", "", "Name");
+      box.append(label1, words, label2, nameField);
+      box.append(choices("Cancel", "Save", async () => {
+        const value = words.value.trim();
+        if (!value) return;
+        if (!(await send("shortcut_save", value, { name: nameField.value.trim() }))) return;
+        // Its words changed: the new one is saved, the old one goes.
+        if (existing && existing.text !== value) await sendWhenFree("shortcut_delete", existing.id);
+        toast("Shortcut saved");
+      }));
+      setTimeout(() => (text ? nameField : words).focus(), 50);
+    });
+  }
+
+  let toastTimer = 0;
+  function toast(text) {
+    $("toast").textContent = text;
+    $("toast").hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => ($("toast").hidden = true), 1800);
+  }
+
+  // ------------------------------------------------------------- controls
+  async function sendTyped() {
+    const box = $("input");
+    const text = box.value.trim();
+    if (!text || $("send").disabled) return;
+    box.value = "";
+    if (!(await send("ask", text))) box.value = text;   // kept, to try again
+  }
+
+  $("send").addEventListener("click", sendTyped);
+  $("input").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendTyped(); }
+  });
+  $("star").addEventListener("click", () => editShortcut($("input").value.trim()));
+  $("tab-chat").addEventListener("click", () => { tab = "chat"; render(); });
+  $("tab-shortcuts").addEventListener("click", () => { tab = "shortcuts"; render(); });
+  $("bell").addEventListener("click", () => {
+    soundOn = !soundOn;
+    store.set("sonify-remote-sound", soundOn ? "on" : "off");
+    unlockAudio();
+    if (soundOn) chime();
+    render();
+  });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
+
+  render();
+  if (key) { poll(); setInterval(poll, 800); }
+})();
+</script>
+</body>
+</html>

@@ -4,6 +4,7 @@
 
 #include "StellaRuntimeData.h"
 #include "DeviceFiles.h"   // Sonify's compiler, shared with its devices
+#include "SourceGuard.h"
 
 #include <atomic>
 #include <chrono>
@@ -309,6 +310,17 @@ juce::File WasmCompiler::findCompiler()
 }
 
 //==============================================================================
+juce::String WasmCompiler::checkSources (const juce::File& projectFolder)
+{
+    // The compiler reads whatever file a source names, and its messages go back to Fanan AI:
+    // nothing outside the project gets read that way.
+    for (const auto& folder : { projectFolder.getChildFile ("modules"), projectFolder.getChildFile (elementsFolderName) })
+        if (const auto problem = SourceGuard::problemInFolder (folder, projectFolder); problem.isNotEmpty())
+            return problem;
+
+    return {};
+}
+
 juce::Result WasmCompiler::generateGraphSource (const juce::File& graphFile, juce::String& source)
 {
     juce::var graph;
@@ -437,6 +449,12 @@ WasmCompiler::Result WasmCompiler::compileElements (const juce::File& projectFol
         return result;
     }
 
+    if (const auto problem = checkSources (projectFolder); problem.isNotEmpty())
+    {
+        result.log = problem;
+        return result;
+    }
+
     const auto studioTemp = workRoot();
     const auto work = studioTemp.getChildFile ("build-" + juce::File::createLegalFileName (projectId));
     const auto runtime = studioTemp.getChildFile ("element-runtime");
@@ -559,6 +577,12 @@ WasmCompiler::Result WasmCompiler::compile (const juce::File& projectFolder, con
     if (sdk == juce::File())
     {
         result.log = missingCompiler;
+        return result;
+    }
+
+    if (const auto problem = checkSources (projectFolder); problem.isNotEmpty())
+    {
+        result.log = problem;
         return result;
     }
 

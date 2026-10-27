@@ -6,8 +6,9 @@ Open the **Stella AI Cloud** app on Base44 and paste into its AI chat:
 - **Part 1** is done: it's in the app and tested. It's kept here for the record; don't paste it again.
 - **Part 2**, the page, typing only: paste it now. It needs no new secret and adds no fees. On the phone, talking still works through the keyboard's own mic key.
 - **Part 3**, a talk button on the page itself: later, only if you want it. It uses the paid speech service: paste `base44_sonify_listen_prompt.md` first (it adds the `OPENAI_API_KEY` secret), then Part 3.
+- **Part 4**, shortcuts, where the request is, the sound when an answer arrives, long-press menus and Fanan's logo: paste it after Part 2 (now, if Part 2 is in). Upload `assets\fanan logo.png` to the chat with it. It matches the page Sonify itself serves to phones in the studio (`phone-remote.html`).
 
-Until Sonify has its **Phone remote** switch, the page just waits for Sonify.
+Sonify's AI panel has the **Phone remote** switch: in the studio the phone scans its QR code (no Base44 involved); away, it opens `/sonify` here.
 
 ---
 
@@ -637,3 +638,76 @@ function toBase64(bytes) {
 **3. Nothing else changes.**
 
 **4. Check it:** on a phone, signed in, with Sonify's Phone remote on: tap the mic, allow the microphone, say "add a reverb to the vocals", then tap again. The words show as your bubble with a mic icon, and Sonify AI does it.
+
+---
+
+## Part 4: paste this after Part 2 (shortcuts, request status, sound)
+
+Update **Sonify Remote**: the page `/sonify` gets shortcuts (texts the user saved as buttons, kept in Sonify so every phone has the same), shows where the last request is, and plays a sound when the answer arrives. Two small changes to the functions from Part 1, then the page.
+
+**1. `sonifyRemote`:** change only this line
+
+```ts
+        request = { id: remote.request_id, kind: remote.request_kind === 'stop' ? 'stop' : 'ask', text: remote.request_text || '',
+```
+
+to
+
+```ts
+        request = { id: remote.request_id, kind: ['stop', 'shortcut_save', 'shortcut_delete'].includes(remote.request_kind) ? remote.request_kind : 'ask', text: remote.request_text || '',
+```
+
+**2. `sonifyRemotePage`:** in the `send` action, replace these lines
+
+```ts
+      const kind = body?.kind === 'stop' ? 'stop' : 'ask';
+      const text = String(body?.text ?? '').trim().slice(0, MAX_TEXT);
+
+      if (kind === 'ask' && !text)
+        return refuse('invalid', 'Say or type something first.');
+
+      if (kind === 'ask' && isWaiting(remote))
+        return refuse('busy', "Sonify hasn't picked up the last request yet. Try again in a moment.");
+
+      const id = crypto.randomUUID();
+      await remotes.update(remote.id, { request_id: id, request_kind: kind, request_text: kind === 'ask' ? text : '',
+                                        request_spoken: kind === 'ask' && body?.spoken === true, request_at: now });
+```
+
+with
+
+```ts
+      // ask (text), stop, shortcut_save (text: the shortcut's words, name: its button's) or shortcut_delete (text: its id)
+      const kind = ['stop', 'shortcut_save', 'shortcut_delete'].includes(body?.kind) ? body.kind : 'ask';
+      const text = String(body?.text ?? '').trim().slice(0, MAX_TEXT);
+
+      if (kind !== 'stop' && !text)
+        return refuse('invalid', kind === 'ask' ? 'Say or type something first.' : 'That shortcut is empty.');
+
+      if (kind !== 'stop' && isWaiting(remote))
+        return refuse('busy', "Sonify hasn't picked up the last request yet. Try again in a moment.");
+
+      // A shortcut to save travels as its words and name together.
+      const requestText = kind === 'stop' ? ''
+                        : kind === 'shortcut_save' ? JSON.stringify({ text: text.slice(0, 300), name: String(body?.name ?? '').trim().slice(0, 40) })
+                        : text;
+
+      const id = crypto.randomUUID();
+      await remotes.update(remote.id, { request_id: id, request_kind: kind, request_text: requestText,
+                                        request_spoken: kind === 'ask' && body?.spoken === true, request_at: now });
+```
+
+Nothing else in the functions changes.
+
+**3. The page `/sonify`:**
+- **What `state` holds now** also has `shortcuts`: `[{ "id": "...", "name": "Mute drums", "text": "mute the drums" }]` (`name` may be empty).
+- **Two tabs** under the header, full width, big: **CHAT** (everything the page shows now) and **SHORTCUTS**. The selected one is the green of the user's bubbles (#275533). The input bar shows only on CHAT.
+- **SHORTCUTS:** the shortcuts as big buttons, two per row (panel colour, rounded): the `name` in bold when there is one, the `text` under it in quiet text (three lines at most). A tap opens a sheet from the bottom: "Send this to Sonify?", the text in a box, and two big buttons, **No** and **Yes, send** (green). Yes switches to CHAT and sends it as `{"action": "send", "remote": <id>, "kind": "ask", "text": <its text>}`, exactly as if typed. While `busy` or `pending`, the sheet says "Sonify is still busy" with **Close** and **Stop it** (which sends `kind: "stop"`). Each shortcut has a small ✕ in its corner: a sheet "Delete this shortcut?" with **No** and **Delete**, which sends `{"action": "send", "remote": <id>, "kind": "shortcut_delete", "text": <its id>}`. Under them, a dashed full-width button "+ New shortcut". With none: "No shortcuts yet." and, in quiet text, "Save a text you send often (the ☆ by the chat's box, or New shortcut), and it's a button here."
+- **Saving a shortcut:** a ☆ button at the start of the input bar, and "+ New shortcut", open a sheet "Save as a shortcut" with a **Text** box (the input bar's text, when the ☆ opened it) and an optional **Name** (40 characters at most), and **Cancel** / **Save**. Save sends `{"action": "send", "remote": <id>, "kind": "shortcut_save", "text": <the text>, "name": <the name>}`, then shows "Shortcut saved" for a moment. The new button appears with the next `state`.
+- **Where the request is:** under the conversation, right-aligned in small quiet text, a line for the last request sent with `kind: "ask"`, each step shown for 0.7 seconds at least: "Message sent" (with a small spinner) once `send` answers its `id`; "Message arrived" when `state.taken` equals that `id`; "Sonify is generating an answer…" while `busy` after that; "✓ Message received" (green) when `busy` is false again and the newest assistant entry is a different one from before the request. "Sonify didn't get that." with Try again replaces it as it does now.
+- **Long press (over half a second, without moving):** on one of the user's own bubbles, a sheet from the bottom with its text as the title and big rows: **☆ Add to shortcuts** (the "Save as a shortcut" sheet with that text), **↻ Send again** (the "Send this to Sonify?" sheet), **⧉ Copy**, and **Cancel**. On a shortcut: **➤ Send** (the "Send this to Sonify?" sheet), **✎ Edit** ("Edit the shortcut", its text and name filled in; Save saves it with `shortcut_save`, and when its text changed also sends `shortcut_delete` with the old one's id, once Sonify has taken the save), **✕ Delete** (red, the "Delete this shortcut?" sheet), and **Cancel**. A short tap on a shortcut stays "Send this to Sonify?". The bubbles and shortcuts don't select text or open the phone's own menu on a long press, and the page doesn't redraw them while a finger is down.
+- **The header:** "Sonify Remote", then "by" in quiet text, then Fanan's logo (the image uploaded with this prompt) at the height of the "Sonify Remote" text, all on one line.
+- **The sound:** a round 🔔 button at the top right of the header turns it on or off (🔕 when off, faded; on at first; remembered on this phone). When "✓ Message received" shows and it's on: a short two-note chime (880 Hz then 1318 Hz, sine, about 0.35 s each, quiet), and a short vibration where the phone can. Make the page's audio context on the first tap anywhere, so the phone lets it play later.
+- **Nothing else changes.**
+
+**4. Check it:** on a phone with Sonify's Phone remote on: send "mute the drums", long-press its bubble and Add to shortcuts, find it on SHORTCUTS, tap it and say Yes. The status goes "Message sent", "Message arrived", "Sonify is generating an answer…", "✓ Message received", with the chime. Long-press the shortcut: Edit and Delete work.

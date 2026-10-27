@@ -58,6 +58,28 @@
     $("setup-buffer").textContent = open ? `${s.bufferSize} samples` : "–";
   }
 
+  /** The leading colour's swatches (Hub.ACCENTS): one picked, kept in the settings. */
+  function renderColours() {
+    const box = $("start-colours");
+    for (const dot of box.querySelectorAll(".colour-dot")) dot.remove();
+    for (const [key, set] of Object.entries(Hub.ACCENTS)) {
+      const dot = element("button", "colour-dot");
+      dot.type = "button";
+      dot.setAttribute("role", "radio");
+      dot.setAttribute("aria-label", set.name);
+      dot.title = set.name;
+      dot.style.setProperty("--dot", set.main);
+      dot.dataset.accent = key;
+      dot.setAttribute("aria-checked", String(Hub.theme.accentName === key));
+      dot.addEventListener("click", () => {
+        if (Hub.theme.accentName === key) return;
+        Hub.setAppearance({ accent: key });
+        Hub.send("setPreference", { accent: key });
+      });
+      box.append(dot);
+    }
+  }
+
   function showStart(show) {
     $("start-page").hidden = !show;
     if (show) {
@@ -159,6 +181,11 @@
 
   Hub.on("status", (s) => { if (!$("start-page").hidden) renderSetup(s); });
 
+  Hub.on("theme", (theme) => {
+    for (const dot of document.querySelectorAll("#start-colours .colour-dot"))
+      dot.setAttribute("aria-checked", String(dot.dataset.accent === theme.accentName));
+  });
+
   // The view settings reach the engine a moment after they change, ready for the next save.
   Hub.on("viewChanged", () => {
     clearTimeout(viewTimer);
@@ -171,6 +198,7 @@
     $("start-close").addEventListener("click", closeStart);
     $("start-search").addEventListener("input", renderRecent);
     $("setup-configure").addEventListener("click", () => Hub.run("audioSetup"));
+    renderColours();
 
     $("new-song-ok").addEventListener("click", createSong);
     $("new-song-cancel").addEventListener("click", () => { $("new-song").hidden = true; });

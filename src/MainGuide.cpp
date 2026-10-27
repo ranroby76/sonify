@@ -12,6 +12,9 @@
 // The page sends "guide" events: { action: "ask", text, reading } (reading: the chapter it has
 // open, "Tab > Chapter"), { action: "stop" } and { action: "clear" }. Sonify sends "guideState":
 // the conversation, whether a question is under way, and the account (as the AI panels have it).
+//
+// "Translate this page to": { action: "translate", id, language, text } (one chapter's Markdown);
+// Sonify answers with "guideTranslation": { id, ok, text } (the translation, or why not).
 
 namespace
 {
@@ -38,6 +41,17 @@ void MainComponent::setupGuide()
 {
     guideAi = std::make_unique<GuideAi> (*server, guideText());
     guideAi->onChanged = [this] { pushGuide(); };
+    guideAi->onTranslated = [this] (int id, bool ok, const juce::String& textOrError)
+    {
+        if (webView == nullptr)
+            return;
+
+        auto result = new juce::DynamicObject();
+        result->setProperty ("id", id);
+        result->setProperty ("ok", ok);
+        result->setProperty ("text", textOrError);
+        webView->emitEventIfBrowserIsVisible ("guideTranslation", juce::var (result));
+    };
 }
 
 void MainComponent::handleGuide (const juce::var& event)
@@ -49,6 +63,9 @@ void MainComponent::handleGuide (const juce::var& event)
 
     if (action == "ask")
         guideAi->ask (event.getProperty ("text", {}).toString(), event.getProperty ("reading", {}).toString());
+    else if (action == "translate")
+        guideAi->translate ((int) event.getProperty ("id", 0), event.getProperty ("language", {}).toString(),
+                            event.getProperty ("text", {}).toString());
     else if (action == "stop")
         guideAi->stop();
     else if (action == "clear")

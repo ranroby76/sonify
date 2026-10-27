@@ -806,6 +806,13 @@ PluginExporter::Result PluginExporter::exportPlugins (const Request& request)
         return result;
     }
 
+    // The project's code brings in nothing of the computer's (as for every build).
+    if (const auto problem = WasmCompiler::checkSources (request.projectFolder); problem.isNotEmpty())
+    {
+        result.log = problem;
+        return result;
+    }
+
     const auto compiler = compilerCommand();
     const auto clapHeaders = findClapHeaders();
     const auto vst3Headers = findVst3Headers();

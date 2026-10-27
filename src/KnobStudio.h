@@ -64,6 +64,24 @@ public:
     /** KnobMaker: opens a knob from a file, a Sonify knob (.fklayers) or a KnobMan one (.knob). */
     void openKnobFile (const juce::File& file);
 
+    //==========================================================================
+    /** The Gallery (every knob, slider and switch in a folder, as pictures; at first the KnobMan
+        gallery's downloads) in a window of its own, beside near. A double-click (or Open) gives
+        onPick the file; closeOnPick: the window goes then (one pick), else it stays (several).
+        dragOut: its items can also be dragged out onto Edit UI's window (galleryDrag). */
+    static void showGallery (const juce::String& title, std::function<void (const juce::File&)> onPick,
+                             bool closeOnPick, bool dragOut, juce::Component* near = nullptr);
+
+    /** A gallery item dragged out: its drag description, and the file back from one ("" when it isn't). */
+    static juce::var galleryDrag (const juce::File& file);
+    static juce::File galleryDragFile (const juce::var& description);
+
+    /** A gallery file (a KnobMan .knob or a Sonify .fklayers) as a look: its drawing, what it's
+        for, and its credits (a KnobMan gallery download's author and licence). commercialSafe:
+        whether its licence allows it in a plugin that's sold. False, with error, when it can't be read. */
+    static bool readGalleryItem (const juce::File& file, LayerDoc& doc, Looks::Kind& kind,
+                                 juce::String& credits, bool& commercialSafe, juce::String& error);
+
     std::function<void (int widgetIndex, const juce::String& lookName)> onUseLook;   // a control takes a look
     std::function<juce::String (int widgetIndex)> onGiveOwnLook;                       // returns the new look's name
     std::function<void()> onBack;

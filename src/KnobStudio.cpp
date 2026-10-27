@@ -65,14 +65,47 @@ namespace
     }
 
     //==========================================================================
+    /** A KnobMan gallery download's credits (its author and licence), when the file is one. */
+    juce::String galleryCredits (const juce::File& file, bool& commercialSafe)
+    {
+        commercialSafe = true;
+        const auto stem = file.getFileNameWithoutExtension();
+
+        if (file.getParentDirectory() != GalleryLibrary::knobDir() || ! stem.containsOnly ("0123456789"))
+            return {};
+
+        for (const auto& known : GalleryLibrary::loadIndex())
+        {
+            if (known.id != stem.getIntValue())
+                continue;
+
+            commercialSafe = known.isCommercialSafe();
+            return "From the KnobMan gallery (#" + juce::String (known.id) + ")"
+                 + (known.author.isNotEmpty() ? ", by " + known.author : juce::String())
+                 + ". Licence: " + (known.licence.isNotEmpty() ? known.licence : juce::String ("not given")) + ".";
+        }
+
+        return {};
+    }
+
+    constexpr const char* galleryDragPrefix = "sonify-gallery-item:";
+
+    //==========================================================================
     /** KnobMaker's Gallery: every knob in a folder (KnobMan's .knob and Sonify's .fklayers, in
         its folders too) as a picture with its name; double-click one (or Open) to open it. The
-        folder is remembered; at first it's the KnobMan gallery's downloads. */
-    class KnobGallery final : public juce::Component, private juce::Timer
+        folder is remembered; at first it's the KnobMan gallery's downloads. In Edit UI its items
+        can also be dragged out onto the plugin's window (dragOut). */
+    class KnobGallery final : public juce::Component,
+                              public juce::DragAndDropContainer,
+                              private juce::Timer
     {
     public:
-        explicit KnobGallery (std::function<void (const juce::File&)> open) : onOpen (std::move (open))
+        explicit KnobGallery (std::function<void (const juce::File&)> open, bool closeWhenOpened = true, bool canDragOut = false)
+            : onOpen (std::move (open)), closeOnOpen (closeWhenOpened), dragOut (canDragOut)
         {
+            if (dragOut)
+                openButton.setButtonText ("Add");
+
             folderButton.onClick = [this] { chooseFolder(); };
             openButton.onClick = [this] { openSelected(); };
             exportButton.setTooltip ("Every KnobMan knob (.knob) in this folder saved as a Sonify knob (.fklayers) into a folder you choose");
@@ -122,6 +155,7 @@ namespace
             juce::File file;
             juce::String name;
             juce::String about;   // a KnobMan gallery download's author and licence
+            bool commercialSafe = true;   // ...whether that licence allows selling
             juce::Image picture;
             bool tried = false;
         };
@@ -180,6 +214,17 @@ namespace
                     g.setColour (Theme::text);
                     g.setFont (Theme::font (12.0f));
                     g.drawText (item.name, r.withTop (r.getBottom() - 24).reduced (6, 0), juce::Justification::centred, true);
+
+                    // A licence that doesn't allow selling: marked, so it's seen before it's used.
+                    if (! item.commercialSafe)
+                    {
+                        const auto badge = r.reduced (6).removeFromTop (16).removeFromRight (30);
+                        g.setColour (juce::Colour (0xffb3362c));
+                        g.fillRoundedRectangle (badge.toFloat(), 3.0f);
+                        g.setColour (juce::Colours::white);
+                        g.setFont (Theme::font (10.0f, true));
+                        g.drawText ("NC", badge, juce::Justification::centred);
+                    }
                 }
             }
 
@@ -187,8 +232,29 @@ namespace
             {
                 owner->selected = owner->tileAt (e.getPosition());
                 owner->openButton.setEnabled (owner->selected >= 0);
+                dragging = false;
                 repaint();
             }
+
+            // In Edit UI: an item dragged out, onto the plugin's window (into another window too).
+            void mouseDrag (const juce::MouseEvent& e) override
+            {
+                if (! owner->dragOut || dragging || e.getDistanceFromDragStart() < 6
+                    || ! juce::isPositiveAndBelow (owner->selected, (int) owner->shown.size()))
+                    return;
+
+                dragging = true;
+                const auto& item = owner->items[(size_t) owner->shown[(size_t) owner->selected]];
+                auto image = item.picture.isValid() ? item.picture : juce::Image (juce::Image::ARGB, 64, 64, true);
+                const auto side = (float) juce::jmax (image.getWidth(), image.getHeight());
+                image = image.rescaled (juce::jmax (1, juce::roundToInt ((float) image.getWidth() * 72.0f / side)),
+                                        juce::jmax (1, juce::roundToInt ((float) image.getHeight() * 72.0f / side)),
+                                        juce::Graphics::highResamplingQuality);
+                const juce::Point<int> offset (-image.getWidth() / 2, -image.getHeight() / 2);
+                owner->startDragging (KnobStudio::galleryDrag (item.file), this, juce::ScaledImage (image), true, &offset);
+            }
+
+            bool dragging = false;
 
             void mouseDoubleClick (const juce::MouseEvent& e) override
             {
@@ -253,6 +319,7 @@ namespace
                         item.about = "From the KnobMan gallery (#" + juce::String (known.id) + ")"
                                    + (known.author.isNotEmpty() ? ", by " + known.author : juce::String())
                                    + ". Licence: " + (known.licence.isNotEmpty() ? known.licence : juce::String ("not given")) + ".";
+                        item.commercialSafe = known.isCommercialSafe();
                     }
 
                     items.push_back (std::move (item));
@@ -490,11 +557,13 @@ namespace
             if (onOpen != nullptr)
                 onOpen (file);
 
-            if (auto* window = findParentComponentOfClass<juce::DialogWindow>())
-                window->exitModalState (0);
+            if (closeOnOpen)
+                if (auto* window = findParentComponentOfClass<juce::DialogWindow>())
+                    window->exitModalState (0);
         }
 
         std::function<void (const juce::File&)> onOpen;
+        bool closeOnOpen = true, dragOut = false;
         juce::File folder;
         std::vector<Item> items;
         std::vector<int> shown;
@@ -952,20 +1021,80 @@ void KnobStudio::saveKnobFile()
 
 void KnobStudio::openGallery()
 {
-    auto gallery = std::make_unique<KnobGallery> ([safeThis = juce::Component::SafePointer<KnobStudio> (this)] (const juce::File& file)
+    showGallery ("Gallery", [safeThis = juce::Component::SafePointer<KnobStudio> (this)] (const juce::File& file)
     {
         if (safeThis != nullptr)
             safeThis->openKnobFile (file);
-    });
+    }, true, false, this);
+}
+
+void KnobStudio::showGallery (const juce::String& title, std::function<void (const juce::File&)> onPick,
+                              bool closeOnPick, bool dragOut, juce::Component* near)
+{
+    auto gallery = std::make_unique<KnobGallery> (std::move (onPick), closeOnPick, dragOut);
 
     juce::DialogWindow::LaunchOptions options;
     options.content.setOwned (gallery.release());
-    options.dialogTitle = "Gallery";
+    options.dialogTitle = title;
     options.dialogBackgroundColour = Theme::panel;
     options.escapeKeyTriggersCloseButton = true;
     options.useNativeTitleBar = true;
     options.resizable = true;
+    options.componentToCentreAround = near;
     options.launchAsync();
+}
+
+juce::var KnobStudio::galleryDrag (const juce::File& file)
+{
+    return juce::String (galleryDragPrefix) + file.getFullPathName();
+}
+
+juce::File KnobStudio::galleryDragFile (const juce::var& description)
+{
+    const auto text = description.toString();
+
+    if (! text.startsWith (galleryDragPrefix))
+        return {};
+
+    const juce::File file (text.fromFirstOccurrenceOf (galleryDragPrefix, false, false));
+    return file.existsAsFile() ? file : juce::File();
+}
+
+bool KnobStudio::readGalleryItem (const juce::File& file, LayerDoc& doc, Looks::Kind& kind,
+                                  juce::String& credits, bool& commercialSafe, juce::String& error)
+{
+    commercialSafe = true;
+
+    if (file.hasFileExtension ("knob"))
+    {
+        const auto result = KnobFile::parseFile (file);
+
+        if (! result.ok)
+        {
+            error = result.error;
+            return false;
+        }
+
+        doc = result.document;
+        kind = kindOfDoc (doc);
+        credits = galleryCredits (file, commercialSafe);
+        return true;
+    }
+
+    Looks::Look look;
+
+    if (! Looks::readFile (file, look))
+    {
+        error = "it isn't a KnobMan or Sonify knob";
+        return false;
+    }
+
+    doc = look.doc;
+    kind = look.kind;
+    credits = look.description;
+    commercialSafe = ! credits.containsIgnoreCase ("Licence: CC BY-NC") && ! credits.containsIgnoreCase ("-NC")
+                     && ! credits.containsIgnoreCase ("-ND");
+    return true;
 }
 
 juce::String KnobStudio::ownerName() const

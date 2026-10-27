@@ -9,6 +9,8 @@
 //   Format            WAV (16 bit, 24 bit or 32 bit float), FLAC (16 or 24 bit, lossless),
 //                     MP3 or OGG Vorbis (128 to 320 kbps)
 //   Sample Rate       the device's, or converted to another (MP3 is 48 kHz at most)
+//   Mastering         while the Mastering section is in: Main's mix with it, without it, or
+//                     both (the one without as "<name> (unmastered)")
 //   Range             the whole song, or between the loop's locators
 //   Tail              seconds after the range for effects to ring out
 // A progress window follows, with Cancel; then the file (or the stems' folder), and Show in Explorer.
@@ -22,7 +24,7 @@
   let song = { name: "", mixdownFolder: "" };
   let folder = "", folderChosen = false, running = false, lastFile = "";
   let mode = "mixdown";                                   // or "stems"
-  const last = { format: "wav", bits: "24", kbps: "320", main: false, unchecked: new Set() };
+  const last = { format: "wav", bits: "24", kbps: "320", main: false, mastering: "on", unchecked: new Set() };
 
   /** Where the song ends: its last clip or envelope point. */
   function songEnd() {
@@ -126,6 +128,8 @@
     showQuality();
 
     $("export-stems").hidden = mode !== "stems";
+    $("export-mastering-row").hidden = !Hub.state.masteringOn;
+    $("export-mastering").value = last.mastering;
     $("export-main").checked = last.main;
     if (mode === "stems") fillStems();
 
@@ -172,6 +176,7 @@
     last.format = $("export-format").value;
     last.bits = $("export-bits").value;
     last.kbps = $("export-kbps").value;
+    last.mastering = $("export-mastering").value;
     if (mode === "stems") {
       last.main = $("export-main").checked;
       for (const box of stemBoxes()) {
@@ -201,7 +206,8 @@
       rate: Number($("export-rate").value),
       range: range.value,
       tail: Math.min(30, Math.max(0, Number($("export-tail").value) || 0)),
-      reveal: $("export-reveal").checked
+      reveal: $("export-reveal").checked,
+      mastering: Hub.state.masteringOn ? $("export-mastering").value : "on"
     };
 
     if (mode === "stems") {

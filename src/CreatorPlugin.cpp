@@ -5,8 +5,10 @@
 #include "GuiLayout.h"
 #include "Looks.h"
 #include "PluginCanvas.h"
+#include "PluginHeader.h"
 #include "PresetBank.h"
 #include "Settings.h"
+#include "SipFiles.h"
 #include "StellaLookAndFeel.h"
 #include "WasmCompiler.h"
 #include "WasmElements.h"
@@ -113,26 +115,55 @@ namespace
 //==============================================================================
 juce::File MadePlugins::folder()
 {
-    return Settings::getDataFolder().getChildFile ("Plugins");
+    return Sip::folder();
 }
 
 bool MadePlugins::isMadeFile (const juce::String& path)
 {
-    return path.trimCharactersAtEnd ("\\/").endsWithIgnoreCase (extension);
+    const auto trimmed = path.trimCharactersAtEnd ("\\/");
+    return trimmed.endsWithIgnoreCase (extension) || trimmed.endsWithIgnoreCase (folderExtension);
+}
+
+namespace
+{
+    /** A made plugin's plugin.json: in its .sip, or in its old folder. */
+    juce::var infoOf (const juce::File& pluginFile)
+    {
+        if (Sip::isSipFile (pluginFile))
+        {
+            juce::MemoryBlock data;
+
+            if (! Sip::readEntry (pluginFile, infoFileName, data, 65536))
+                return {};
+
+            return juce::JSON::parse (juce::String::fromUTF8 (static_cast<const char*> (data.getData()), (int) data.getSize()));
+        }
+
+        return juce::JSON::parse (pluginFile.getChildFile (infoFileName));
+    }
+
+    /** What the .sip says it is, from a made plugin's plugin.json. */
+    Sip::Manifest manifestOf (const juce::var& info)
+    {
+        Sip::Manifest manifest;
+        const auto kind = info.getProperty ("kind", "instrument").toString();
+        manifest.kind = kind == "instrument" ? Sip::Kind::instrument : Sip::Kind::fx;
+
+        if (kind == "widget")
+            manifest.tags.add ("utility");
+
+        manifest.id = info.getProperty ("id", {}).toString();
+        manifest.name = info.getProperty ("name", {}).toString();
+        manifest.vendor = info.getProperty ("vendor", {}).toString();
+        manifest.version = juce::jmax (1, (int) info.getProperty ("version", 1));
+        return manifest;
+    }
 }
 
 juce::Array<juce::File> MadePlugins::installed()
 {
-    juce::Array<juce::File> found;
-    const auto home = folder();
-
-    if (! home.isDirectory())
-        return found;
-
-    for (const auto& item : juce::RangedDirectoryIterator (home, false, juce::String ("*") + extension, juce::File::findDirectories))
-        if (item.getFile().getChildFile (infoFileName).existsAsFile())
-            found.add (item.getFile());
-
+    auto found = Sip::list (Sip::Kind::instrument);
+    found.addArray (Sip::list (Sip::Kind::fx));
     found.sort();
     return found;
 }
@@ -140,12 +171,8 @@ juce::Array<juce::File> MadePlugins::installed()
 juce::File MadePlugins::findInstalled (const juce::String& id)
 {
     for (const auto& existing : installed())
-    {
-        const auto info = juce::JSON::parse (existing.getChildFile (infoFileName));
-
-        if (info.getProperty ("id", {}).toString() == id)
+        if (infoOf (existing).getProperty ("id", {}).toString() == id)
             return existing;
-    }
 
     return {};
 }
@@ -157,8 +184,16 @@ int MadePlugins::installedVersion (const juce::String& id)
     if (existing == juce::File())
         return 0;
 
-    const auto info = juce::JSON::parse (existing.getChildFile (infoFileName));
-    return juce::jmax (1, (int) info.getProperty ("version", 1));
+    return juce::jmax (1, (int) infoOf (existing).getProperty ("version", 1));
+}
+
+juce::File MadePlugins::resolve (const juce::File& file, const juce::String& pluginId)
+{
+    if (file.exists() || ! isMadeFile (file.getFullPathName()) || ! pluginId.startsWith (idPrefix))
+        return file;
+
+    const auto found = findInstalled (pluginId);
+    return found != juce::File() ? found : file;
 }
 
 juce::Result MadePlugins::installUnpacked (const juce::File& unpacked, const juce::String& id, juce::File& installedFolder, bool& replaced)
@@ -176,44 +211,19 @@ juce::Result MadePlugins::installUnpacked (const juce::File& unpacked, const juc
     if (! replaced)
     {
         const auto name = info.getProperty ("name", "Store plugin").toString().trim();
-        const auto base = juce::File::createLegalFileName (name.isNotEmpty() ? name : juce::String ("Store plugin"));
-        target = folder().getChildFile (base + extension);
-
-        for (int n = 2; target.exists(); ++n)
-            target = folder().getChildFile (base + " " + juce::String (n) + extension);
+        target = Sip::freeFile (name.isNotEmpty() ? name : juce::String ("Store plugin"));
     }
 
-    if (! target.createDirectory())
-        return juce::Result::fail ("Couldn't make the folder " + target.getFullPathName());
-
-    // What the new version doesn't have goes; plugin.json comes last, so a folder that's only
-    // half there is never taken for a plugin.
-    for (const auto& old : target.findChildFiles (juce::File::findFilesAndDirectories, false))
-        if (! unpacked.getChildFile (old.getFileName()).exists() || old.isDirectory())
-            old.deleteRecursively();
-
-    for (const auto& item : unpacked.findChildFiles (juce::File::findFilesAndDirectories, false))
-    {
-        if (item.getFileName() == infoFileName)
-            continue;
-
-        const auto copied = item.isDirectory() ? item.copyDirectoryTo (target.getChildFile (item.getFileName()))
-                                               : item.copyFileTo (target.getChildFile (item.getFileName()));
-
-        if (! copied)
-            return juce::Result::fail ("Couldn't write " + item.getFileName() + " in " + target.getFullPathName());
-    }
-
-    if (! unpacked.getChildFile (infoFileName).copyFileTo (target.getChildFile (infoFileName)))
-        return juce::Result::fail ("Couldn't write " + juce::String (infoFileName) + " in " + target.getFullPathName());
+    if (const auto packed = Sip::packFolder (unpacked, manifestOf (info), target); packed.failed())
+        return packed;
 
     installedFolder = target;
     return juce::Result::ok();
 }
 
-std::vector<Plugin::Descriptor> MadePlugins::describe (const juce::File& pluginFolder)
+std::vector<Plugin::Descriptor> MadePlugins::describe (const juce::File& pluginFile)
 {
-    const auto info = juce::JSON::parse (pluginFolder.getChildFile (infoFileName));
+    const auto info = infoOf (pluginFile);
     const auto id = info.getProperty ("id", {}).toString();
 
     if (info.getProperty ("format", {}).toString() != formatTag || ! id.startsWith (idPrefix))
@@ -221,7 +231,7 @@ std::vector<Plugin::Descriptor> MadePlugins::describe (const juce::File& pluginF
 
     Plugin::Descriptor descriptor;
     descriptor.id = id;
-    descriptor.name = info.getProperty ("name", pluginFolder.getFileNameWithoutExtension()).toString();
+    descriptor.name = info.getProperty ("name", pluginFile.getFileNameWithoutExtension()).toString();
     descriptor.vendor = info.getProperty ("vendor", "Made in Sonify").toString();
     descriptor.version = juce::String ((int) info.getProperty ("version", 1));
     descriptor.features = featuresFor (info.getProperty ("kind", "instrument").toString());
@@ -237,35 +247,35 @@ juce::Result MadePlugins::install (const Package& package, juce::File& installed
 
     const auto id = juce::String (idPrefix) + package.projectId;
     const auto name = package.name.trim().isNotEmpty() ? package.name.trim() : juce::String ("My Plugin");
-    juce::File target;
     int version = 1;
 
-    // The folder it went into before (by its id: a new name doesn't make it another plugin),
-    // or a new one named after it.
-    for (const auto& existing : installed())
-    {
-        const auto info = juce::JSON::parse (existing.getChildFile (infoFileName));
+    // The .sip it went into before (by its id: a new name doesn't make it another plugin), or a
+    // new one named after it.
+    auto target = findInstalled (id);
 
-        if (info.getProperty ("id", {}).toString() == id)
-        {
-            target = existing;
-            version = (int) info.getProperty ("version", 0) + 1;
-            replaced = true;
-            break;
-        }
+    if (target != juce::File())
+    {
+        version = (int) infoOf (target).getProperty ("version", 0) + 1;
+        replaced = true;
+    }
+    else
+    {
+        target = Sip::freeFile (name);
     }
 
-    if (target == juce::File())
-    {
-        const auto base = juce::File::createLegalFileName (name);
-        target = folder().getChildFile (base + extension);
+    // Its files, written as they always were, then packed into the .sip.
+    const auto temp = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                          .getChildFile ("Sonify plugin " + juce::Uuid().toString().substring (0, 8));
 
-        for (int n = 2; target.exists(); ++n)
-            target = folder().getChildFile (base + " " + juce::String (n) + extension);
-    }
+    auto result = writeFolder (package, temp, version);
 
-    if (const auto written = writeFolder (package, target, version); written.failed())
-        return written;
+    if (result.wasOk())
+        result = Sip::packFolder (temp, manifestOf (juce::JSON::parse (temp.getChildFile (infoFileName))), target);
+
+    temp.deleteRecursively();
+
+    if (result.failed())
+        return result;
 
     installedFolder = target;
     return juce::Result::ok();
@@ -637,10 +647,11 @@ public:
 
         holder.setSize (layout.width, layout.height + (demoBar.isVisible() ? PanelHolder::barHeight : 0)
                                                     + (libraryBar.isVisible() ? PanelHolder::barHeight : 0));
+        PluginHeader::attach (*this, plugin);    // ON/OFF over the panel; the limits below are the panel's
         setContentNonOwned (&holder, true);
         setResizable (true, false);
-        setResizeLimits (juce::jmax (120, layout.width / 4), juce::jmax (90, layout.height / 4),
-                         layout.width * 3, layout.height * 3 + 2 * PanelHolder::barHeight);
+        getConstrainer()->setSizeLimits (juce::jmax (120, layout.width / 4), juce::jmax (90, layout.height / 4),
+                                         layout.width * 3, layout.height * 3 + 2 * PanelHolder::barHeight);
         centreWithSize (getWidth(), getHeight());
 
         startTimerHz (15);
@@ -775,8 +786,33 @@ private:
 };
 
 //==============================================================================
-std::unique_ptr<Plugin> CreatorPlugin::load (const juce::File& pluginFolder, juce::String& error)
+std::unique_ptr<Plugin> CreatorPlugin::load (const juce::File& pluginFile, juce::String& error)
 {
+    // A .sip: what it is first (a MIDI FX isn't played here), then its files, unpacked.
+    auto pluginFolder = pluginFile;
+
+    if (Sip::isSipFile (pluginFile))
+    {
+        Sip::Manifest manifest;
+
+        if (! Sip::readManifest (pluginFile, manifest))
+        {
+            error = pluginFile.getFileName() + " isn't a Sonify plugin this Sonify can read.";
+            return nullptr;
+        }
+
+        if (manifest.kind == Sip::Kind::midi)
+        {
+            error = manifest.name + " is a MIDI FX: add it to an instrument track with + MIDI FX.";
+            return nullptr;
+        }
+
+        pluginFolder = Sip::unpacked (pluginFile, error);
+
+        if (pluginFolder == juce::File())
+            return nullptr;
+    }
+
     const auto descriptors = MadePlugins::describe (pluginFolder);
 
     if (descriptors.empty())
@@ -796,6 +832,7 @@ std::unique_ptr<Plugin> CreatorPlugin::load (const juce::File& pluginFolder, juc
     std::unique_ptr<CreatorPlugin> plugin (new CreatorPlugin());
     plugin->descriptor = descriptors.front();
     plugin->inFile = descriptors;
+    plugin->sourceFile = pluginFile;
     plugin->sourceFolder = pluginFolder;
     plugin->instrument = juce::JSON::parse (pluginFolder.getChildFile (infoFileName)).getProperty ("kind", "instrument").toString() == "instrument";
     plugin->wasmBytes = std::move (bytes);
@@ -1108,7 +1145,8 @@ bool CreatorPlugin::activate (double sampleRate, int maxBlockSize)
 void CreatorPlugin::findLibrary()
 {
     auto found = PluginLibrary::entriesFor (library, descriptor.vendor, descriptor.name,
-                                            { sourceFolder.getChildFile ("library"), sourceFolder });
+                                            { sourceFolder.getChildFile ("library"), sourceFolder,
+                                              sourceFile.getParentDirectory() });   // blobs put beside its .sip
     const juce::ScopedLock hold (libraryLock);
     libraryEntries = std::move (found);
 }
@@ -1364,31 +1402,50 @@ juce::Image CreatorPlugin::drawPanel (int maxWidth)
 }
 
 //==============================================================================
-juce::File MadePlugins::snapshotOf (const juce::File& pluginFolder)
+namespace
 {
-    return pluginFolder.getChildFile (snapshotFileName);
+    /** Where a made plugin's files are: its .sip's, unpacked; an old folder is its own. */
+    juce::File filesOf (const juce::File& pluginFile)
+    {
+        if (! Sip::isSipFile (pluginFile))
+            return pluginFile;
+
+        juce::String error;
+        return Sip::unpacked (pluginFile, error);
+    }
 }
 
-bool MadePlugins::snapshotDue (const juce::File& pluginFolder)
+juce::File MadePlugins::snapshotOf (const juce::File& pluginFile)
 {
-    const auto picture = snapshotOf (pluginFolder);
+    const auto files = filesOf (pluginFile);
+    return files != juce::File() ? files.getChildFile (snapshotFileName) : juce::File();
+}
+
+bool MadePlugins::snapshotDue (const juce::File& pluginFile)
+{
+    const auto files = filesOf (pluginFile);
+
+    if (files == juce::File())
+        return false;   // it can't be read: nothing to draw
+
+    const auto picture = files.getChildFile (snapshotFileName);
 
     if (! picture.existsAsFile())
         return true;
 
     const auto taken = picture.getLastModificationTime();
 
-    for (const auto& item : juce::RangedDirectoryIterator (pluginFolder, true, "*", juce::File::findFiles))
-        if (item.getFile() != picture && item.getModificationTime() > taken)
+    for (const auto& item : juce::RangedDirectoryIterator (files, true, "*", juce::File::findFiles))
+        if (item.getFile() != picture && ! item.getFile().getFileName().startsWithChar ('.') && item.getModificationTime() > taken)
             return true;
 
     return false;
 }
 
-juce::Result MadePlugins::makeSnapshot (const juce::File& pluginFolder)
+juce::Result MadePlugins::makeSnapshot (const juce::File& pluginFile)
 {
     juce::String error;
-    auto plugin = CreatorPlugin::load (pluginFolder, error);
+    auto plugin = CreatorPlugin::load (pluginFile, error);
 
     if (plugin == nullptr)
         return juce::Result::fail (error);
@@ -1398,11 +1455,11 @@ juce::Result MadePlugins::makeSnapshot (const juce::File& pluginFolder)
     if (! image.isValid())
         return juce::Result::fail ("It has no panel to show.");
 
-    const auto picture = snapshotOf (pluginFolder);
+    const auto picture = snapshotOf (pluginFile);
     juce::MemoryOutputStream bytes;
     juce::PNGImageFormat png;
 
-    if (! png.writeImageToStream (image, bytes) || ! picture.replaceWithData (bytes.getData(), bytes.getDataSize()))
+    if (picture == juce::File() || ! png.writeImageToStream (image, bytes) || ! picture.replaceWithData (bytes.getData(), bytes.getDataSize()))
         return juce::Result::fail ("Couldn't write " + picture.getFullPathName());
 
     return juce::Result::ok();

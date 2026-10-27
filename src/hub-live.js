@@ -88,8 +88,11 @@
   const LOOP_COLOURS = ["#ff6ec7", "#5ce1e6", "#b6f36b", "#8d9cff"];
   const KEY_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
   const MODES = ["dj", "live", "stream"];
+  // The tabs offered: DJ show stays in the code but isn't one of them (its tab is hidden), and a
+  // show Sonify says is in it opens in Live & podcasts.
+  const SHOWN = ["live", "stream"];
 
-  let live = { on: false, mode: "dj", onAir: false, micsMuted: true, playbackMuted: true, controllerOpen: false, monitorOpen: false, songTempo: 120, canKeepKey: true,
+  let live = { on: false, mode: "live", onAir: false, micsMuted: true, playbackMuted: false, controllerOpen: false, monitorOpen: false, songTempo: 120, canKeepKey: true,
                specs: { deck: [], channel: [], master: [] }, master: {}, decks: [], channels: [], pads: [], playlist: [], playlistAuto: true, playlistFile: "",
                outputs: [], phonesOutput: 0, recording: false, stems: true, lastTake: "", podcastBusy: false, podcastFile: "",
                front: 0, screen: { displays: [], outputs: 0 } };
@@ -3210,7 +3213,7 @@
   }
 
   function setMode(mode) {
-    if (!MODES.includes(mode) || mode === live.mode) return;
+    if (!SHOWN.includes(mode) || mode === live.mode) return;
     if (live.mode === "stream" && (streamOf().live || (streamStats && streamStats.live))) {
       Hub.toast("The stream is live: end it first (Stream settings), then change how the show is used.");
       return;
@@ -3226,10 +3229,10 @@
     if (data.kind === "state") {
       live = {
         on: Boolean(data.on),
-        mode: MODES.includes(data.mode) ? data.mode : "dj",
+        mode: SHOWN.includes(data.mode) ? data.mode : "live",
         onAir: Boolean(data.onAir),
         micsMuted: data.micsMuted !== false,
-        playbackMuted: data.playbackMuted !== false,
+        playbackMuted: data.playbackMuted === true,   // off unless Sonify says it's on
         controllerOpen: Boolean(data.controllerOpen),
         monitorOpen: Boolean(data.monitorOpen),
         songTempo: data.songTempo || live.songTempo,

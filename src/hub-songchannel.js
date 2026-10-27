@@ -40,8 +40,6 @@
   const MIN_HEIGHT = 76;
   const MAX_HEIGHT = 360;
   const GRAB = 7;                 // px within which a point is grabbed
-  const ACCENT = "#25984d";
-  const LINE = "#4fc27a";
   const NUMERATORS = 32;
   const DENOMINATORS = [1, 2, 4, 8, 16, 32];
 
@@ -168,9 +166,9 @@
       const w = context.measureText(item.text).width + 14;
       if (x > width || x + w < 0) return;
       const picked = selected && selected.lane === lane && selected.index === index;
-      context.fillStyle = picked ? ACCENT : Hub.theme.muted;
+      context.fillStyle = picked ? Hub.theme.accent : Hub.theme.muted;
       context.fillRect(x, 0, picked ? 2 : 1, height);
-      context.fillStyle = picked ? ACCENT : Hub.theme.line2;
+      context.fillStyle = picked ? Hub.theme.accent : Hub.theme.line2;
       context.fillRect(x, 6, w, chip);
       context.fillStyle = picked ? "#ffffff" : Hub.theme.muted;
       context.fillRect(x, 6, 2, chip);
@@ -220,11 +218,11 @@
     context.lineTo(width + 2, bottom);
     context.lineTo(points[0].x, bottom);
     context.closePath();
-    context.fillStyle = "rgba(37, 152, 77, 0.16)";
+    context.fillStyle = Hub.accentRgba(0.16);
     context.fill();
 
     trace();
-    context.strokeStyle = LINE;
+    context.strokeStyle = Hub.accentLine();
     context.lineWidth = 1.5;
     context.stroke();
     context.lineWidth = 1;
@@ -233,7 +231,7 @@
     points.forEach((p, i) => {
       if (p.x < -40 || p.x > width + 4) return;
       const picked = selected && selected.lane === "tempo" && selected.index === i;
-      context.fillStyle = picked ? "#ffffff" : LINE;
+      context.fillStyle = picked ? "#ffffff" : Hub.accentLine();
       context.fillRect(Math.round(p.x) - 3, Math.round(p.y) - 3, 7, 7);
       context.fillStyle = Hub.theme.text;
       const above = p.y - top > 16;

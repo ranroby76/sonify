@@ -3,6 +3,7 @@
 #include "AiTools.h"
 #include "RecordingAnalysis.h"
 #include "SessionPlayers.h"
+#include "SonifyAiData.h"
 
 namespace
 {
@@ -42,12 +43,12 @@ namespace
 {"name":"get_clip","description":"The notes of one MIDI clip: pitch, start and length in beats from the clip's start, velocity 1-127.","input_schema":{"type":"object","properties":{"track_id":{"type":"integer"},"clip_id":{"type":"integer"}},"required":["track_id","clip_id"]}},
 {"name":"find_plugins","description":"Search the user's installed plugins by name, vendor or type (e.g. 'serum', 'compressor', 'reverb valhalla'). Use the returned name (or file and plugin_id) to load one.","input_schema":{"type":"object","properties":{"query":{"type":"string"},"kind":{"type":"string","enum":["instrument","effect","any"]}},"required":["query"]}},
 {"name":"add_track","description":"Add a track. kind: instrument (plays MIDI through an instrument plugin), audio (plays and records audio). For effect returns use add_fx_channel.","input_schema":{"type":"object","properties":{"kind":{"type":"string","enum":["instrument","audio"]},"name":{"type":"string"}},"required":["kind"]}},
-{"name":"remove_track","description":"Remove a track or FX channel. Only with confirmed: true, after the user said yes in this conversation; otherwise ask them first.","input_schema":{"type":"object","properties":{"track_id":{"type":"integer"},"confirmed":{"type":"boolean"}},"required":["track_id","confirmed"]}},
-{"name":"set_track","description":"Change a track or FX channel: name, volume_db (-60..10), pan (-1 left..1 right), mute, solo, monitor (hear its live input), record_arm.","input_schema":{"type":"object","properties":{"track_id":{"type":"integer"},"name":{"type":"string"},"volume_db":{"type":"number"},"pan":{"type":"number"},"mute":{"type":"boolean"},"solo":{"type":"boolean"},"monitor":{"type":"boolean"},"record_arm":{"type":"boolean"}},"required":["track_id"]}},
+{"name":"remove_track","description":"Remove a track or FX channel. For one the user made, Sonify asks the user itself (Yes or No) before it goes; if they say no, it stays: don't ask again unless they bring it up.","input_schema":{"type":"object","properties":{"track_id":{"type":"integer"}},"required":["track_id"]}},
+{"name":"set_track","description":"Change a track or FX channel: name, volume_db (-60..10), pan (-1 left..1 right), mute, solo, monitor (hear its live input), record_arm, mono (an audio track's channel: true mono, its input as one sound on both sides and recorded as one; false stereo).","input_schema":{"type":"object","properties":{"track_id":{"type":"integer"},"name":{"type":"string"},"volume_db":{"type":"number"},"pan":{"type":"number"},"mute":{"type":"boolean"},"solo":{"type":"boolean"},"monitor":{"type":"boolean"},"record_arm":{"type":"boolean"},"mono":{"type":"boolean"}},"required":["track_id"]}},
 {"name":"set_main","description":"Main output volume in dB (-60..10).","input_schema":{"type":"object","properties":{"volume_db":{"type":"number"}},"required":["volume_db"]}},
 {"name":"load_instrument","description":"Load an instrument plugin onto an instrument track (replacing its instrument). plugin: its name as find_plugins gave it.","input_schema":{"type":"object","properties":{"track_id":{"type":"integer"},"plugin":{"type":"string"},"file":{"type":"string"},"plugin_id":{"type":"string"}},"required":["track_id"]}},
 {"name":"add_effect","description":"Add an effect plugin to a channel's insert chain: channel is a track id, an FX channel id, or \"main\". position: 0 is first; omit to add last. Answers the new insert_id.","input_schema":{"type":"object","properties":{"channel":{},"plugin":{"type":"string"},"file":{"type":"string"},"plugin_id":{"type":"string"},"position":{"type":"integer"}},"required":["channel"]}},
-{"name":"remove_effect","description":"Remove an insert from a channel. insert_id \"instrument\" removes a track's instrument (back to the Test Synth).","input_schema":{"type":"object","properties":{"channel":{},"insert_id":{}},"required":["channel","insert_id"]}},
+{"name":"remove_effect","description":"Remove an insert from a channel. insert_id \"instrument\" removes a track's instrument (back to Cayman).","input_schema":{"type":"object","properties":{"channel":{},"insert_id":{}},"required":["channel","insert_id"]}},
 {"name":"move_effect","description":"Move an insert to a position in its chain (0 is first).","input_schema":{"type":"object","properties":{"channel":{},"insert_id":{"type":"integer"},"position":{"type":"integer"}},"required":["channel","insert_id","position"]}},
 {"name":"bypass_effect","description":"Switch an insert off (bypassed: true) or on.","input_schema":{"type":"object","properties":{"channel":{},"insert_id":{"type":"integer"},"bypassed":{"type":"boolean"}},"required":["channel","insert_id","bypassed"]}},
 {"name":"get_plugin_params","description":"A plugin's parameters: index, name, value in its own range (min..max) and the value as text. slot: \"instrument\" or an insert id. Use filter (a word in the names) for plugins with many parameters; offset pages through long lists.","input_schema":{"type":"object","properties":{"channel":{},"slot":{},"filter":{"type":"string"},"offset":{"type":"integer"}},"required":["channel","slot"]}},
@@ -59,14 +60,17 @@ namespace
 {"name":"remove_send","description":"Remove a send (an FX send or a sidechain send).","input_schema":{"type":"object","properties":{"track_id":{"type":"integer"},"send_id":{"type":"integer"}},"required":["track_id","send_id"]}},
 {"name":"add_session_players","description":"Session players: a drummer, a bass player and a keys player who play a chord progression in a style, each on a new track (Drums, Bass, Keys) with a fitting installed instrument. Use it for a band backing instead of writing drums, bass and keys note by note. chords: bars between |, two chords in a bar split it, % repeats the bar before (\"C | Am | F G | %\"); or chords_from_track_id: the chords that track plays, from where it plays them. An audio track (a recording) is listened to for its tempo, beat and chords; when it has a tempo of its own, the song takes it and the song's audio moves onto the bars (recording_tempo: its tempo when the user says it). times: how many times the progression plays. Answers the new tracks.","input_schema":{"type":"object","properties":{"chords":{"type":"string"},"chords_from_track_id":{"type":"integer"},"recording_tempo":{"type":"number"},"style":{"type":"string","enum":["pop","rock","ballad","funk","house","hiphop"]},"intensity":{"type":"number","description":"0 calm .. 1 busy (0.5 when not given)"},"players":{"type":"array","items":{"type":"string","enum":["drums","bass","keys"]},"description":"all three when not given"},"instruments":{"type":"object","description":"an installed instrument's name for a player, instead of Sonify's pick","properties":{"drums":{"type":"string"},"bass":{"type":"string"},"keys":{"type":"string"}}},"start_bar":{"type":"number"},"times":{"type":"integer"}},"required":["style"]}},
 {"name":"write_midi_clip","description":"Write a MIDI clip on an instrument track. start_bar counts from 1; length_bars its length. Each note: pitch (MIDI 0-127, 60 = middle C), start_beat (quarter notes from the clip's start), length_beats, velocity (1-127). replace: remove the track's clips that overlap it first.","input_schema":{"type":"object","properties":{"track_id":{"type":"integer"},"start_bar":{"type":"number"},"length_bars":{"type":"number"},"notes":{"type":"array","items":{"type":"object","properties":{"pitch":{"type":"integer"},"start_beat":{"type":"number"},"length_beats":{"type":"number"},"velocity":{"type":"integer"}},"required":["pitch","start_beat","length_beats"]}},"replace":{"type":"boolean"}},"required":["track_id","start_bar","length_bars","notes"]}},
-{"name":"delete_clip","description":"Delete a clip from a track.","input_schema":{"type":"object","properties":{"track_id":{"type":"integer"},"clip_id":{"type":"integer"}},"required":["track_id","clip_id"]}},
+{"name":"delete_clip","description":"Delete a clip from a track. For a clip the user made, Sonify asks the user itself (Yes or No) first.","input_schema":{"type":"object","properties":{"track_id":{"type":"integer"},"clip_id":{"type":"integer"}},"required":["track_id","clip_id"]}},
 {"name":"set_tempo","description":"The tempo in BPM (20-250). Without at_bar: the tempo that holds where the song is (with one tempo, the whole song's). at_bar: a tempo change from that bar (counted from 1, fractions are within the bar) on; ramp: the tempo glides there from the change before it. remove_at_bar: removes the tempo change at that bar.","input_schema":{"type":"object","properties":{"bpm":{"type":"number"},"at_bar":{"type":"number"},"ramp":{"type":"boolean"},"remove_at_bar":{"type":"number"}}}},
 {"name":"set_time_signature","description":"A time signature, e.g. 4/4 or 6/8. Without at_bar: the one of the bar the song is in, from its change on; at_bar (whole bars, from 1): a change from that bar on. remove: removes the change at at_bar.","input_schema":{"type":"object","properties":{"numerator":{"type":"integer"},"denominator":{"type":"integer"},"at_bar":{"type":"integer"},"remove":{"type":"boolean"}},"required":["numerator","denominator"]}},
 {"name":"set_key","description":"The song's key and scale (MIDI tools follow it), from at_bar on (whole bars from 1; the start when not given). root: C, C#, D ... B; scale: major, minor, dorian, phrygian, lydian, mixolydian, locrian, harmonic minor, melodic minor, major pentatonic, minor pentatonic, blues, chromatic. remove: removes the change at at_bar.","input_schema":{"type":"object","properties":{"root":{"type":"string"},"scale":{"type":"string"},"at_bar":{"type":"integer"},"remove":{"type":"boolean"}},"required":["root","scale"]}},
 {"name":"transport","description":"play, stop, or rewind (to the start). Optional loop_start_bar and loop_end_bar set and switch on the loop; loop_off switches it off.","input_schema":{"type":"object","properties":{"action":{"type":"string","enum":["play","stop","rewind","none"]},"loop_start_bar":{"type":"number"},"loop_end_bar":{"type":"number"},"loop_off":{"type":"boolean"}},"required":["action"]}},
 {"name":"open_plugin_window","description":"Open a plugin's window for the user to see.","input_schema":{"type":"object","properties":{"channel":{},"slot":{}},"required":["channel","slot"]}},
 {"name":"save_song","description":"Save the song (to its file; a song never saved asks the user where).","input_schema":{"type":"object","properties":{}}},
-{"name":"split_stems","description":"Split a recording into stems on this computer: vocals, drums, bass and other (everything else), and guitar and piano when asked for, each on a new audio track under the clip's track, where the clip starts. Guitar or piano splits with a second model (downloaded the first time, 110 MB), and other then holds what's left after them. The original track is muted (mute_original false keeps it playing). clip_id: the audio clip, needed when the track has more than one. stems: the ones wanted (vocals, drums, bass and other when not given). It takes minutes for a whole song, and the first time its model downloads too (98 MB): the stems arrive after this request ends, so tell the user and do nothing with them now.","input_schema":{"type":"object","properties":{"track_id":{"type":"integer"},"clip_id":{"type":"integer"},"stems":{"type":"array","items":{"type":"string","enum":["vocals","drums","bass","guitar","piano","other"]}},"mute_original":{"type":"boolean"}},"required":["track_id"]}}
+{"name":"split_stems","description":"Split a recording into stems on this computer: vocals, drums, bass and other (everything else), and guitar and piano when asked for, each on a new audio track under the clip's track, where the clip starts. Guitar or piano splits with a second model (downloaded the first time, 110 MB), and other then holds what's left after them. The original track is muted (mute_original false keeps it playing). clip_id: the audio clip, needed when the track has more than one. stems: the ones wanted (vocals, drums, bass and other when not given). It takes minutes for a whole song, and the first time its model downloads too (98 MB): the stems arrive after this request ends, so tell the user and do nothing with them now.","input_schema":{"type":"object","properties":{"track_id":{"type":"integer"},"clip_id":{"type":"integer"},"stems":{"type":"array","items":{"type":"string","enum":["vocals","drums","bass","guitar","piano","other"]}},"mute_original":{"type":"boolean"}},"required":["track_id"]}},
+{"name":"app_features","description":"Everything Sonify itself can do, beyond your other tools: its commands (the menus' and keys' actions, by name) and its events (every action the screen does, with its fields). Look here before saying something can't be done, then do it with run_app_command or send_app_event.","input_schema":{"type":"object","properties":{}}},
+{"name":"run_app_command","description":"Run one of Sonify's commands (a name from app_features' commands), as its menu item or key does. Some open a window or a dialog for the user (Export Mixdown, Settings...): then say what's open and what to pick there.","input_schema":{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}},
+{"name":"send_app_event","description":"Send one of Sonify's events (from app_features' events) with its fields, exactly as Sonify's screen would: the same result and undo step. Use your other tools first when one does it; check the result with get_song (or get_board) when it matters. Removing, deleting, clearing or closing anything asks the user first.","input_schema":{"type":"object","properties":{"event":{"type":"string"},"payload":{"type":"object"}},"required":["event"]}}
 ])json";
 }
 
@@ -140,6 +144,8 @@ juce::var AiTools::definitions()
 
                 if (spec.kind == AnalogBoard::ParamSpec::Kind::toggle)
                     part << " (0 off, 1 on)";
+                else if (spec.kind == AnalogBoard::ParamSpec::Kind::track)
+                    part << " (0: the strip's own sound; else the track_id of another strip it listens to)";
                 else if (spec.kind == AnalogBoard::ParamSpec::Kind::choice)
                     part << " (0.." << (spec.choiceNames().size() - 1) << ": " << spec.choiceNames().joinIntoString (", ") << ")";
                 else
@@ -152,7 +158,7 @@ juce::var AiTools::definitions()
         };
 
         add ("{\"name\":\"get_board\",\"description\":\"The Analog Board (a tab of its own): a second, analog-style mixer. Answers whether it mixes the song now, "
-             "its master section, and each instrument and audio track's strip (settings away from where a fresh strip starts).\","
+             "its master section, the Mastering section on Main (mastering), and each instrument and audio track's strip (settings away from where a fresh strip starts).\","
              "\"input_schema\":{\"type\":\"object\",\"properties\":{}}}");
         add ("{\"name\":\"set_board\",\"description\":" + juce::JSON::toString (juce::var (
                  "Set the Analog Board. While it mixes the song (mixing: true), each instrument and audio track's dry sound (before its inserts) goes through "
@@ -161,11 +167,21 @@ juce::var AiTools::definitions()
                  "strips: [{track_id, settings}]; master: settings; settings by id, any left out stay as they are; reset: true first puts every strip and the master "
                  "back to where they start; copy_console: true first gives the strips the Console's fader, pan, mute and solo. "
                  "A strip: preamp, high-pass, EQ (shelves LF and HF, bells LMF and HMF), compressor (on with compOn; threshold, ratio, release, fastAttack, makeup), "
+                 "a dynamic EQ after the compressor, two bells (bell 1: deqOn, deqFreq, deqQ, deqThreshold, deqRange; bell 2: deq2On, deq2Freq, deq2Q, "
+                 "deq2Threshold, deq2Range), each dipping its band while its key is loud in that band, over its threshold at 4:1, no deeper than its range; "
+                 "both recover over deqRelease and hear the same key: deqKey 0 listens to the strip's own sound (taming a harsh band only when it rings), or a "
+                 "track_id to listen to that strip (a guitar's 2.5 kHz and 300 Hz dipping only while the vocal sings, a bass's 80 Hz under the kick); "
+                 "its dips are in the sends too), "
                  "sends to the Plate reverb and the Tape Echo, pan (-1 left..1 right), volume (its fader), mute, solo. Strip settings: " + describeSettings (AnalogBoard::stripSpecs())
                  + ". Master settings (the Plate, the Tape Echo synced to the song or in ms, the Bus Compressor, the Tape Machine, the master fader): "
-                 + describeSettings (AnalogBoard::masterSpecs()) + ".")) + ","
+                 + describeSettings (AnalogBoard::masterSpecs())
+                 + ". mastering: the Mastering section, the last thing on Main after its fader whichever mixer mixes the song (the Console's or the board's), "
+                 "switched in by on; set it only when the user asks for mastering: an EQ (lowCut, eqLow/eqLowFreq shelf, eqMid/eqMidFreq bell, eqHigh/eqHighFreq shelf), "
+                 "a three-band compressor split at xoverLow and xoverHigh (mbOn, mbAttack, mbRelease; each band's threshold, ratio, gain and stereo width, "
+                 "low/mid/high), tape (tapeOn, tapeDrive), then limitGain into a true-peak limiter at ceiling (limitRelease); mode 0 Auto, 1 Mix + Master, "
+                 "2 Master only. Mastering settings: " + describeSettings (MasterSection::specs()) + ".")) + ","
              "\"input_schema\":{\"type\":\"object\",\"properties\":{\"mixing\":{\"type\":\"boolean\"},\"reset\":{\"type\":\"boolean\"},"
-             "\"copy_console\":{\"type\":\"boolean\"},\"master\":{\"type\":\"object\"},\"strips\":{\"type\":\"array\",\"items\":{\"type\":\"object\","
+             "\"copy_console\":{\"type\":\"boolean\"},\"master\":{\"type\":\"object\"},\"mastering\":{\"type\":\"object\"},\"strips\":{\"type\":\"array\",\"items\":{\"type\":\"object\","
              "\"properties\":{\"track_id\":{\"type\":\"integer\"},\"settings\":{\"type\":\"object\"}},\"required\":[\"track_id\",\"settings\"]}}}}}");
         return list;
     }();
@@ -220,7 +236,7 @@ Plugin* AiTools::pluginAt (int channel, const juce::var& slot, int& slotId, juce
     if (auto* plugin = engine.getPlugin (channel, slotId))
         return plugin;
 
-    error = slotId == AudioEngine::instrumentSlot ? "That track has no instrument plugin (it plays the Test Synth)."
+    error = slotId == AudioEngine::instrumentSlot ? "That track has no instrument plugin (it plays Cayman)."
                                                   : "There's no insert " + juce::String (slotId) + " on that channel.";
     return nullptr;
 }
@@ -272,7 +288,7 @@ juce::var AiTools::run (const juce::String& name, const juce::var& input)
     if (name == "get_clip")            return getClip (input);
     if (name == "find_plugins")        return findPlugins (input);
     if (name == "add_track")           return addTrack (input);
-    if (name == "remove_track")        return removeTrack (input);
+    if (name == "remove_track")        return removeTrack (input, false);
     if (name == "set_track")           return setTrack (input);
     if (name == "set_main")            return setMain (input);
     if (name == "load_instrument")     return loadPlugin (input, true);
@@ -288,7 +304,7 @@ juce::var AiTools::run (const juce::String& name, const juce::var& input)
     if (name == "set_send")            return setSend (input);
     if (name == "remove_send")         return removeSend (input);
     if (name == "write_midi_clip")     return writeMidiClip (input);
-    if (name == "delete_clip")         return deleteClip (input);
+    if (name == "delete_clip")         return deleteClip (input, false);
     if (name == "set_tempo")           return setTempo (input);
     if (name == "set_time_signature")  return setTimeSignature (input);
     if (name == "set_key")             return setKey (input);
@@ -301,6 +317,9 @@ juce::var AiTools::run (const juce::String& name, const juce::var& input)
     if (name == "apply_midi_tool")     return applyMidiTool (input);
     if (name == "get_board")           return getBoard();
     if (name == "set_board")           return setBoard (input);
+    if (name == "app_features")        return appFeatures();
+    if (name == "run_app_command" || name == "send_app_event")
+        return runInPage (name, input);
 
     if (name == "open_plugin_window")
     {
@@ -459,7 +478,7 @@ juce::var AiTools::getSong()
             }
             else
             {
-                t->setProperty ("instrument", "Test Synth (built in)");
+                t->setProperty ("instrument", "Cayman (built in)");
             }
 
             juce::Array<juce::var> inputs;
@@ -669,22 +688,26 @@ juce::var AiTools::addTrack (const juce::var& input)
     if (const auto name = input.getProperty ("name", {}).toString().trim(); name.isNotEmpty())
         engine.setTrackName (id, name);
 
+    madeTracks.insert (id);
+
     auto result = object();
     result.getDynamicObject()->setProperty ("track_id", id);
     return result;
 }
 
-juce::var AiTools::removeTrack (const juce::var& input)
+juce::var AiTools::removeTrack (const juce::var& input, bool userSaidYes)
 {
     const auto id = static_cast<int> (number (input.getProperty ("track_id", {}), -1.0));
-
-    if (! static_cast<bool> (input.getProperty ("confirmed", false)))
-        return failure ("Removing a track needs the user's yes: ask them, then call again with confirmed: true.");
 
     if (engine.findTrack (id) == nullptr)
         return failure ("There's no track " + juce::String (id) + ".");
 
+    // The user's own track goes only on their Yes in Sonify's question box (runAsync).
+    if (! userSaidYes && madeTracks.count (id) == 0)
+        return failure ("The user made this track: Sonify has to ask them itself before it goes.");
+
     engine.removeTrack (id);
+    madeTracks.erase (id);
     return success();
 }
 
@@ -703,6 +726,18 @@ juce::var AiTools::setTrack (const juce::var& input)
     if (input.hasProperty ("solo"))       track->solo = static_cast<bool> (input.getProperty ("solo", false));
     if (input.hasProperty ("monitor"))    engine.setTrackMonitor (id, static_cast<bool> (input.getProperty ("monitor", false)), true);
     if (input.hasProperty ("record_arm")) engine.setTrackRecordArm (id, static_cast<bool> (input.getProperty ("record_arm", false)));
+
+    if (input.hasProperty ("mono"))
+    {
+        if (track->kind != Track::Kind::audio)
+            return failure ("Only an audio track's channel is mono or stereo.");
+
+        if (track->recorder != nullptr)
+            return failure ("It's recording: its channel changes once it stops.");
+
+        engine.setTrackMono (id, static_cast<bool> (input.getProperty ("mono", false)));
+    }
+
     return success();
 }
 
@@ -915,6 +950,7 @@ juce::var AiTools::setPluginParams (const juce::var& input)
 juce::var AiTools::addFxChannel (const juce::var& input)
 {
     const auto id = engine.addTrack (Track::Kind::fx);
+    madeTracks.insert (id);
 
     if (const auto name = input.getProperty ("name", {}).toString().trim(); name.isNotEmpty())
         engine.setTrackName (id, name);
@@ -1035,12 +1071,13 @@ juce::var AiTools::writeMidiClip (const juce::var& input)
     }
 
     const auto id = engine.addClip (trackId, std::move (clip));
+    madeClips.insert ({ trackId, id });
     auto result = object();
     result.getDynamicObject()->setProperty ("clip_id", id);
     return result;
 }
 
-juce::var AiTools::deleteClip (const juce::var& input)
+juce::var AiTools::deleteClip (const juce::var& input, bool userSaidYes)
 {
     const auto trackId = static_cast<int> (number (input.getProperty ("track_id", {}), -1.0));
     const auto clipId = static_cast<int> (number (input.getProperty ("clip_id", {}), -1.0));
@@ -1051,8 +1088,88 @@ juce::var AiTools::deleteClip (const juce::var& input)
     if (clips.size() == before)
         return failure ("There's no clip " + juce::String (clipId) + " on track " + juce::String (trackId) + ".");
 
+    // The user's own clip goes only on their Yes in Sonify's question box (runAsync).
+    if (! userSaidYes && madeClips.count ({ trackId, clipId }) == 0 && madeTracks.count (trackId) == 0)
+        return failure ("The user made this clip: Sonify has to ask them itself before it goes.");
+
     engine.setClips (trackId, std::move (clips));
+    madeClips.erase ({ trackId, clipId });
     return success();
+}
+
+void AiTools::runAsync (const juce::String& name, const juce::var& input, std::function<void (const juce::var&)> done)
+{
+    // Sonify's own commands and events: one that takes something away waits for the user's Yes.
+    if (name == "run_app_command" || name == "send_app_event")
+    {
+        const auto what = name == "run_app_command" ? input.getProperty ("command", {}).toString().trim()
+                                                    : input.getProperty ("event", {}).toString().trim();
+
+        if (! takesAway (what, input.getProperty ("payload", {})))
+            return done (run (name, input));
+
+        if (hooks.confirm == nullptr)
+            return done (failure ("Sonify can't ask the user here, so it isn't done."));
+
+        auto shown = what;
+
+        if (const auto payload = input.getProperty ("payload", {}); payload.isObject())
+            shown << " " << juce::JSON::toString (payload, true).substring (0, 200);
+
+        hooks.confirm ("Fanan AI", "Fanan AI wants to do this in Sonify: " + shown, "Do it",
+                       [this, name, input, done] (bool yes)
+                       {
+                           if (! yes)
+                               return done (failure ("The user said no in Sonify's question, so it isn't done. Don't ask again unless they bring it up."));
+
+                           done (run (name, input));
+                       });
+        return;
+    }
+
+    const bool removing = name == "remove_track";
+
+    if (! removing && name != "delete_clip")
+        return done (run (name, input));
+
+    const auto trackId = static_cast<int> (number (input.getProperty ("track_id", {}), -1.0));
+    const auto clipId = static_cast<int> (number (input.getProperty ("clip_id", {}), -1.0));
+    auto* track = engine.findTrack (trackId);
+
+    if (track == nullptr)
+        return done (failure ("There's no track " + juce::String (trackId) + "."));
+
+    // What Fanan AI made itself goes without a question.
+    if (removing ? madeTracks.count (trackId) > 0
+                 : madeClips.count ({ trackId, clipId }) > 0 || madeTracks.count (trackId) > 0)
+        return done (run (name, input));
+
+    double clipStart = -1.0;
+
+    for (const auto& c : engine.getClips (trackId))
+        if (c.id == clipId)
+            clipStart = c.start;
+
+    if (! removing && clipStart < 0.0)
+        return done (failure ("There's no clip " + juce::String (clipId) + " on track " + juce::String (trackId) + "."));
+
+    if (hooks.confirm == nullptr)
+        return done (failure ("Sonify can't ask the user here, so it stays."));
+
+    const auto trackName = track->name.isNotEmpty() ? track->name : "Track " + juce::String (trackId);
+    const auto message = removing
+        ? "Fanan AI wants to remove the track \"" + trackName + "\" and everything on it."
+        : "Fanan AI wants to delete the clip at bar " + juce::String (std::round (ppqToBar (clipStart) * 100.0) / 100.0)
+              + " on \"" + trackName + "\".";
+
+    hooks.confirm ("Fanan AI", message, removing ? "Remove" : "Delete",
+                   [this, removing, input, done] (bool yes)
+                   {
+                       if (! yes)
+                           return done (failure ("The user said no in Sonify's question, so it stays. Don't ask again unless they bring it up."));
+
+                       done (removing ? removeTrack (input, true) : deleteClip (input, true));
+                   });
 }
 
 juce::var AiTools::setTempo (const juce::var& input)
@@ -1378,7 +1495,7 @@ juce::var AiTools::addSessionPlayers (const juce::var& input)
         auto item = object();
         item.getDynamicObject()->setProperty ("track_id", trackIds[i]);
         item.getDynamicObject()->setProperty ("player", SessionPlayers::nameOf (request.players[i]));
-        item.getDynamicObject()->setProperty ("instrument", plugin != nullptr ? plugin->getDescriptor().name : juce::String ("Test Synth"));
+        item.getDynamicObject()->setProperty ("instrument", plugin != nullptr ? plugin->getDescriptor().name : juce::String ("Cayman"));
         tracks.add (item);
     }
 
@@ -1401,6 +1518,106 @@ juce::var AiTools::addSessionPlayers (const juce::var& input)
 }
 
 //==============================================================================
+//==============================================================================
+// Sonify's own commands and events: everything its screen does.
+juce::var AiTools::appFeatures()
+{
+    juce::Array<juce::var> commands;
+
+    if (hooks.pageCommands != nullptr)
+        for (const auto& command : hooks.pageCommands())
+            commands.add (command);
+
+    juce::DynamicObject::Ptr result (new juce::DynamicObject());
+    result->setProperty ("commands", commands);
+    result->setProperty ("events", juce::String::fromUTF8 (SonifyAiData::sonify_app_events_md, SonifyAiData::sonify_app_events_mdSize));
+    return juce::var (result.get());
+}
+
+bool AiTools::takesAway (const juce::String& what, const juce::var& payload)
+{
+    static const juce::StringArray words { "remove", "delete", "clear", "close", "quit", "exit", "trash",
+                                           "reset", "discard", "eject", "purge", "revert" };
+
+    const auto lower = what.toLowerCase();
+    auto action = payload.getProperty ("action", {}).toString().toLowerCase();
+    action << " " << payload.getProperty ("do", {}).toString().toLowerCase();
+
+    if (lower == "newsong" || lower == "opensong" || lower == "removetracks")
+        return true;
+
+    // What sends anything off this computer, or touches the account, waits for the user's Yes
+    // too: text the AI reads (a file's or a plugin's name, a web page) must never be able to start
+    // a stream, point it somewhere, publish, install or open a page on its own.
+    if (lower == "live")
+    {
+        const auto liveAction = payload.getProperty ("action", {}).toString();
+
+        if (liveAction.startsWithIgnoreCase ("stream") || liveAction == "on" || liveAction == "podcast"
+            || (liveAction == "mode" && payload.getProperty ("mode", {}).toString() == "stream"))
+            return true;
+    }
+
+    static const juce::StringArray awayWords { "account", "buy", "credit", "store", "publish", "upload", "share",
+                                               "stream", "signin", "signout", "login", "register", "remote", "install",
+                                               "webtabnavigate", "webtabnew", "cloud" };
+
+    for (const auto& word : awayWords)
+        if (lower.contains (word))
+            return true;
+
+    if (lower == "setpreference" && payload.hasProperty ("discoverable"))
+        return true;
+
+    for (const auto& word : words)
+        if (lower.contains (word) || action.contains (word))
+            return true;
+
+    return false;
+}
+
+juce::var AiTools::runInPage (const juce::String& name, const juce::var& input)
+{
+    // What the AI may not drive: its own conversation and the remote it's driven through, and
+    // the page's own start-up.
+    static const juce::StringArray notThese { "aiSend", "aiStop", "aiClear", "remoteSettings", "uiReady", "uiShown",
+                                              "aiCommandList", "choosePlugins", "setInternetBlocked",
+                                              "accountSignIn", "accountSignInCancel", "accountSignOut", "accountBuy",
+                                              "deviceRegister", "chooseUserDataFolder", "resetUserDataFolder", "voiceSettings" };
+
+    if (hooks.runInPage == nullptr)
+        return failure ("Sonify's screen isn't there to do it.");
+
+    if (name == "run_app_command")
+    {
+        const auto command = input.getProperty ("command", {}).toString().trim();
+        const auto known = hooks.pageCommands != nullptr ? hooks.pageCommands() : juce::StringArray();
+
+        if (command.isEmpty() || ! known.contains (command))
+            return failure ("Sonify has no command \"" + command + "\": app_features lists them.");
+
+        hooks.runInPage (command, {}, {});
+    }
+    else
+    {
+        const auto event = input.getProperty ("event", {}).toString().trim();
+
+        if (event.isEmpty() || ! event.containsOnly ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"))
+            return failure ("That isn't one of Sonify's events: app_features lists them.");
+
+        if (notThese.contains (event))
+            return failure ("That one is the user's own to do.");
+
+        const auto payload = input.getProperty ("payload", {});
+        hooks.runInPage ({}, event, payload.isObject() ? payload : juce::var (new juce::DynamicObject()));
+    }
+
+    juce::DynamicObject::Ptr result (new juce::DynamicObject());
+    result->setProperty ("ok", true);
+    result->setProperty ("note", "Done as Sonify's screen does it. Check the result with get_song (or get_board) when it matters; a window or dialog that opened waits for the user.");
+    return juce::var (result.get());
+}
+
 juce::String AiTools::describe (const juce::String& name, const juce::var& input, const juce::var& result)
 {
     if (result.hasProperty ("error"))
@@ -1411,6 +1628,8 @@ juce::String AiTools::describe (const juce::String& name, const juce::var& input
     if (name == "add_track")          return "Added an " + input.getProperty ("kind", "instrument").toString() + " track"
                                              + (input.getProperty ("name", {}).toString().isNotEmpty() ? " \"" + input.getProperty ("name", {}).toString() + "\"" : juce::String());
     if (name == "remove_track")       return "Removed a track";
+    if (name == "run_app_command")    return "Ran " + input.getProperty ("command", {}).toString();
+    if (name == "send_app_event")     return "Did " + input.getProperty ("event", {}).toString() + " in Sonify";
     if (name == "set_track")          return "Changed a track's settings";
     if (name == "set_main")           return "Set Main to " + juce::String (static_cast<double> (input.getProperty ("volume_db", 0.0)), 1) + " dB";
     if (name == "load_instrument")    return "Loaded " + plugin + " as the instrument";
@@ -1742,6 +1961,7 @@ juce::var AiTools::getBoard()
     auto* fields = result.getDynamicObject();
     fields->setProperty ("mixing", engine.isBoardMixing());
     fields->setProperty ("master", engine.getBoard().settings.toVar (true));
+    fields->setProperty ("mastering", engine.getMastering().settings.toVar (true));
 
     juce::Array<juce::var> strips;
 
@@ -1806,9 +2026,29 @@ juce::var AiTools::setBoard (const juce::var& input)
         for (const auto& id : engine.getBoard().settings.fromVar (master, false))
             ignored.add ("master." + id);
 
+    if (const auto mastering = input.getProperty ("mastering", {}); mastering.isObject())
+        for (const auto& id : engine.getMastering().settings.fromVar (mastering, false))
+            ignored.add ("mastering." + id);
+
     for (const auto& [track, settings] : strips)
+    {
         for (const auto& id : track->board.settings.fromVar (settings, false))
             ignored.add (juce::String (track->id) + "." + id);
+
+        // Its dynamic EQ's key: another instrument or audio track's strip, or its own sound (0).
+        if (const auto keyId = track->board.getKeyTrack(); keyId != 0)
+        {
+            const auto* keyTrack = keyId != track->id ? engine.findTrack (keyId) : nullptr;
+
+            if (keyTrack == nullptr || keyTrack->isMixChannel())
+            {
+                track->board.settings.set (AnalogBoard::deqKey, 0.0f);
+
+                if (keyId != track->id)
+                    ignored.add (juce::String (track->id) + ".deqKey (track " + juce::String (keyId) + " has no strip: its own sound it is)");
+            }
+        }
+    }
 
     auto result = getBoard();
 

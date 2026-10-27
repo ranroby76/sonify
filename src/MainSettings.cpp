@@ -7,6 +7,7 @@
 // (Locations), and letting the audio device go while Sonify is in the background.
 
 #include "MainComponent.h"
+#include "SipFiles.h"
 #include "Song.h"
 
 #include <algorithm>
@@ -282,6 +283,10 @@ void MainComponent::setPreference (const juce::var& event)
     if (event.hasProperty ("luminance"))   prefs.luminance = juce::jlimit (0, 100, number ("luminance", prefs.luminance));
     if (event.hasProperty ("contrast"))    prefs.contrast = juce::jlimit (0, 100, number ("contrast", prefs.contrast));
 
+    if (event.hasProperty ("accent"))
+        if (const auto accent = event.getProperty ("accent", {}).toString(); Preferences::getAccents().contains (accent))
+            prefs.accent = accent;
+
     if (event.hasProperty ("keymap"))
         if (const auto keymap = event.getProperty ("keymap", {}).toString(); Preferences::getKeymaps().contains (keymap))
             prefs.keymap = keymap;
@@ -477,6 +482,7 @@ void MainComponent::setUserDataFolder (const juce::String& folder)
     // My Devices is in the user data folder too, and so are the plugins made in the Plugins
     // Creator Studio.
     Devices::setMyDevicesFolder (UserData::getFolder().getChildFile ("Devices"));
+    Sip::migrate();   // a user data folder from an older Sonify: its plugins into .sip files
     library.refreshMadePlugins();
     pushLibrary();
 
@@ -945,7 +951,7 @@ void MainComponent::autosaveIfDue()
         return;
 
     const auto file = folder.getChildFile (juce::File::createLegalFileName (songTitle()) + " (Autosave)" + Song::fileExtension);
-    file.replaceWithText (juce::JSON::toString (Song::capture (engine, songTitle(), songView, file)));
+    file.replaceWithText (juce::JSON::toString (withFilesFolder (Song::capture (engine, songTitle(), songView, file))));
 }
 
 void MainComponent::undoToggle()

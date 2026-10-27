@@ -5,6 +5,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_audio_devices/juce_audio_devices.h>
 
+#include "MasterSection.h"
 #include "MidiSync.h"
 #include "SongBlocks.h"
 #include "Track.h"
@@ -277,6 +278,13 @@ public:
     /** Where a plugin is: its channel and slot (instrumentSlot, an insert's id, or a container
         node's slot id). False when it's in no channel. Message thread. */
     bool locatePlugin (const Plugin& plugin, int& channel, int& slot) const;
+
+    /** A plugin's ON/OFF (its window's header, PluginHeader.h): an insert's bypass, a track
+        instrument switched off (Track::instrumentOff), or a rack node's mute, wherever the rack
+        is. 1 on, 0 off, -1 when it's nowhere in the song (or a clip effect's, which has none).
+        setPluginOn: false when there was nothing to switch. Message thread. */
+    int getPluginOn (const Plugin& plugin) const;
+    bool setPluginOn (const Plugin& plugin, bool on);
     /** An id no plugin in the song has had: for a plugin inside a container. Message thread. */
     int allocateInsertId() noexcept                          { return nextInsertId++; }
 
@@ -404,6 +412,23 @@ public:
     /** Puts an instrument (or none: the test synth) on a track and returns the one it had. */
     std::unique_ptr<Plugin> swapInstrument (int trackId, std::unique_ptr<Plugin> instrument);
 
+    /** A recording take's waveform so far, per audio track recording, for the page to draw it as it
+        grows: from the song position the take shows from (its pass, the loop's latest), the bucket
+        of the file there, and the peaks written so far (`buckets` of them, from the file's start:
+        a max and a min each, -127..127, Track::LivePeaks::peakBucket file samples each). The data
+        stays while the take records. Message thread. */
+    struct LiveWave
+    {
+        int trackId = 0;
+        double ppq = 0.0;
+        juce::int64 firstBucket = 0;
+        int buckets = 0;
+        const juce::int8* data = nullptr;
+        double rate = 48000.0;
+    };
+
+    std::vector<LiveWave> getLiveWaves() const;
+
     /** True while a recording take is being filed into clips. */
     bool isTakeActive() const noexcept                        { return take.active || audioTakeActive; }
 
@@ -443,6 +468,11 @@ public:
         std::vector<int> onlyClipIds;   // with a freeze: only these clips of the track play (Export Clip to Audio,
                                         // Merge Clips, Bounce to New Track)
         bool dry = false;               // with a freeze: the track's inserts left out (Merge Clips)
+
+        /** The Mastering section (MasterSection.h), when it's in: false leaves it out of this render.
+            unmasteredFile: Main's mix before it too, from the same render (same format). */
+        bool mastered = true;
+        juce::File unmasteredFile;
     };
 
     /** ".wav", ".flac", ".ogg" or ".mp3". */
@@ -993,6 +1023,14 @@ public:
 
     /** The board's master section; each track's strip is its own (Track::board). */
     AnalogBoard::Master& getBoard() noexcept                  { return board; }
+
+    /** A level for what's heard (the device only, never a render), after the Mastering section:
+        AI Mix's A/B matches the original's loudness to the suggestion's. Any thread. */
+    void setListenTrim (float db) noexcept                    { listenTrimDb.store (juce::jlimit (-24.0f, 24.0f, db)); }
+
+    /** The Mastering section on Main (MasterSection.h): its settings and meters, any thread. */
+    MasterSection::Processor& getMastering() noexcept         { return mastering; }
+    const MasterSection::Processor& getMastering() const noexcept   { return mastering; }
     const AnalogBoard::Master& getBoard() const noexcept      { return board; }
 
     /** Every strip and the master back to where a new board starts (a new song). */
@@ -1161,6 +1199,11 @@ private:
 
     StemTaps* stemTaps = nullptr;
 
+    /** A mixdown's Main mix before the Mastering section (its unmastered file). Set by the mixdown thread. */
+    juce::AudioBuffer<float>* unmasteredTap = nullptr;
+    std::atomic<bool> masteringLeftOut { false };   // a render without the Mastering section
+    bool masteringWasPlaying = false;               // audio thread: its integrated loudness starts again with play
+
     /** Freezing: the track's own sound as render() leaves it (before its fader), and the tracks
         that play meanwhile (it and the ones it needs). Set by the mixdown thread, like stemTaps. */
     struct FreezeTap
@@ -1287,6 +1330,9 @@ private:
     // The Analog Board: the master section, what the message thread asks for, and what the audio
     // thread plays (a switch fades the old mix out over one block, the new one in over the next).
     AnalogBoard::Master board;
+    MasterSection::Processor mastering;   // the last thing on Main, after its fader
+    std::atomic<float> listenTrimDb { 0.0f };
+    float lastListenTrim = 1.0f;           // audio thread
     std::atomic<bool> boardWanted { false };
     bool boardActive = false, boardFadingOut = false;   // audio thread
 
@@ -1517,6 +1563,7 @@ private:
         int trackId = 0;
         juce::File file;
         std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> writer;
+        std::unique_ptr<Track::LivePeaks> peaks;   // its waveform as it's written
     };
 
     std::vector<AudioRecording> audioRecordings;   // message thread

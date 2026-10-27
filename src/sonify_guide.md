@@ -11,7 +11,7 @@ Sonify is Fanan's music studio: a DAW for recording, writing, arranging and mixi
 - **AI Tools**: Sonify's AI musical tools, each in a tab: Stem Splitter, Audio to MIDI, MIDI Generators, Tempo & Pitch and the Mastering Assistant (**Ctrl+3**).
 - **Song Builder Blocks**: build the song from blocks of clips (**Ctrl+4**).
 - **Plugins Creator Studio**: new instruments, effects and MIDI devices, made by asking Fanan AI (**Ctrl+5**).
-- **Live Show Studio**: DJ decks, singers and players, podcasts and live streams (**Ctrl+6**).
+- **Live Show Studio**: a playlist and its player, singers and players, podcasts and live streams (**Ctrl+6**).
 - **Sampling Studio**: an instrument sampled note by note into an SFZ for the Sonify Sampler (**Ctrl+7**).
 - **Web Browser**: the internet in tabs, while the song plays (**Ctrl+8**).
 - **Guide**: this user guide (**Ctrl+9**).
@@ -41,7 +41,7 @@ Only the Studio has the menus (**File**, **Edit**, **Song**, **Track**, **Event*
 
 ### The Start Page
 
-After Sonify starts, the Start page greets you with **New...** and **Open...**, your **Recent Files** (with a **Search** box: click one to open it), and **Setup**: your audio device, sample rate and block size, with **Configure Audio Device...**. Click its x, press **Esc** or pick a studio to go to the song. **File > Start Page** brings it back.
+After Sonify starts, the Start page greets you with **New...** and **Open...**, your **Recent Files** (with a **Search** box: click one to open it), and under them **Audio**: your audio device, sample rate and block size, with **Configure Audio Device...**. The round swatches by **Colour** pick the colour that leads Sonify's look (green, yellow, blue, purple, red or orange): buttons, selections, the loop and the Start page take it at once, and Sonify remembers it. Click its x, press **Esc** or pick a studio to go to the song. **File > Start Page** brings it back.
 
 ### Making and Saving Songs
 
@@ -108,7 +108,7 @@ A note you hold as you switch studios still lets go where it was playing. Contro
 
 Each time Sonify starts, it asks **Load your third-party plugins?**
 
-- **Yes, load my third-party plugins** checks your new and changed VST3 and WCLAP plugins on the **Checking your plugins** page. **Skip** goes on at once; the rest are read at the next start.
+- **Yes, load my third-party plugins** checks your new and changed VST3, CLAP and WCLAP plugins on the **Checking your plugins** page. **Skip** goes on at once; the rest are read at the next start.
 - **No, I'll use only Sonify's internal plugins** skips the check: only Sonify's own plugins are offered until you restart and choose Yes.
 
 Each plugin is read by a separate helper, so a faulty one can't take Sonify down. Failures are listed under **Couldn't be read**; click **Continue** to go on.
@@ -117,17 +117,19 @@ Each plugin is read by a separate helper, so a faulty one can't take Sonify down
 
 Sonify finds plugins in its Plugin Folders and their sub-folders; the system's VST3 and CLAP folders are added the first time. **File > Plugin Folders...** (or the Browser's folder button) lets you **Add Folder...**, **Add the Usual Folders**, **Change...** or remove one (x) and **Rescan All**. **File > Rescan Plugins** reads them again. **File > Add WCLAP Plugins to Browser...** (or + in the Browser) adds single files.
 
+For your safety, a VST3 or CLAP plugin only loads from your Plugin Folders, the files added by hand, or a file you pick yourself. A song, a container or a sampling preset from someone else that names a plugin anywhere else (a network drive, say) doesn't load it, and says so: if you trust it, add it, then open the song again.
+
 ### What Sonify Hosts
 
-- VST3 plugins (their windows open separately) and WCLAP plugins (their windows float inside Sonify). Plugins with no window get Sonify's own controls.
+- VST3 plugins (their windows open separately), CLAP plugins and WCLAP plugins (their windows float inside Sonify). Plugins with no window get Sonify's own controls.
 - Your plugins made in the Plugins Creator Studio, marked **Made** in the Browser.
-- Sonify's built-ins, always there: the **Test Synth** (new instrument tracks start with it), **Sonify EQ**, **Sonify Compressor** (with a sidechain input), **Sonify Limiter**, **Sonify Mastering** (set up by **Song > Mastering Assistant...**), Grex's **Sonify Chorus**, **Sonify Phaser**, **Sonify Auto-Wah**, **Sonify Reverb**, **Sonify Delay**, **Sonify Sweetener** and **Sonify Ducker**, and the system tools **Node Rack** and **Node Rack FX** (several plugins wired together in one slot), **Playlist Player** (plays songs and videos live) and **Sonify Sampler** (plays SFZ instruments, like the Sampling Studio's).
+- Sonify's built-ins, always there: **Cayman** (new instrument tracks start with it), **Sonify EQ**, **Sonify Compressor** (with a sidechain input), **Sonify Limiter**, **Sonify Mastering** (set up by **Song > Mastering Assistant...**), Grex's **Sonify Chorus**, **Sonify Phaser**, **Sonify Auto-Wah**, **Sonify Reverb**, **Sonify Delay**, **Sonify Sweetener** and **Sonify Ducker**, and the system tools **Node Rack** and **Node Rack FX** (several plugins wired together in one slot), **Playlist Player** (plays songs and videos live), **Sonify Sampler** (plays SFZ instruments, like the Sampling Studio's) and **Tomahawk** (Grex's CLASSIC and ORIENTAL sounds, played as Grex plays them).
 
 Drag a plugin from the Browser onto a track, or below the tracks for a new track. Double-click an instrument for a new track, or an effect to add it to the selected channel's inserts.
 
 ## Your First Song
 
-1. On the Start page, click **New...**, name the song and click **OK**. It starts with an instrument track playing the Test Synth.
+1. On the Start page, click **New...**, name the song and click **OK**. It starts with an instrument track playing Cayman.
 2. For another sound, drag an instrument from the Browser's **Instruments** tab onto the track. The keyboard icon on the track header opens its window.
 3. To play it from your MIDI keyboard, the track's **Monitor** button must be on. Loading the instrument turned it on (the first instrument a track gets does); otherwise click it.
 4. To record, click the track's **Record arm** button, turn on the **Metronome** (**C**) if you like, and click **Record**: Sonify plays and records. Press **Space** to stop.
@@ -166,6 +168,8 @@ The **Guide** studio (**Ctrl+9**) holds this guide: a tab for each part, from Ge
 
 The **Ask anything about Sonify** panel, on the right, answers your questions about using Sonify, with Fanan AI: type a question and press **Enter** or click **Ask**. It answers from this guide, in the language you write in, and its links open the chapters to read. It only answers: to have the work done in your song, ask the AI Assistant (the button at the lower right). Like Fanan AI, it needs you signed in with the internet on, and each question uses credits; **New chat** starts afresh.
 
+**Translate this page to**, above the chapter's text, shows the open chapter in another language: pick the language in the list (the languages Android offers) and click **Translate**. Fanan AI translates that chapter only, keeping the names of Sonify's buttons and menus in English so you can find them on screen, and it uses a few credits. A chapter you have translated shows again, in that language, whenever you open it, without using credits. **Show original** brings the English back, and **Save to PDF** prints the translated page to a PDF document.
+
 - Hover over a button to see its tip and key; the menus show the keys too.
 - The AI Assistant answers questions as well as doing the work.
 - For Fanan's support, the account window shows "This computer:" with a code to give them.
@@ -201,7 +205,7 @@ Move a knob or pad on a MIDI controller and it shows as a chip in the MIDI Link 
 
 ### Track types
 
-- Instrument tracks play MIDI clips and live notes through an instrument (the built-in **Test Synth** until you choose another).
+- Instrument tracks play MIDI clips and live notes through an instrument (the built-in **Cayman** until you choose another).
 - Audio tracks play audio clips, and can monitor and record an input.
 - Choir tracks are audio tracks whose vocal also sings as a choir (see Choir tracks).
 - Bus channels and FX channels have no clips. They live in the Console.
@@ -220,7 +224,7 @@ Move a knob or pad on a MIDI controller and it shows as a chip in the MIDI Link 
 1. Type a **Name** (several tracks get numbers after it), or leave it empty for the usual names.
 2. Set the **Count** (up to 64) and the **Type**: **Instrument**, **Audio**, **Choir**, **Bus Channel** or **FX Channel**.
 3. For audio and choir tracks, pick the **Format** (**Mono** or **Stereo**) and the **Input**; tick **Ascending** to give each next track the next input.
-4. For instrument tracks, pick the **Instrument** (**Test Synth** or any instrument in the Browser).
+4. For instrument tracks, pick the **Instrument** (**Cayman** or any instrument in the Browser).
 5. Click **OK** (or press **Enter**).
 
 ### Selecting and moving
@@ -234,7 +238,7 @@ Click a header to select a track; **Ctrl**+click adds or removes one, **Shift**+
 - The speaker is **Monitor**: an instrument track plays from your MIDI keyboard, an audio track lets you hear its input. New tracks start with it off. The first instrument plugin loaded on an instrument track turns it on, once; after that it stays as you set it.
 - Double-click the name to rename. An instrument track takes its instrument's name until you name it.
 - The keyboard icon opens the instrument's window.
-- Double-click **Vol** or **Pan** to reset it.
+- Double-click **Vol** or **Pan** to reset it. Double-click its value (such as **-3.5 dB** or **25L**) to type one: volume in dB (-72 to +10), pan from -100 (left) to 100 (right), up to two decimals. **Enter** sets it, **Esc** keeps the old one.
 - Instrument tracks: the instrument selector, and the MIDI in button to tick the MIDI devices and tracks it hears. Its list shows keyboards first, then controllers, then virtual MIDI cables (such as loopMIDI). New tracks hear the default device (**File > Settings...**, tab **MIDI Setup**).
 - Audio tracks: the input selector, and the Mono/Stereo button (one circle or two). Mono records the input as one sound; Stereo puts each input channel on its own side.
 
@@ -293,6 +297,7 @@ Freezing renders a track's sound and plays that instead, so its plugins rest. Cl
 
 - Click or drag in the ruler to move the song position.
 - Zoom with **Ctrl**+mouse wheel, the slider under the lanes, **E** and **W**, or **Ctrl+=** and **Ctrl+-**. **Ctrl+0** is the default zoom, **Alt+Z** shows the whole song, and **View > Zoom to Loop** (or the button left of the slider) fits the loop.
+- Zoom the tracks' height with **Ctrl+Shift**+mouse wheel, the height slider under the lanes (left of the length slider) with its **-** and **+**, or **Shift+E** and **Shift+W**. It makes every track taller or shorter at once, its own height and the **Track size** alike; short tracks show less in their header. Double-click the slider, or **View > Default Track Heights**, for 100%. The song keeps it.
 - **Autoscroll** keeps the playhead in view while playing. Scroll away by hand while it plays and the view stays where you put it, until the playhead comes into view again or the song starts again (the wrench's **Scrolling pauses Autoscroll**). **Timebase** makes the ruler count Bars or Seconds.
 
 ### Second ruler
@@ -588,11 +593,11 @@ Sonify asks where to save; it suggests the song's folder, or the Scores folder o
 
 - The MIDI light, the **Performance** meter, and the audio device button (click it for Audio Setup).
 - The time display: click to switch between Bars and Seconds.
-- Return to Zero, Stop, Play, Record and Loop. Clicking Stop while stopped returns to zero.
+- Return to Zero, Back One Bar, Forward One Bar, Stop, Play, Record and Loop. Clicking Stop while stopped returns to zero. Return to Zero and the bar steps bring the clips' view along when the playhead leaves it. Back One Bar from inside a bar goes to its start, from a bar's start to the bar before.
 - **L** and **R**, the loop range: click one to type a position like 5, 5.3 or 5.3.2.
 - **Timing**, **Tempo**, **Tap**, the metronome and its volume, the Main meter and the panel buttons.
 
-**Space** starts and stops, **Home** returns to zero, the * key on the number pad records, **Num /** switches the loop and **C** the metronome. They work in every studio. The **Transport** menu has them, plus **Autoscroll**.
+**Space** starts and stops, **Home** returns to zero, **Num -** and **Num +** step back and forward a bar, the * key on the number pad records, **Num /** switches the loop and **C** the metronome. They work in every studio. The **Transport** menu has them, plus **Autoscroll**.
 
 ### Tempo and time signature
 
@@ -668,10 +673,12 @@ The Browser on the right holds what you add to a song. Toggle it with **View > B
 - Double-click an instrument for a new track with it; double-click an effect to add it to the selected track (or to Main, after clicking Main in the Console).
 - Right-click for **Add to Favorites**, **Show in Explorer** and **Remove from Browser**. A greyed item's file is missing.
 
-Sonify loads VST3 and WCLAP plugins. The folder button (**Plugin Folders**) sets where the Browser looks, the round arrow (**Rescan**) looks again, and + adds WCLAP files; the File menu has all three. At each start, answering No to **Load your third-party plugins?** offers only Sonify's own plugins until the next start.
+Sonify loads VST3, CLAP and WCLAP plugins. The folder button (**Plugin Folders**) sets where the Browser looks, the round arrow (**Rescan**) looks again, and + adds plugin files by hand; the File menu has all three. At each start, answering No to **Load your third-party plugins?** offers only Sonify's own plugins until the next start.
 
 ### Files
 Pick a place (**Home**, **Music**, **Song Media**, **Recordings**, a drive...) from the menu at the top; double-click folders to open them, and use the arrow to go up. Click a file to see its format, then the play button or **Preview** to hear it. Double-click it (or **Import**) to put it on the selected audio track at the playhead (or a new audio track), or drag it onto the arrangement. A video file becomes the song's video.
+
+**Open** chooses your files folder. The song keeps it (save the song), and it becomes the folder new songs open. A song opens on its own files folder; a song without one, and a new song, open the folder for new songs.
 
 ### MIDI
 **MIDI** holds the MIDI tools (see MIDI Tools). AI Tools' **MIDI Generators** tab has them too.
@@ -679,15 +686,20 @@ Pick a place (**Home**, **Music**, **Song Media**, **Recordings**, a drive...) f
 ## Plugins and Effects
 
 ### Instruments
-A new instrument track plays the built-in **Test Synth**. Pick another from the instrument menu on the track header, or drag one from the Browser onto the track. The keyboard icon on the track header opens the instrument's window.
+A new instrument track plays the built-in **Cayman**. Pick another from the instrument menu on the track header, or drag one from the Browser onto the track. The keyboard icon on the track header opens the instrument's window.
 
-The **Test Synth** has a window of its own too (the keyboard icon, or **Open** in the Inspector): two oscillators (**Classic**, **Sine**, **Triangle**, **Saw**, **Square**, **Pulse**; the second tuned and detuned against the first), a sub and noise, a filter (**Low Pass**, **High Pass**, **Band Pass**, off at first) with its own envelope and key tracking, the amp envelope and velocity, an LFO (vibrato, which the mod wheel adds to, the filter, tremolo), **Poly**, **Mono** or **Legato** with glide, the pitch bend's range, drive and chorus. It starts as the tone it always had.
+**Cayman** has a window of its own too (the keyboard icon, or **Open** in the Inspector): two oscillators (**Classic**, **Sine**, **Triangle**, **Saw**, **Square**, **Pulse**; the second tuned and detuned against the first), a sub and noise, a filter (**Low Pass**, **High Pass**, **Band Pass**, off at first) with its own envelope and key tracking, the amp envelope and velocity, an LFO (vibrato, which the mod wheel adds to, the filter, tremolo), **Poly**, **Mono** or **Legato** with glide, the pitch bend's range, drive and chorus. It starts as the tone it always had.
 
 ### Effects
 Add effects with **+ Insert** on a Console strip, or drag them from the Browser. They play top to bottom.
 
 ### Plugin windows
 Plugin windows float over Sonify: drag by the title, resize from the corner, close with x. A plugin without its own screen gets sliders for its settings. VST3 editors open in a separate window.
+
+The strip at the top of a plugin's window has its **ON/OFF** and **PRESETS**:
+- **Save Preset...** and **Open Preset...** keep everything the plugin is set to in one .sonifypreset file, for any plugin, a VST3 or CLAP from another maker too. They're kept in Documents\Sonify\Presets\<plugin>, and open on any computer with Sonify.
+- **Save as VST3 Preset...** and **Open VST3 Preset...** use the VST3 standard (.vstpreset), as Cubase, Studio One, Fender Studio, Reaper and Bitwig save them: presets move between Sonify and those DAWs. VST3 plugins only.
+- **Show Presets Folder** opens the plugin's folder of presets.
 
 ### Sonify's own effects
 Always in the **Effects** tab:
@@ -699,11 +711,11 @@ Always in the **Effects** tab:
 
 Each opens a designed window (double-click it in the Console or the Inspector): its knobs, its meters, and an EQ curve where it has one. The window resizes from its corner, keeping its shape. Percentages move in whole steps (0 to 100%) and other values show at most two decimals.
 
-Each window (and the Test Synth's) has a preset manager: the arrows step through the presets, a click on the name lists them all, under **Factory** (at least 12 each, starting with **Default**), **My presets** and any banks you loaded. The same menu has **Save** and **Save as...** (your own presets, kept in `<user data>\Presets\<plugin>`), **Load a preset file...**, **Save bank...** (every preset in the list into one `.sonifybank` file), **Load bank...** and **Delete**. A * after the name means the knobs moved since it was chosen; the song remembers the preset.
+Each window (and Cayman's) has a preset manager: the arrows step through the presets, a click on the name lists them all, under **Factory** (at least 12 each, starting with **Default**), **My presets** and any banks you loaded. The same menu has **Save** and **Save as...** (your own presets, kept in `<user data>\Presets\<plugin>`), **Load a preset file...**, **Save bank...** (every preset in the list into one `.sonifybank` file), **Load bank...** and **Delete**. A * after the name means the knobs moved since it was chosen; the song remembers the preset.
 
 ## System Tools
 
-Sonify's system tools are in the Browser: **Node Rack**, **Playlist Player** and **Sonify Sampler** with the instruments, **Node Rack FX** with the effects.
+Sonify's system tools are in the Browser: **Node Rack**, **Playlist Player**, **Sonify Sampler** and **Tomahawk** with the instruments, **Node Rack FX** with the effects.
 
 ### Node Rack and Node Rack FX
 A Node Rack wires a whole patch of plugins into one slot, synced to the song's tempo and time signature: **Node Rack** as a track's instrument, **Node Rack FX** as an insert. Open it to get its window: **Rack** (the node canvas), **Mixer** (a fader and meter for the output and each plugin) and **Manual**.
@@ -719,6 +731,16 @@ Plays a list of songs and videos live. **Add Tracks** fills it, **PLAY** / **PAU
 
 ### Sonify Sampler
 Plays SFZ sampled instruments. Click **Load SFZ...**, or **Latest** for the one you last made in the Sampling Studio. Shape it with Poly or Mono, glide, envelopes, a filter and three LFOs; keep it with **Save Preset...** or **Save SFZ**.
+
+### Tomahawk
+Plays Grex's sound library with Grex's own engine, so every sound is exactly as it is in Grex: two packs, **CLASSIC** and **ORIENTAL**, each in categories. Everything is in one window, Grex's instrument editor, with Grex's keyboard along the bottom to hear the sound.
+- **The library**: **GET THE LIBRARY** (top right) downloads it (one zip, about 12 GB). Unzip it anywhere, then click **LOCATE LIBRARY** and choose the **Tomahawk_Sampler** folder (or the folder it's in). Sonify remembers it, for every Tomahawk.
+- **SOUND ENGINE**: pick a sound with **PACK**, **CATEGORY**, then **INSTRUMENT** (eight to a page; the numbered **PAGE** buttons for more). It plays with its own settings, its preset. Its pack's picture shows beside the lists. Under the lists, Grex's **LOW VELOCITY RESPONSE** (lifts soft notes) and **PITCH BEND RANGE** (1 to 12 semitones).
+- **SYNTHESIS**: the amp envelope and gain, the filter, the velocity curve, Poly or Mono and glide, the octave. Double-click the **GAIN** handle for the sound's **base gain** (in dB: what GAIN's middle, 100, means), or the **OCTAVE** slider for its **base octave** (where OCTAVE's 0 plays, -3 to +3). Both are saved in the sound's preset (yours if you saved one, else the factory one).
+- **MODULATION**: the amp LFO, the filter LFO and attack glide.
+- **EFFECTS**: one button per effect in a row (**EQ**, **CHORUS**, **WAH**, **PHASER**, **DELAY**, **REVERB**, **PAN**, **SWEETEN**); click one to set it below. Each effect is the sound's own.
+- **SAVE PRESET** (top) keeps the sound's settings as its own: it comes with them every time it's picked, in every song. Presets live in the **Tomahawk_classic_instruments_presets** and **Tomahawk_oriental_instruments_presets** folders beside Sonify.exe. When Sonify can't write there (installed in Program Files), it saves into the same folders in `AppData\Roaming\Fanan\Sonify\Tomahawk`, and those win. To use a preset someone shared, drop its .ins file into the right category folder in either place (it's picked up the next time a Tomahawk's window opens).
+- The song keeps the sound and every setting. The Tomahawk's **Volume**, **Bend Range** and **Low Velocity Response** are automated like any plugin's. The sustain pedal holds notes. A mixdown waits while a sound is read.
 
 ## MIDI Tools
 
@@ -766,7 +788,7 @@ A drummer, a bass player and a keys player play your chords in a style, each on 
 1. Type the chords, like C | Am | F | G: | between bars, two chords share a bar, % repeats the bar. Or pick a **From Track** to read its chords (a recording is listened to for its tempo too; **Half Tempo** or **Double Tempo** fixes a wrong guess).
 2. Pick a **Style**: Pop, Rock, Ballad, Funk, House or Hip-Hop.
 3. Set **Intensity** (Calm to Busy), **Start at Bar** and how many times to play.
-4. Tick the **Players** and pick each one's instrument: **Automatic** (the best fit you have installed), **Test Synth**, or any installed instrument.
+4. Tick the **Players** and pick each one's instrument: **Automatic** (the best fit you have installed), **Cayman**, or any installed instrument.
 5. Click **Add Players**. One undo removes them.
 
 If a recording has its own tempo, adding the players sets the song to it and lines the recording up with the bars. The drums use General MIDI notes, so any GM drum plugin plays them.
@@ -849,6 +871,17 @@ Four bands, each a gain knob (up to 15 dB boost or cut) with a **Freq** knob: **
 - **Fast** gives a fast attack for sharp peaks.
 - Five lights show the gain reduction: 1, 3, 6, 10 and 15 dB.
 
+### Dynamic EQ
+
+Two EQ bells, after the compressor, that dip only while their key is loud in their own bands. Both start out.
+
+- **1** (teal knobs) and **2** (purple knobs) switch each bell in.
+- Each bell has **Freq** (40 Hz to 16 kHz) and **Q** (a higher Q is narrower), **Thresh** (where it starts to dip) and **Range** (how deep it can go, up to 24 dB).
+- **Release** sets how fast both bells come back.
+- **Key** picks what both bells listen to: **Own sound** (the strip's own sound, to tame a harsh band only when it rings), or another track's strip. For example, key a guitar to the vocal with bell 1 at 2.5 kHz and bell 2 at 300 Hz, so the guitar makes room only while the vocal sings; or a bass's 80 Hz to the kick.
+- The key is that strip's sound after its compressor and before its fader; a muted key doesn't dip anything.
+- Five teal lights show how far the deeper bell dips: 1, 3, 6, 10 and 15 dB. The dips are in the sends too.
+
 ### Sends, Pan and Fader
 
 - **Plate** and **Echo** send the sound, after the fader, to the master's Plate reverb and Tape Echo. Both start off.
@@ -876,6 +909,47 @@ Glues the whole mix. **In** switches it in. Set **Thresh**, **Ratio** (2:1, 4:1,
 ### Tape Machine
 
 The mix recorded to tape and played back. **In** switches it in. **Drive** rounds off the peaks, **Speed** is 15 ips (deeper low bump, softer top) or 30 ips (tighter, more open), **Wow** adds wow and flutter, and **Hiss** adds tape hiss.
+
+## Mastering Section
+
+The Mastering section is the last thing on Main, after its fader, whichever mixer mixes the song: the Console, or the Analog Board after its **Master** fader. Open its window with **Mastering...** at the top of the board, the **MS** button on Main's strip in the Console, or **Song > Mastering Section...**. Drag the window by its top; **Esc** or **x** closes it. It's saved with the song.
+
+- **In** switches it in or out (it starts out). The sound fades out and back in over a few milliseconds, never a click. While it's in, **MS** on Main's strip and **Mastering...** on the board light up.
+- **Mode** is what Fanan AI's mastering works for: **Mix + Master** or **Master only** (one finished track). **Auto** decides by itself, and shows what it chose: Master only when one audio track has clips and no other track does.
+- The meters show what leaves Main, in or out: loudness in LUFS (**Momentary**, **Short-term**, and **Integrated** from when the song starts playing) and the highest **True peak** (red above the ceiling). **Reset meters** starts the integrated loudness and the true peak again.
+- **Reset...** puts its controls back where they start (In and Mode stay as they are).
+
+### Its Chain
+
+- **EQ**: **Low Cut** (off all the way down), **Low** (a shelf, with its **Freq**), **Mid** (a bell) and **High** (a shelf).
+- **Multiband**: the sound split in three at **Lo/Mid** and **Mid/Hi**. **Comp** switches the three compressors in (they start out); **Attack** and **Release** are theirs together. Each band (**Low**, **Mid**, **High**) has its own **Thresh**, **Ratio**, **Gain** and stereo **Width** (0% mono, 100% as it is, up to 200%; turning the Low band's down keeps the bass in the middle). Each band's lights show how far it's pulled down.
+- **Tape**: **In** and **Drive**, a soft tape saturation with a little low bump and a softer top.
+- **Limiter**: **Gain** into a true-peak limiter that never lets the sound over its **Ceiling** (-1 dB at first); **Release**. Its lights show how far it's pulling down. Turn up its Gain to make the song louder.
+
+### Master a File
+
+**File > Master a File...** opens an audio file (WAV, MP3, FLAC and the rest) as a new song of its own, named after it with " Master", the file on one audio track, the Mastering section in and its Mode **Master only**, with its window open.
+
+### Exporting
+
+While the Mastering section is in, **Song > Export Mixdown** has a **Mastering** choice: **With the Mastering section**, **Without it**, or **Both (two files)**, the one without it saved beside the other as "<name> (unmastered)". The Mastering Assistant and stems always leave it out.
+
+## AI Mix and AI Master
+
+Fanan AI can mix the song on the board and master it, or master it alone, as a **suggestion** you compare with what you had and keep or not. Open its window with **AI Mix...** at the top of the board, **AI Master...** in the Mastering window, or **Song > AI Mix & Master...**. It uses Fanan AI credits.
+
+1. Choose **AI Mix** (Mix + Master: the board mixes the song, every strip and the Mastering section can change) or **AI Master** (Master only: just the Mastering section; the mix stays as it is). Sonify says which fits the song.
+2. Pick a **Target**: **None** (clean and balanced, -14 LUFS), a **genre** (each with its own loudness, tonal balance, width and style), or **Match a reference track...** (choose a finished song; Sonify listens to it first). Add a note if you like ("keep the vocal upfront", "warmer").
+3. Click **Make AI Mix Suggestion** (or **AI Master Suggestion**). Sonify renders the song to listen to it (the song is quiet for a few seconds now and then), Fanan AI moves the knobs, listens again and adjusts, then Sonify measures the result. **Stop** puts everything back as it was.
+4. Read what it did and why, and the loudness and true peak **Before** and with the **Suggestion**.
+5. Compare with **Suggestion** / **Before**: Before is heard at the suggestion's loudness, so louder doesn't fool your ear.
+6. **Apply** keeps it (every move is on the board's and the Mastering section's own knobs, so you can change any of it); **Discard** puts everything back as it was.
+
+> Tip: AI suggestions are a starting point, never the one right answer. Trust your ears.
+
+- For AI Mix, the board starts mixing the song (at the Console's levels the first time); Discard switches back to the Console if that's where you were.
+- Each strip's dynamic EQ is one of Fanan AI's main tools: it keys one track to another so they make room for each other only when needed.
+- While the window works you can close it: the work goes on, and its result waits there.
 
 ## Controls
 
@@ -1016,6 +1090,12 @@ Each step shows in the conversation with a tick, or a cross if it failed. Anythi
 ### The Studio Flag
 
 The flag on the Send line marks a request with the studio it's about, so Fanan AI takes it in that studio's terms: choose **Analog Board**, for example, and it works on the board rather than the Console. The flag stays until you change it, and flagged requests show it in the conversation. **No flag** leaves it to Fanan AI.
+
+### Deep
+
+**Deep**, next to the flag on the Send line, sends every request to Fanan AI's strongest model. It costs twice the credits, so leave it off for the everyday things (mute a track, change the tempo, add a reverb, load an instrument): the quick model does those just as well and faster. Turn it on for the big jobs — writing and arranging parts, building a whole section, many tracks at once.
+
+You don't have to watch it: when a request turns out to be a long one, Fanan AI goes deep by itself to finish it, and the button shows it did. Deep stays as you left it, next time too.
 
 ### Stopping and Starting Over
 
@@ -1159,7 +1239,7 @@ Type your email in the **Account** box, click **Sign in** and finish in your bro
 4. To add pictures, PDFs, text or your own code, click the paperclip (**Files** or **A folder of code**) or drop files on the panel. Pictures can be used on the panel, like a background or a logo.
 
 ### The plan and its price
-Nothing changes without your approval. Fanan AI first proposes a plan with its steps and an estimated price in credits. The bar above the request box offers **Start**, **Change** (type what should change for a new plan) and **Cancel**. The plan then ticks along with the credits each step used; a step that runs well over its estimate asks: **Go on** or **Pause**. While Fanan AI works, the send button becomes a stop button (it stops after the current step). A request that fails costs nothing.
+Nothing changes without your approval. Fanan AI first proposes a plan with its steps and an estimated price in credits. As a rough idea of the scale: a typical subtractive synth — a few oscillators, a filter with its envelope, an amp envelope, an LFO and a dozen or so controls — is about 300 credits to build; a small effect is far less, a big plugin with a lot of fixing more. The bar above the request box offers **Start**, **Change** (type what should change for a new plan) and **Cancel**. The plan then ticks along with the credits each step used; a step that runs well over its estimate asks: **Go on** or **Pause**. While Fanan AI works, the send button becomes a stop button (it stops after the current step). A request that fails costs nothing.
 
 The plugin plays as it's built: play it from your MIDI keyboard while the studio is in front. **MIDI In**, at the top right (beside the meter), picks what it hears: tick **All inputs** or just some; its light blinks as MIDI comes through. The plugin's own keyboards always play it. While a MIDI FX is open, your keyboard plays its track instead. To change anything, just ask in the same conversation.
 
@@ -1188,7 +1268,7 @@ At the foot of every menu, "Tell Fanan AI what to do with it": type something li
 Click **+ Pages** above the window: the window becomes the "Main" page, a new page is added, and a page tabs part appears to switch them. **+** adds more. Right-click a page tab to **Rename**, **Move left**, **Move right** or delete it. Each part's **Page** setting puts it on one page or **Every page**.
 
 ### Auto layout and Play
-**Auto layout**, in Edit's row, replaces the panel with a plain automatic one (it asks first). In **Play** the panel is locked and works like the finished plugin: drag knobs (**Shift** for fine moves), double-click for the default, play its keyboard or your MIDI keyboard. Play's row is the preset manager.
+**Auto layout**, in Edit's row, replaces the panel with a plain automatic one (it asks first). **Gallery…** beside it opens the Gallery's knobs, sliders and switches in a window of their own: drag one onto the panel to add it, or onto a knob, slider or switch to give it that look (it keeps its size, place, parameter and settings); double-click one to add it in the middle. A control's menu has **Replace this item with gallery item** under Copy, Paste and Duplicate, for the same thing from a list. Only the same kind replaces (a knob for a knob). An item marked **NC** has a licence that doesn't allow it in a plugin that's sold. In **Play** the panel is locked and works like the finished plugin: drag knobs (**Shift** for fine moves), double-click for the default, play its keyboard or your MIDI keyboard. Play's row is the preset manager.
 
 ## Knob Studio
 
@@ -1233,6 +1313,12 @@ Each row says whether the plugin is playing that instrument, loading it, or can'
 - A **Save as** copy is added as a plugin of its own.
 - A MIDI FX doesn't need this: it's on your tracks as soon as it's built.
 
+### Sonify plugins (.sip)
+Every Sonify plugin is one file ending in **.sip**: instruments, effects (widgets too) and MIDI FX alike. They're all kept together in Documents\Sonify\Plugins (in your user data folder), and the file itself says what kind it is, so Sonify puts each in its place: instruments and effects in the Browser under **Made in Sonify**, MIDI FX under **My Devices**.
+- To share one, send its .sip file. To keep one you got, put it in Documents\Sonify\Plugins (a MIDI FX: **Open** in My Devices does it for you); dropped on a Rack, it plays from where it is.
+- A .sip holds no native code: its plugin plays in Sonify's sandbox, so it can't touch your files or the internet.
+- Plugins and devices from an older Sonify are turned into .sip files the first time this one starts; the old copies are kept in Plugins\Old format.
+
 ## Export Plugin
 
 **Export Plugin**, in the Edit UI bar, makes plugin files any DAW loads, built on this computer. They play wherever you copy them, without Sonify. When the plugin is protected (the Protection tab), each one plays as a demo until it's registered.
@@ -1271,6 +1357,10 @@ The **Store** is Sonify's notice board: ads for plugins and MIDI FX users made, 
 - Search, pick a kind and a section, and click an ad to read it, watch its video, or **Visit website**.
 - When the maker offers it, **Add to Sonify** downloads the Sonify version straight away (a protected one plays as a demo until you register it).
 - **Post an ad** (signed in): title, section, tagline, story (or **Write it with Fanan AI**, which uses credits), features, a YouTube link, a picture and logo, **your website**, the formats you sell and any price text. Tick **Offer the Sonify version for instant download** to let people add it at once. **My ads** edits, hides or deletes yours.
+- The first time you post, Sonify shows the **Store's rules** (no hate, insults, sexual content, violence, scams, impersonation, stolen work, spam or anyone's private details): click **I accept** once.
+- Fanan AI checks every ad against the rules before it's posted, its words first and its pictures before it goes on the board. One that breaks a rule isn't posted, and Sonify says which rule and why. After three such posts, posting in the Store closes for that account for good.
+- Links go only in the website field. Only Fanan posts under the names Fanan or Sonify, and a maker name belongs to the account that used it first.
+- To report someone's ad, click **⋯** on it, then **Report this ad…**. When several people report the same ad, Fanan AI reads it again, and one that breaks the rules comes off the board.
 
 ## MIDI Devices
 
@@ -1285,60 +1375,38 @@ A MIDI FX is a Sonify device in an instrument track's MIDI FX, in front of the i
 It has no panel to design: its settings and outputs show in its window on the track. Click an output's **Map**, then the control it should move.
 
 ### My Devices
-Every MIDI FX you make is kept in My Devices, conversation included, so Fanan AI carries on next time.
+Every MIDI FX you make is kept in My Devices (a .sip file in Documents\Sonify\Plugins), conversation included, so Fanan AI carries on next time.
 - To add one, click **+ MIDI FX** on a track's Console strip and pick it under **My Devices**.
 - In its window, **Open in Plugins Creator Studio** opens it here to change it; **Update to version** takes a newer build.
-- **Save as** saves a copy of the device file to share; **Open** opens one from anywhere.
+- **Save as** saves a copy of its .sip file to share; **Open** opens one from anywhere.
 
 # Live Show Studio
 
 ## Overview
 
-The Live Show Studio is for playing to people: DJ sets, singers and players on stage, podcasts and live streams. Open it with its tab or **Ctrl+6**.
+The Live Show Studio is for playing to people: music from a playlist, singers and players on stage, podcasts and live streams. Open it with its tab or **Ctrl+6**.
 
-While its tab is in front, or while anything in it plays (a deck, a pad, the recording or the stream), the show plays on Main in place of the song, and the song stops. Switch to another studio while it plays and the Studio is heard together with it.
+While its tab is in front, or while anything in it plays (the player, the recording or the stream), the show plays on Main in place of the song, and the song stops. Switch to another studio while it plays and the Studio is heard together with it.
 
 The tabs at the top choose how the show is used:
-- **DJ show**: two or four decks, the mixer with its crossfader, the library and eight pads.
 - **Live & podcasts**: live channels for singers, players and voices, a playlist with one player, the show's screen for videos, and **Podcast...**.
 - **Live streaming**: the same, sent out live with up to four cameras and the screen.
 
-In the middle of the tab line are the show's switches. **Mute mics** and **Mute playback** (Live & podcasts and Live streaming) silence the live channels, or the player and the pads. Both are on every time Sonify starts, so turn them off before you begin. Live streaming adds **Enable streaming**, **Stream settings**, **Controller** and **Monitor**.
+In the middle of the tab line are the show's switches. **Mute mics** and **Mute playback** (Live & podcasts and Live streaming) silence the live channels, or the player. Both are on every time Sonify starts, so turn them off before you begin. Live streaming adds **Enable streaming**, **Stream settings**, **Controller** and **Monitor**.
 
 The show is saved with the song; stream settings and the Controller's setup stay on this computer.
 
 > Tip: Knobs and faders: drag (Shift for fine moves), use the wheel or the arrow keys; double-click puts one back where it starts. Hover a knob to read its value.
 
-## Decks and Library
+## Library
 
-### The library
 The Library panel lists the audio files in a folder. Click **Browse...** to choose your tracks' folder; it opens there from now on. Click a folder to open it, **Up** to go back.
 - Each track shows its tempo (BPM) and key once Sonify has listened to it: the first time it's loaded, or click **Analyze** to listen to every new track in the folder.
 - Type in **Search** to find a track by name, key (Am) or tempo (124).
-- In DJ show, double-click a track to load it onto the first deck that isn't playing, click a deck number beside it, or drag it onto a deck.
-
-### A deck
-Each deck shows its track's name, key, tempo and times, over a scrolling waveform with the beats marked and the whole track under it (click there to jump).
-- The Play button starts and pauses it.
-- The **Tempo** slider is the deck's BPM; move it and the track follows. Double-click it for the track's own tempo.
-- **SYNC** makes the tempo follow the song's (in the transport under the page). A synced deck started while another synced deck plays comes in on its beat.
-- **Jump to cue** 1 to 4 jump to the hot cues. They start a little apart at the track's beginning: drag each marker to where it belongs.
-- **L1** to **L4** each put a four-beat loop where the deck is (click again to remove it); the round-arrow button beside each plays round that loop until clicked again. Drag a loop's edges to resize it, or its middle on the waveform to move it.
-- The lock button keeps every marker where it is.
-- **BPM**: the track's own tempo; type it if Sonify got it wrong (40 to 300).
-- **SLIDER SYNC**: on, the track plays at the deck's Tempo; off, as recorded.
-- Key **-** and **+** move the key by semitones, to suit a singer; a track keeps its key at any tempo. Double-click the key to reset it.
-- **Vol**: the track's own volume, as recorded in the middle, up to +25 dB.
-- The eject button empties the deck (pause it first).
-
-Hot cues, loops and typed tempos are remembered for each track. Choose **2** or **4** under **Decks** on the rail.
-
-### The pads
-In DJ show, eight pads above the library play jingles and stings on their own **Pads** fader. Drag a sound from the library onto a pad; click to play, click again to stop. Right-click a pad and choose **Clear this pad** to empty it.
 
 ## Playlist and Player
 
-In Live & podcasts and Live streaming, music plays from a playlist through one player, with the mixer on its left. Tracks never go straight into the player.
+Music plays from a playlist through one player, with the mixer on its left. Tracks never go straight into the player.
 
 ### Building the playlist
 - Double-click a track or video in the library, click its **+**, or drag it onto the playlist.
@@ -1351,7 +1419,22 @@ In Live & podcasts and Live streaming, music plays from a playlist through one p
 2. Press the player's Play button.
 3. With **Auto** on, the playlist then plays itself, each track after the one before. The one coming up is marked **Next**.
 
-The player has the same Tempo slider, **SYNC**, hot cues and loops as a deck, plus a back-to-start button left of Play. A track that ends or is stopped goes back to its start.
+A track that ends or is stopped goes back to its start.
+
+### The player
+The player shows its track's name, key, tempo and times, over a scrolling waveform with the beats marked and the whole track under it (click there to jump).
+- The Play button starts and pauses it; the back-to-start button left of it takes the track back to its start.
+- The **Tempo** slider is the player's BPM; move it and the track follows. Double-click it for the track's own tempo.
+- **SYNC** makes the tempo follow the song's (in the transport under the page).
+- **Jump to cue** 1 to 4 jump to the hot cues. They start a little apart at the track's beginning: drag each marker to where it belongs.
+- **L1** to **L4** each put a four-beat loop where the player is (click again to remove it); the round-arrow button beside each plays round that loop until clicked again. Drag a loop's edges to resize it, or its middle on the waveform to move it.
+- The lock button keeps every marker where it is.
+- **BPM**: the track's own tempo; type it if Sonify got it wrong (40 to 300).
+- **SLIDER SYNC**: on, the track plays at the player's Tempo; off, as recorded.
+- Key **-** and **+** move the key by semitones, to suit a singer; a track keeps its key at any tempo. Double-click the key to reset it.
+- **Vol**: the track's own volume, as recorded in the middle, up to +25 dB.
+
+Hot cues, loops and typed tempos are remembered for each track.
 
 ### Track options
 Click a banner to select it; double-click it (or click its arrow) to open its options:
@@ -1375,12 +1458,12 @@ While **Mute mics** is on, the channels are silent in the room, the recording an
 ## Mixer and Effects
 
 ### The mixer
-In DJ show each deck has a strip: a headphones button, **Gain**, a fader with its meter, and **A**, **Thru** or **B** for its side of the **Crossfader**, which sits below with its curve (**Smooth**, **Full** or **Cut**). In the playlist tabs the player has one strip with **Player gain**, and no crossfader.
+The player has one strip: a headphones button, **Player gain**, and a fader with its meter.
 
 The **Master** strip has the master fader and meter, and a light lit while the limiter works. Meters turn yellow near clipping and red at the top.
 
 ### Headphones
-Pick where the headphones play in the list by the headphones icon: a Sub output set up in **Song > Song Setup** (**Audio I/O Setup**), such as a DJ controller's outputs 3-4. A deck's or channel's headphones button sends it there before its fader. **Mix** sets the cue against the show, **Level** the volume, and **SPLIT** puts the cue left and the show right.
+Pick where the headphones play in the list by the headphones icon: a Sub output set up in **Song > Song Setup** (**Audio I/O Setup**), such as an audio interface's outputs 3-4. The player's or a channel's headphones button sends it there before its fader. **Mix** sets the cue against the show, **Level** the volume, and **SPLIT** puts the cue left and the show right.
 
 ### The effects channel
 Click **FX** under the master to open the Effects window; drag it by its top bar. Its tabs follow the sound's order: **Dynamic EQ**, **Compressor**, **Drive**, **Stereo Width** and **Limiter**. The light on each tab (or the **On** switch inside) switches that effect; **Reset...** puts the shown effect's controls back where they start. Nothing delays the sound. The Dynamic EQ and Limiter start on.
@@ -1392,11 +1475,11 @@ Click **FX** under the master to open the Effects window; drag it by its top bar
 
 ## Screens and Video
 
-In the playlist tabs, the show's screen shows what the player plays: a video's picture, or a sound-only track's name on black. The next track's picture dissolves in as it crossfades.
+The show's screen shows what the player plays: a video's picture, or a sound-only track's name on black. The next track's picture dissolves in as it crossfades.
 - **Screen** on the rail opens or closes it as a small window over every other window, even with Sonify minimised. Drag its bar to move it, its corner to size it. It opens by itself when a video comes.
 - **HDMI** puts it full screen on another screen, such as a projector or a TV: tick each one in its menu (**Look for screens again** finds a new one).
 
-Videos show in the library only in the playlist tabs; their sound plays through the player like any track's.
+Videos show in the library too; their sound plays through the player like any track's.
 
 ## Cameras and Streaming
 
@@ -1418,7 +1501,7 @@ In Live streaming, click **Stream settings** to open its panel, which previews t
 You can't change the show's tab while live, or stream or record during an export.
 
 ### Recording the night
-**REC** on the rail records the show as it's heard. With **Stems** on (choose before recording), each deck and channel also gets a file of its own, to mix again in the Studio. Each night goes into a new Live Show folder among your recordings.
+**REC** on the rail records the show as it's heard. With **Stems** on (choose before recording), the player and each channel also get a file of their own, to mix again in the Studio. Each night goes into a new Live Show folder among your recordings.
 
 **Podcast...** (Live & podcasts) makes the last recording, or one you choose, ready to publish: -16 LUFS for a podcast or -14 LUFS for streams and video, saved as an MP3 beside it.
 
@@ -1442,7 +1525,7 @@ Click **Controller** (Live streaming) to open its own window; it keeps working w
 With **Pad lights** on, pads for what's live light up (on controllers with lights).
 
 ### MIDI Link
-The decks, mixer, pads, channels, effects, Enable streaming, the mutes and REC can be played from a MIDI controller with MIDI Link, the strip at the right of the toolbar: move a control on your device, then drag its chip onto the Live Show control.
+The player, mixer, channels, effects, Enable streaming, the mutes and REC can be played from a MIDI controller with MIDI Link, the strip at the right of the toolbar: move a control on your device, then drag its chip onto the Live Show control.
 
 ## Tips for a Show
 - Turn off **Mute mics** and **Mute playback** before you start: both are on whenever Sonify starts.
@@ -1459,7 +1542,7 @@ The Sampling Studio turns a sound into a sampled instrument. It plays plugins (V
 
 Open it from its tab in the top bar, with **View > Sampling Studio** or with **Ctrl+7**.
 
-It has four tabs: **Sampling** (what to sample and how), **Presets**, **Loop Editor** and **SFZ to Blob**. The bar above them holds the **Family Name** box (every sample's name starts with it), the green play button (**Start**), the status line, level meters, **F** (opens the folder the samples go to) and a progress line.
+It has three tabs: **Sampling** (what to sample and how), **Loop Editor** and **SFZ to Blob**. The bar above them holds the **Family Name** box (every sample's name starts with it), the green play button (**Start**), the status line, level meters, **F** (opens the folder the samples go to) and a progress line.
 
 The **Sampling** tab has three modes:
 - **VSTi Sampling**: the keys you pick, each at its velocity layers, played one at a time.
@@ -1495,7 +1578,7 @@ A VSTi gets the sampled flag (a white box with a red dot in its title) once the 
 
 Load plugins straight from their folders with the buttons on the area's bar: **VST2**, **VST3** and **CLAP** (and **AU** on a Mac, **LV2** on Linux). Each opens a browse window at that format's usual folder (on Windows, C:\Program Files\Common Files\VST3, C:\Program Files\Common Files\CLAP and C:\Program Files\vstplugins). Double-click folders to go in, **Up** to go back, or type a folder; double-click a plugin (or pick it and click **Load**) to load it. A file holding several plugins asks which one. Once you load from another folder, the window opens there next time. VST2 needs a Sonify built with Steinberg's VST2 SDK; otherwise its button stays off.
 
-The nodes, their places and their plugins' settings are kept for next time, and saved in presets.
+The studio starts with no plugins: nothing loads until you load it. The nodes, their places and their plugins' settings are saved in presets.
 
 ### Keys and Zones
 1. Click keys on the keyboard to pick them (they turn green); drag to pick several. Click a picked key again to drop it.
@@ -1526,7 +1609,7 @@ A picked key has a small **E** button. It opens **Edit Key**, where that key get
 In **Chord Sampling**, click **Chord Types...** and tick any of 18 types. Set **Min Key** and **Max Key** under **Chords Mode Key Range** in Settings. Each type is played on every root whose notes all fit the range. Chords make WAVs only, no SFZ.
 
 ### Presets and Folders
-On **Presets**, **Save Preset** and **Load Preset** keep and restore the whole setup, and **Set Folder** chooses where samples go (Sonify's Samples folder at first). **Ad Hoc Folder** on the Sampling tab sends them elsewhere for this run only, without changing Set Folder. With **Create SFZ**, a folder named after the family holds the SFZ, with the WAVs in a samples folder inside.
+In the middle of the line with **VSTi Sampling**, **Save Preset** and **Load Preset** keep and restore the whole setup, and **Set Folder** chooses where samples go (Sonify's Samples folder at first; its tip shows where they go now). Sonify starts the Sampling Studio with fresh settings every time: a setup comes back only when you load its preset. **Ad Hoc Folder** on the Sampling tab sends them elsewhere for this run only, without changing Set Folder. With **Create SFZ**, a folder named after the family holds the SFZ, with the WAVs in a samples folder inside.
 
 ## Sampling
 
@@ -1665,7 +1748,7 @@ Sonify can use the keys of the DAW you know. In **File > Settings... > Keyboard 
 - **Ctrl+N** new song, **Ctrl+O** open, **Ctrl+S** save, **Ctrl+Alt+S** save as, **Ctrl+E** export mixdown.
 - **Ctrl+Z** undo, **Ctrl+Y** redo, **Ctrl+X**, **Ctrl+C**, **Ctrl+V** cut, copy, paste at the playhead, **D** duplicate, **Ctrl+A** select all, **Ctrl+D** deselect all, **Delete**, **Alt+X** split at the playhead, **Q** quantize.
 - **F2** Editor, **F3** Console, **F5** Browser, **A** automation.
-- **E** zoom in, **W** zoom out, **Alt+Z** the whole song, **Ctrl+0** default zoom.
+- **E** zoom in, **W** zoom out, **Alt+Z** the whole song, **Ctrl+0** default zoom; **Shift+E** and **Shift+W** zoom the tracks' height.
 - **1** Arrow, **2** Range, **3** Split, **4** Eraser, **5** Paint, **6** Mute, **8** Listen (in the arrangement and the Editor alike), **T** Add Tracks.
 
 ### Keys in Every Mapping
@@ -1745,7 +1828,13 @@ Links belong to your setup, not the song: they work in every song, by track numb
 
 ## Phone and Voice
 
-Two Fanan AI extras are switched off in this version of Sonify, so their rows don't show in the AI Assistant: **Phone remote** (Fanan AI from your phone, signed in to the same account) and **Voice control** (from the recording room, say "Sonify", what you want, then "over").
+**Phone remote** (in the AI Assistant) lets you text Fanan AI from your phone. Fanan AI can do everything there that it does when you type in Sonify. Turn it on, then:
+- **In the studio:** scan the QR code it shows with the phone's camera. The phone must be on the same Wi-Fi as the computer. No sign-in needed, and the phone stays paired. **New pairing code** unpairs every phone; scan again after it. The first time, Windows may ask whether Sonify can use the network: allow private networks.
+- **Away:** open the address it shows on the phone and sign in with the same Fanan account.
+
+On the phone, **CHAT** shows the conversation, and a line under your last message says where it is: Message sent, Message arrived, Sonify is generating an answer, Message received. A chime plays when the answer arrives (the bell at the top turns it off). **Stop** stops Fanan AI. Save a text you send often as a shortcut: hold your message down and pick **Add to shortcuts** (or use the ☆, or **+ New shortcut**). It becomes a button on **SHORTCUTS**: tap it, say **Yes**, and it's sent. Hold a shortcut down to **Send**, **Edit** or **Delete** it (✕ deletes it too). Shortcuts are kept in Sonify for next time, so every phone has the same ones.
+
+**Voice control** (from the recording room, say "Sonify", what you want, then "over") is switched off in this version of Sonify, so its row doesn't show.
 
 ## Troubleshooting
 

@@ -123,21 +123,27 @@ juce::String Library::Entry::format() const
     if (MadePlugins::isMadeFile (file))
         return MadePlugins::formatName;
 
-    return Plugin::isVst3 (juce::File (file)) ? "VST3" : "WCLAP";
+    if (Plugin::isVst3 (juce::File (file)))
+        return "VST3";
+
+    return Plugin::isClap (juce::File (file)) ? "CLAP" : "WCLAP";
 }
 
 bool Library::isPluginFile (const juce::File& file)
 {
     const auto name = file.getFileName().toLowerCase();
 
-    // A .vst3 can be a bundle folder or a single file; so can a WCLAP.
+    // A .vst3 can be a bundle folder or a single file; so can a WCLAP, and so can a native CLAP
+    // (a library on Windows and Linux, a bundle folder on a Mac). ".wclap" doesn't end in
+    // ".clap", so a WCLAP is never taken for a native one.
     if (name.endsWith (".vst3"))
         return true;
 
     if (file.isDirectory())
-        return name.endsWith (".wclap");
+        return name.endsWith (".wclap") || name.endsWith (".clap");
 
-    return name.endsWith (".wasm") || name.endsWith (".wclap.tar.gz") || name.endsWith (".wclap.tgz");
+    return name.endsWith (".wasm") || name.endsWith (".wclap.tar.gz") || name.endsWith (".wclap.tgz")
+        || name.endsWith (".clap");
 }
 
 juce::String Library::kindFromFeatures (const juce::StringArray& features)

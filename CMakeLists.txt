@@ -93,11 +93,18 @@ include(src/BasicPitch.cmake)
 include(src/MagentaJs.cmake)
 
 # ------------------------------------------------------------------------------
-# Video: VLC 3.0.21's runtime (libvlc and its plugins), downloaded once into build/deps (or the
-# VLC folder named with -DFANAN_VLC_DIR=...) and copied next to Sonify.exe. Sonify loads it
-# itself, so it builds without it, and says video needs VLC.
+# Video.
+#   Windows: VLC 3.0.21's runtime (libvlc and its plugins), downloaded once into build/deps (or
+#            the VLC folder named with -DFANAN_VLC_DIR=...) and copied next to Sonify.exe.
+#            Sonify loads it itself, so it builds without it, and says video needs VLC.
+#   Linux:   the libvlc the machine has (the package "vlc", or libvlc5 with vlc-plugin-base),
+#            loaded by name at the first video; nothing is downloaded or shipped.
+#   macOS:   AVFoundation, part of the system (src/VideoMedia_Apple.mm) - no VLC at all, so
+#            there is nothing to download, ship, sign or notarize for video on a Mac.
 # ------------------------------------------------------------------------------
-include(src/Vlc.cmake)
+if(NOT APPLE)
+    include(src/Vlc.cmake)
+endif()
 
 # ------------------------------------------------------------------------------
 # Live streaming (the Live Show's cameras and stream), and the sound of the Live Show's videos read
@@ -190,6 +197,8 @@ target_sources(FananWebHub PRIVATE
     src/AudioMedia.cpp
     src/Plugin.h
     src/Plugin.cpp
+    src/PluginHeader.h
+    src/PluginHeader.cpp
     src/SonifyDsp.h
     src/BuiltinPlugins.h
     src/BuiltinPlugins.cpp
@@ -240,6 +249,11 @@ target_sources(FananWebHub PRIVATE
     src/AiTools.cpp
     src/AiAgent.h
     src/AiAgent.cpp
+    src/AiMix.h
+    src/AiMix.cpp
+    src/MixAnalysis.h
+    src/MixAnalysis.cpp
+    src/MainAiMix.cpp
     src/GuideAi.h
     src/GuideAi.cpp
     src/VoiceControl.h
@@ -267,6 +281,7 @@ target_sources(FananWebHub PRIVATE
     src/MainBlocks.cpp
     src/VideoMedia.h
     src/VideoMedia.cpp
+    src/VideoMedia_Apple.h
     src/VideoMp4.h
     src/VideoMp4.cpp
     src/VideoScreen.h
@@ -279,11 +294,15 @@ target_sources(FananWebHub PRIVATE
     src/DeviceHost.cpp
     src/DeviceFiles.h
     src/DeviceFiles.cpp
+    src/SipFiles.h
+    src/SipFiles.cpp
     src/DeviceStudio.h
     src/DeviceStudio.cpp
     src/MainDevices.cpp
     src/AnalogBoard.h
     src/AnalogBoard.cpp
+    src/MasterSection.h
+    src/MasterSection.cpp
     src/MainBoard.cpp
     src/MainGuide.cpp
     src/MainTracks.cpp
@@ -318,6 +337,8 @@ target_sources(FananWebHub PRIVATE
     src/SfzLoops.cpp
     src/BlobMaker.h
     src/BlobMaker.cpp
+    src/AxisPack.h
+    src/AxisPack.cpp
     src/MainSampling.cpp
     src/MainBlobs.cpp
 
@@ -351,6 +372,7 @@ target_sources(FananWebHub PRIVATE
     src/stella_element_host.h
     src/WasmCompiler.h
     src/WasmCompiler.cpp
+    src/SourceGuard.h
     src/LivePreview.h
     src/LivePreview.cpp
     src/ProjectTools.h
@@ -479,7 +501,9 @@ juce_add_binary_data(FananWebHubWeb SOURCES
     src/hub-cloud.js
     src/hub-content.js
     src/hub-scan.js
+    src/qrcode.js
     src/hub-ai.js
+    src/phone-remote.html
     src/hub-browser.js
     src/hub-settings.js
     src/hub-link.js
@@ -487,6 +511,7 @@ juce_add_binary_data(FananWebHubWeb SOURCES
     src/hub-video.js
     src/hub-devices.js
     src/hub-board.js
+    src/hub-aimix.js
     src/hub-live.js
     src/hub-live.css
     src/hub-sampling.js
@@ -515,6 +540,8 @@ juce_add_binary_data(SonifyAiData
     NAMESPACE   SonifyAiData
     SOURCES
         src/sonify_ai_guide.md
+        src/sonify_app_events.md
+        src/sonify_mix_guide.md
         src/sonify_device_guide.md
         src/sonify_device.h)
 
@@ -587,10 +614,12 @@ juce_add_binary_data(SonifyFonts
     NAMESPACE   SonifyFonts
     SOURCES     ${FANAN_PANEL_FONTS} "${FANAN_FONTS_LICENSE}")
 
-# The built-in effects' and the Test Synth's panels (src/panel_*.json, BuiltinScreen.cpp) and their
-# factory presets (src/presets_*.json): a new file shows after the next build.
+# The built-in effects' and Cayman's panels (src/panel_*.json, BuiltinScreen.cpp), their factory
+# presets (src/presets_*.json) and the pictures they show (Sonify's logo): a new file shows after the
+# next build.
 file(GLOB SONIFY_PANELS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/panel_*.json"
                                           "${CMAKE_CURRENT_SOURCE_DIR}/src/presets_*.json")
+list(APPEND SONIFY_PANELS "${CMAKE_CURRENT_SOURCE_DIR}/assets/Sonify.png")
 
 juce_add_binary_data(SonifyPanels
     HEADER_NAME SonifyPanels.h
@@ -624,6 +653,200 @@ if(FANAN_MAGENTA_JS)
         SOURCES
             "${FANAN_MAGENTA_JS}")
     target_link_libraries(FananWebHub PRIVATE SonifyMagentaData)
+endif()
+
+# The Tomahawk sampler (src/TomahawkSampler.h): Grex's engine, effects and instrument editor as
+# they are in Grex (src/tomahawk, juce_dsp for its chorus), and the pictures its window shows: each
+# instrument family's icon (assets/instruments icons), and the packs' pictures for a family without
+# one when they're there (SP_CLASSIC.png, else SP_WORLD.png, and SP_ORIENTAL.png, in
+# assets/instrumet images or assets: optional).
+file(GLOB TOMAHAWK_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/tomahawk/*.h")
+
+target_sources(FananWebHub PRIVATE
+    src/TomahawkSampler.h
+    src/TomahawkSampler.cpp
+    src/TomahawkScreen.h
+    src/TomahawkScreen.cpp
+    src/tomahawk/Channel.cpp
+    src/tomahawk/TomahawkVoice.cpp
+    ${TOMAHAWK_HEADERS})
+
+# Grex's files are UTF-8 (its comments): MSVC reads them as such. They're Grex's, written for
+# JUCE 8, so JUCE 9's deprecation warnings about them are left out of the build's.
+set(TOMAHAWK_COMPILED src/TomahawkSampler.cpp src/TomahawkScreen.cpp src/tomahawk/Channel.cpp src/tomahawk/TomahawkVoice.cpp)
+
+if(MSVC)
+    set_source_files_properties(${TOMAHAWK_COMPILED} PROPERTIES COMPILE_OPTIONS "/utf-8;/bigobj;/wd4996")
+else()
+    set_source_files_properties(${TOMAHAWK_COMPILED} PROPERTIES COMPILE_OPTIONS "-Wno-deprecated-declarations")
+endif()
+
+# The family icons (assets/instruments icons, one per family folder: accordion.png, brass.png...).
+file(GLOB TOMAHAWK_IMAGES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/instruments icons/*.png")
+
+# The packs' pictures, only for a family without an icon, when they're there (optional).
+foreach(_pack_image SP_CLASSIC SP_WORLD SP_ORIENTAL)
+    foreach(_image_home "${CMAKE_CURRENT_SOURCE_DIR}/assets/instrumet images" "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+        if(EXISTS "${_image_home}/${_pack_image}.png")
+            list(APPEND TOMAHAWK_IMAGES "${_image_home}/${_pack_image}.png")
+            break()
+        endif()
+    endforeach()
+endforeach()
+
+if(NOT TOMAHAWK_IMAGES)
+    message(FATAL_ERROR "The Tomahawk's pictures are missing: put the family icons in ${CMAKE_CURRENT_SOURCE_DIR}/assets/instruments icons")
+endif()
+
+juce_add_binary_data(TomahawkImages
+    HEADER_NAME TomahawkImages.h
+    NAMESPACE   TomahawkImages
+    SOURCES     ${TOMAHAWK_IMAGES})
+
+target_link_libraries(FananWebHub PRIVATE TomahawkImages juce::juce_dsp)
+
+# ------------------------------------------------------------------------------
+# Sonify's own plugins, built into Sonify.exe (src/InternalPlugin.h)
+#
+# Each is written the way a plugin is - a juce::AudioProcessor with a window of its own - and
+# hosted exactly as a VST3 is (the same parameters, the same state in songs, the same window over
+# the Hub), only made in Sonify instead of loaded from a file: no plugin file exists and nothing
+# is installed. The Browser lists them with the other built-ins, under Sonify.exe.
+#
+# Each one's folder under src is its own (src/natura, src/zax, src/axis), and Sonify reaches it
+# only through the entries at the bottom of InternalPlugin.cpp.
+# ------------------------------------------------------------------------------
+file(GLOB NATURA_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/natura/*.h")
+file(GLOB ZAX_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/zax/*.h")
+file(GLOB AXIS_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/axis/*.h"
+                                         "${CMAKE_CURRENT_SOURCE_DIR}/src/axis/dsp/*.h")
+
+foreach(_internal natura zax axis)
+    if(NOT IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/${_internal}")
+        message(FATAL_ERROR "Sonify: src/${_internal} is missing: put that plugin's source there "
+                            "(${CMAKE_CURRENT_SOURCE_DIR}/src/${_internal})")
+    endif()
+endforeach()
+
+target_sources(FananWebHub PRIVATE
+    src/InternalPlugin.h
+    src/InternalPlugin.cpp
+
+    # Their presets: one .sonifypreset file each, in the folder Sonify's own preset manager reads.
+    # One copy for them all; each includes it as "../SonifyPresets.h".
+    src/SonifyPresets.h
+
+    # Natura: Sonify's modelling synth.
+    src/natura/PluginProcessor.cpp
+    src/natura/PluginEditor.cpp
+    src/natura/NaturaEngine.cpp
+    src/natura/FananLookAndFeel.cpp
+    ${NATURA_HEADERS}
+
+    # Zax: Sonify's drum synth. Everything but its two sides is in its headers, and its effects
+    # are Grex's, from Sonify's own src/GrexFx.h (one copy for the whole program).
+    src/zax/PluginProcessor.cpp
+    src/zax/PluginEditor.cpp
+    ${ZAX_HEADERS}
+
+    # AXIS: Sonify's guitar board. Its panel is a web page of its own (src/axis/Resources/ui,
+    # compiled in below), shown in the one WebView2 profile every web view in Sonify uses.
+    src/axis/PluginProcessor.cpp
+    src/axis/PluginEditor.cpp
+    ${AXIS_HEADERS})
+
+# AXIS's panel: its page compiled into Sonify, which its editor serves from memory (AxisWebUI.h),
+# the way Sonify's own page is served. A file added there shows after the next build.
+file(GLOB_RECURSE AXIS_UI_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/axis/Resources/ui/*")
+
+if(NOT AXIS_UI_FILES)
+    message(FATAL_ERROR "AXIS's panel is missing: put its ui folder in ${CMAKE_CURRENT_SOURCE_DIR}/src/axis/Resources/ui")
+endif()
+
+juce_add_binary_data(AxisWebUI
+    HEADER_NAME AxisWebUI.h
+    NAMESPACE   AxisWebUI
+    SOURCES     ${AXIS_UI_FILES})
+
+target_link_libraries(FananWebHub PRIVATE AxisWebUI)
+
+# Natura's sampled attacks (src/natura/AttackLibrary.h): the first moments of real notes, cut from
+# VSCO 2 Community Edition and the Versilian Community Sample Library (both CC0), compiled in.
+set(NATURA_ATTACKS "${CMAKE_CURRENT_SOURCE_DIR}/src/natura/attacks/natura_attacks.bin")
+
+if(NOT EXISTS "${NATURA_ATTACKS}")
+    message(FATAL_ERROR "Natura's attacks are missing: put natura_attacks.bin in ${CMAKE_CURRENT_SOURCE_DIR}/src/natura/attacks")
+endif()
+
+juce_add_binary_data(NaturaAttacks
+    HEADER_NAME NaturaAttacks.h
+    NAMESPACE   NaturaAttacks
+    SOURCES     "${NATURA_ATTACKS}")
+
+target_link_libraries(FananWebHub PRIVATE NaturaAttacks)
+
+# Natura's tone layer (src/natura/ToneLayer.h): harmonic spectra of real instruments' steady tones,
+# from the same two CC0 libraries, and its designed characters (duduk, klezmer, zurna...), compiled in.
+set(NATURA_TONES "${CMAKE_CURRENT_SOURCE_DIR}/src/natura/attacks/natura_tones.bin")
+
+if(NOT EXISTS "${NATURA_TONES}")
+    message(FATAL_ERROR "Natura's tone layer is missing: put natura_tones.bin in ${CMAKE_CURRENT_SOURCE_DIR}/src/natura/attacks")
+endif()
+
+juce_add_binary_data(NaturaTones
+    HEADER_NAME NaturaTones.h
+    NAMESPACE   NaturaTones
+    SOURCES     "${NATURA_TONES}")
+
+target_link_libraries(FananWebHub PRIVATE NaturaTones)
+
+# Natura's own knob looks (src/natura/knobs/*.fklayers: the captain's steer knob of its MACROS),
+# compiled in. Built without them when the folder is empty: the knobs then wear Sonify's example knob.
+file(GLOB NATURA_KNOBS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/natura/knobs/*.fklayers")
+
+if(NATURA_KNOBS)
+    juce_add_binary_data(NaturaKnobs
+        HEADER_NAME NaturaKnobs.h
+        NAMESPACE   NaturaKnobs
+        SOURCES     ${NATURA_KNOBS})
+
+    target_link_libraries(FananWebHub PRIVATE NaturaKnobs)
+else()
+    message(STATUS "Natura: no knob looks in ${CMAKE_CURRENT_SOURCE_DIR}/src/natura/knobs: its macros wear the example knob")
+endif()
+
+# Their files are UTF-8 (their comments, and Grex's parts among them): MSVC reads them as such, and
+# needs /bigobj for the drum voices' tables. Grex's parts were written for JUCE 8, so JUCE 9's
+# deprecation warnings about them are left out of the build's, as the Tomahawk's are.
+set(FANAN_INTERNAL_COMPILED
+    src/natura/PluginProcessor.cpp src/natura/PluginEditor.cpp
+    src/natura/NaturaEngine.cpp src/natura/FananLookAndFeel.cpp
+    src/zax/PluginProcessor.cpp src/zax/PluginEditor.cpp
+    src/axis/PluginProcessor.cpp src/axis/PluginEditor.cpp)
+
+if(MSVC)
+    set_source_files_properties(${FANAN_INTERNAL_COMPILED} PROPERTIES COMPILE_OPTIONS "/utf-8;/bigobj;/wd4996")
+else()
+    set_source_files_properties(${FANAN_INTERNAL_COMPILED} PROPERTIES COMPILE_OPTIONS "-Wno-deprecated-declarations")
+endif()
+
+# ------------------------------------------------------------------------------
+# Video on a Mac: AVFoundation in place of VLC (src/VideoMedia_Apple.mm; the rest of VideoMedia
+# - the cache, the sound lined up with the picture, the strip of small pictures - is the same on
+# every platform). Nothing is downloaded or shipped for it, and nothing extra to sign.
+# ------------------------------------------------------------------------------
+if(APPLE)
+    target_sources(FananWebHub PRIVATE src/VideoMedia_Apple.mm)
+
+    # Its own file is Objective-C++ without ARC, as every .mm of Sonify's is.
+    set_source_files_properties(src/VideoMedia_Apple.mm PROPERTIES COMPILE_OPTIONS "-fno-objc-arc")
+
+    target_link_libraries(FananWebHub PRIVATE
+        "-framework AVFoundation"
+        "-framework CoreMedia"
+        "-framework CoreVideo"
+        "-framework QuartzCore"
+        "-framework CoreGraphics")
 endif()
 
 # Libraries from elsewhere (the stretcher, FFmpeg, Wasmtime, ONNX Runtime) are included as
@@ -872,32 +1095,90 @@ if(MSVC)
     endif()
 endif()
 
-# The knob gallery (assets/knob_gallery, Sonify knobs) as the folder knob_gallery next to Sonify.exe,
-# inside the build folder: brought up to date on every build (a knob added there needs no code
-# change), and so in the installer too. Built without it when the folder isn't there.
+# Folders Sonify reads next to Sonify.exe, inside the build folder: the knob gallery and the
+# Tomahawk's presets. Each is copied by a target Sonify depends on, so it's brought up to date on
+# every build however the build is started (the whole build, the FananWebHub target alone, or
+# Visual Studio), even when Sonify.exe isn't relinked. On a Mac they go in the app's Resources
+# (Contents/MacOS is for the app's code only: signing refuses anything else there).
+get_target_property(FANAN_EXE_DIR FananWebHub RUNTIME_OUTPUT_DIRECTORY)
+
+if(APPLE)
+    set(FANAN_BESIDE_EXE "${FANAN_EXE_DIR}/Sonify.app/Contents/Resources")
+else()
+    set(FANAN_BESIDE_EXE "${FANAN_EXE_DIR}")
+endif()
+
+function(fanan_copy_beside_exe target from name)
+    file(GLOB_RECURSE _files LIST_DIRECTORIES false "${from}/*")
+    list(LENGTH _files _count)
+
+    if(_count EQUAL 0)
+        message(WARNING "Sonify: ${from} is empty: nothing to copy for ${name}")
+    else()
+        message(STATUS "Sonify: ${name} (${_count} files) from ${from}")
+    endif()
+
+    add_custom_target(${target}
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory "${from}" "${FANAN_BESIDE_EXE}/${name}"
+        COMMENT "Sonify: ${name} next to Sonify.exe"
+        VERBATIM)
+
+    add_dependencies(FananWebHub ${target})
+endfunction()
+
+# The knob gallery (assets/knob_gallery, Sonify knobs): a knob added there needs no code change,
+# and it's in the installer too. Built without it when the folder isn't there.
 set(FANAN_KNOB_GALLERY "${CMAKE_CURRENT_SOURCE_DIR}/assets/knob_gallery")
 
 if(IS_DIRECTORY "${FANAN_KNOB_GALLERY}")
-    if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.26)
-        set(_fanan_copy_gallery copy_directory_if_different)
-    else()
-        set(_fanan_copy_gallery copy_directory)
-    endif()
-
-    # On a Mac, in the app's Resources (Contents/MacOS is for the app's code only: signing refuses
-    # anything else there).
-    if(APPLE)
-        set(_fanan_gallery_to "$<TARGET_BUNDLE_CONTENT_DIR:FananWebHub>/Resources/knob_gallery")
-    else()
-        set(_fanan_gallery_to "$<TARGET_FILE_DIR:FananWebHub>/knob_gallery")
-    endif()
-
-    add_custom_target(SonifyKnobGallery ALL
-        COMMAND "${CMAKE_COMMAND}" -E ${_fanan_copy_gallery} "${FANAN_KNOB_GALLERY}" "${_fanan_gallery_to}"
-        COMMENT "Sonify: the knob gallery next to Sonify.exe"
-        VERBATIM)
-
-    add_dependencies(SonifyKnobGallery FananWebHub)
+    fanan_copy_beside_exe(SonifyKnobGallery "${FANAN_KNOB_GALLERY}" knob_gallery)
 else()
     message(STATUS "Sonify: no knob gallery in ${FANAN_KNOB_GALLERY}: built without it")
+endif()
+
+# AXIS's pack (assets/AXIS.blob: cabinets' impulse responses in one file), beside Sonify.exe where
+# AXIS looks for it first. Built without it when it isn't there:
+# AXIS then has its four modelled cabinets, and IR files loaded one by one.
+set(FANAN_AXIS_PACK "${CMAKE_CURRENT_SOURCE_DIR}/assets/AXIS.blob")
+
+if(EXISTS "${FANAN_AXIS_PACK}")
+    add_custom_target(SonifyAxisPack
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${FANAN_BESIDE_EXE}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${FANAN_AXIS_PACK}" "${FANAN_BESIDE_EXE}/AXIS.blob"
+        COMMENT "Sonify: AXIS.blob next to Sonify.exe"
+        VERBATIM)
+
+    add_dependencies(FananWebHub SonifyAxisPack)
+else()
+    message(STATUS "Sonify: no AXIS pack in ${FANAN_AXIS_PACK}: AXIS built with its modelled cabinets only")
+endif()
+
+# The Tomahawk's presets: Tomahawk_classic_instruments_presets and Tomahawk_oriental_instruments_presets,
+# found at the project's root, in assets or in Tomahawk_Sampler. A base gain or base octave set in
+# the Tomahawk's window is written into that source copy too, so the next build keeps it.
+set(TOMAHAWK_PRESETS_DIR "")
+
+foreach(_presets_home "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/assets" "${CMAKE_CURRENT_SOURCE_DIR}/Tomahawk_Sampler")
+    if(NOT TOMAHAWK_PRESETS_DIR AND (IS_DIRECTORY "${_presets_home}/Tomahawk_classic_instruments_presets"
+                                     OR IS_DIRECTORY "${_presets_home}/Tomahawk_oriental_instruments_presets"))
+        set(TOMAHAWK_PRESETS_DIR "${_presets_home}")
+    endif()
+endforeach()
+
+if(TOMAHAWK_PRESETS_DIR)
+    set_property(SOURCE src/tomahawk/TomahawkVoice.cpp APPEND PROPERTY
+                 COMPILE_DEFINITIONS "TOMAHAWK_PRESETS_SOURCE_DIR=\"${TOMAHAWK_PRESETS_DIR}\"")
+
+    foreach(_pack classic oriental)
+        set(_presets "Tomahawk_${_pack}_instruments_presets")
+
+        if(IS_DIRECTORY "${TOMAHAWK_PRESETS_DIR}/${_presets}")
+            fanan_copy_beside_exe(SonifyTomahawkPresets_${_pack} "${TOMAHAWK_PRESETS_DIR}/${_presets}" ${_presets})
+        else()
+            message(WARNING "Sonify: ${_presets} isn't in ${TOMAHAWK_PRESETS_DIR}")
+        endif()
+    endforeach()
+else()
+    message(WARNING "Sonify: the Tomahawk's presets weren't found: put the folders Tomahawk_classic_instruments_presets "
+                    "and Tomahawk_oriental_instruments_presets in ${CMAKE_CURRENT_SOURCE_DIR}")
 endif()

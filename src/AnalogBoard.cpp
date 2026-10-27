@@ -198,7 +198,7 @@ float ParamSpec::clamp (float value) const noexcept
 
     value = juce::jlimit (minimum, maximum, value);
 
-    if (kind == Kind::toggle || kind == Kind::choice)
+    if (kind == Kind::toggle || kind == Kind::choice || kind == Kind::track)
         value = std::round (value);
 
     return value;
@@ -212,6 +212,9 @@ juce::String ParamSpec::text (float value) const
 
     if (kind == Kind::toggle)
         return value >= 0.5f ? "On" : "Off";
+
+    if (kind == Kind::track)
+        return value < 0.5f ? juce::String ("Own sound") : "Track id " + juce::String (juce::roundToInt (value));
 
     if (kind == Kind::choice)
     {
@@ -240,7 +243,7 @@ juce::String ParamSpec::text (float value) const
 
     if (u == "Hz")
     {
-        if ((key == "hpf" || key == "widthBass") && value <= minimum + 0.5f)
+        if ((key == "hpf" || key == "widthBass" || key == "lowCut") && value <= minimum + 0.5f)
             return "Off";
 
         return value >= 1000.0f ? number (value / 1000.0f, value >= 10000.0f ? 1 : 2) + " kHz" : juce::String (juce::roundToInt (value)) + " Hz";   // "2.4 kHz"
@@ -280,6 +283,18 @@ const std::array<ParamSpec, numStripParams>& stripSpecs()
         { "release",    "Release",   "Dynamics",   Kind::knob,    50.0f, 1500.0f, 200.0f,  "ms", "" },
         { "fastAttack", "Fast",      "Dynamics",   Kind::toggle,   0.0f,   1.0f,    0.0f,  "",   "" },
         { "makeup",     "Make-up",   "Dynamics",   Kind::knob,     0.0f,  20.0f,    0.0f,  "dB", "" },
+        { "deqOn",         "Bell 1 In",        "Dynamic EQ", Kind::toggle,   0.0f,      1.0f,     0.0f,  "",   "" },
+        { "deqFreq",       "Bell 1 Freq",      "Dynamic EQ", Kind::knob,    40.0f,  16000.0f,  2500.0f,  "Hz", "" },
+        { "deqQ",          "Bell 1 Q",         "Dynamic EQ", Kind::knob,     0.5f,      6.0f,     1.4f,  "",   "" },
+        { "deqThreshold",  "Bell 1 Threshold", "Dynamic EQ", Kind::knob,   -60.0f,      0.0f,   -30.0f,  "dB", "" },
+        { "deqRange",      "Bell 1 Range",     "Dynamic EQ", Kind::knob,     0.0f,     24.0f,     6.0f,  "dB", "" },
+        { "deq2On",        "Bell 2 In",        "Dynamic EQ", Kind::toggle,   0.0f,      1.0f,     0.0f,  "",   "" },
+        { "deq2Freq",      "Bell 2 Freq",      "Dynamic EQ", Kind::knob,    40.0f,  16000.0f,   250.0f,  "Hz", "" },
+        { "deq2Q",         "Bell 2 Q",         "Dynamic EQ", Kind::knob,     0.5f,      6.0f,     1.4f,  "",   "" },
+        { "deq2Threshold", "Bell 2 Threshold", "Dynamic EQ", Kind::knob,   -60.0f,      0.0f,   -30.0f,  "dB", "" },
+        { "deq2Range",     "Bell 2 Range",     "Dynamic EQ", Kind::knob,     0.0f,     24.0f,     6.0f,  "dB", "" },
+        { "deqRelease",   "Release",   "Dynamic EQ", Kind::knob,    20.0f,   1000.0f,   150.0f,  "ms", "" },
+        { "deqKey",       "Key",       "Dynamic EQ", Kind::track,    0.0f, 16777215.0f,   0.0f,  "",   "" },
         { "sendPlate",  "Plate",     "Sends",      Kind::knob,   offDb,    6.0f,   offDb,  "dB", "" },
         { "sendEcho",   "Echo",      "Sends",      Kind::knob,   offDb,    6.0f,   offDb,  "dB", "" },
         { "pan",        "Pan",       "Fader",      Kind::knob,    -1.0f,   1.0f,    0.0f,  "",   "" },
@@ -346,7 +361,8 @@ int masterIndexOf (const juce::String& id)
 }
 
 //==============================================================================
-void Meter::measure (const float* left, const float* right, int numSamples, double sampleRate, float reductionDb) noexcept
+void Meter::measure (const float* left, const float* right, int numSamples, double sampleRate, float reductionDb,
+                     float dynamicReductionDb) noexcept
 {
     if (numSamples <= 0)
         return;
@@ -373,6 +389,7 @@ void Meter::measure (const float* left, const float* right, int numSamples, doub
     storeMax (peakLeft, peakL);
     storeMax (peakRight, peakR);
     reduction.store (reductionDb, std::memory_order_relaxed);
+    dynamicReduction.store (dynamicReductionDb, std::memory_order_relaxed);
 }
 
 void Meter::clear() noexcept
@@ -381,6 +398,7 @@ void Meter::clear() noexcept
     vuLeft.store (-100.0f, std::memory_order_relaxed);
     vuRight.store (-100.0f, std::memory_order_relaxed);
     reduction.store (0.0f, std::memory_order_relaxed);
+    dynamicReduction.store (0.0f, std::memory_order_relaxed);
 }
 
 //==============================================================================
@@ -392,13 +410,14 @@ void Strip::prepare (double rate, int maxBlockSize)
 {
     sampleRate = rate > 0.0 ? rate : 48000.0;
 
-    for (auto* buffer : { &output, &scratch })
+    for (auto* buffer : { &output, &scratch, &keyCopy })
     {
         buffer->setSize (2, juce::jmax (4096, 2 * maxBlockSize), false, true, true);
         buffer->clear();
     }
 
     compressor.prepare (sampleRate);
+    dynamicEq.prepare (sampleRate);
     seenChanges = settings.getChanges() - 1;   // worked out again at the next block
     reset();
 }
@@ -409,7 +428,10 @@ void Strip::reset() noexcept
         side = {};
 
     compressor.reset();
+    dynamicEq.reset();
     wasCompressing = false;
+    waiting = false;
+    compressorReduction = 0.0f;
     fresh = true;   // the next block starts as the settings are, with no crossfade
     meter.clear();
 }
@@ -468,11 +490,26 @@ float Strip::run (const Chain& chain, ChainState& state, float input) noexcept
 
 void Strip::process (const float* left, const float* right, int numSamples, Master& master, bool audible, bool settle) noexcept
 {
-    numSamples = juce::jmin (numSamples, output.getNumSamples(), master.getBlockSize());
-    outputSamples = juce::jmax (0, numSamples);
+    const auto block = chainBlock + 1;
+    processChain (left, right, juce::jmin (numSamples, master.getBlockSize()), block, settle);
 
-    if (numSamples <= 0 || left == nullptr || right == nullptr)
+    // Keyed by another strip: heard here alone, nothing (a strip's own key is its sound).
+    const bool ownKey = getKeyTrack() == 0;
+    finish (ownKey ? getKey (0, block) : nullptr, ownKey ? getKey (1, block) : nullptr, master, audible, settle);
+}
+
+void Strip::processChain (const float* left, const float* right, int numSamples, juce::uint64 block, bool settle) noexcept
+{
+    numSamples = juce::jmin (numSamples, output.getNumSamples());
+    outputSamples = juce::jmax (0, numSamples);
+    chainBlock = block;
+    waiting = numSamples > 0 && left != nullptr && right != nullptr;
+
+    if (! waiting)
+    {
+        outputSamples = 0;
         return;
+    }
 
     auto* outLeft = output.getWritePointer (0);
     auto* outRight = output.getWritePointer (1);
@@ -486,6 +523,8 @@ void Strip::process (const float* left, const float* right, int numSamples, Mast
         const auto next = workOutChain();
         compressor.set (settings.get (threshold), settings.get (ratio), settings.isOn (fastAttack) ? 1.0f : 10.0f,
                         settings.get (release), 4.0f, settings.get (makeup));
+        dynamicEq.set (0, settings.get (deqFreq), settings.get (deqQ), settings.get (deqThreshold), settings.get (deqRange), settings.get (deqRelease));
+        dynamicEq.set (1, settings.get (deq2Freq), settings.get (deq2Q), settings.get (deq2Threshold), settings.get (deq2Range), settings.get (deqRelease));
 
         if (! fresh && ! settle)
         {
@@ -571,6 +610,30 @@ void Strip::process (const float* left, const float* right, int numSamples, Mast
     }
 
     wasCompressing = compressing;
+    compressorReduction = compressing ? compressor.getReductionDb() : 0.0f;
+
+    // What another strip's dynamic EQ hears of this one: the sound as it is here.
+    keyCopy.copyFrom (0, 0, outLeft, numSamples);
+    keyCopy.copyFrom (1, 0, outRight, numSamples);
+}
+
+void Strip::finish (const float* keyLeft, const float* keyRight, Master& master, bool audible, bool settle) noexcept
+{
+    if (! waiting)
+        return;
+
+    waiting = false;
+    const auto numSamples = juce::jmin (outputSamples, master.getBlockSize());
+    outputSamples = juce::jmax (0, numSamples);
+
+    if (numSamples <= 0)
+        return;
+
+    auto* outLeft = output.getWritePointer (0);
+    auto* outRight = output.getWritePointer (1);
+
+    // The dynamic EQ, last before the fader: its dips are in what the sends take too.
+    dynamicEq.process (outLeft, outRight, keyLeft, keyRight, numSamples, { settings.isOn (deqOn), settings.isOn (deq2On) }, settle);
 
     // Pan (a stereo source: the far side turns down, on a sine curve) and the fader.
     const auto faderGain = audible ? dbGain (settings.get (volume), silentDb) : 0.0f;
@@ -636,7 +699,7 @@ void Strip::process (const float* left, const float* right, int numSamples, Mast
     lastPlate = targetPlate;
     lastEcho = targetEcho;
 
-    meter.measure (outLeft, outRight, numSamples, sampleRate, compressing ? compressor.getReductionDb() : 0.0f);
+    meter.measure (outLeft, outRight, numSamples, sampleRate, compressorReduction, dynamicEq.getReductionDb());
 }
 
 //==============================================================================

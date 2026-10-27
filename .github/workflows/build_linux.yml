@@ -2,7 +2,8 @@
 #
 # Sonify for Linux (x86_64): built on Ubuntu 24.04, packed as a .tar.gz of the app's folder (the
 # program, and beside it the Device Compiler, the Plugin SDKs, LAME and the knob gallery), with a
-# README naming the packages it needs to run (read from the program itself, below).
+# README naming the packages it needs to run (read from the program itself, below) and the VLC
+# video needs (loaded by name at the first video, never linked, so ldd never names it).
 
 name: Build Linux
 
@@ -152,7 +153,12 @@ jobs:
 
              sudo apt install ${PACKAGES}
 
-          3. Run ./Sonify
+          3. For video (the Video lane, the Video window, the Live Show's videos), install VLC -
+             Sonify plays video through the libvlc your machine has, and works without it:
+
+             sudo apt install vlc
+
+          4. Run ./Sonify
 
           Sonify keeps its settings in ~/.config/Fanan/Sonify.
 

@@ -14,7 +14,8 @@
 // opens Edit Key at the key (Velocity Layers, Duration, Key Shift, Custom Name; the Builder's
 // Sample Slots). Clear All Keys, the count; the nodes (hub-sampling-nodes.js: the VSTis and effects
 // sampled, wired from the Sampling node to the Output) and the zone list.
-// Presets: Save Preset, Load Preset (Sampler Arena's .smppreset), Set Folder.
+// Presets: Save Preset, Load Preset (Sampler Arena's .smppreset) and Set Folder, in the middle of
+// the modes' line (Set Folder's tip says where the samples go).
 // Loop Editor: Load SFZ Patch, Batch Find All, Ask Fanan AI, Save, Save As; the samples (a green
 // dot: it loops), Play/Stop, Auto Find, < >, the score, XFade, Remove Loop; the stereo waveform
 // (drag S and E), the status.
@@ -990,7 +991,7 @@
     $("smp-no-ranges").hidden = st.s.mode === "builder";
     const adHoc = st.native && st.native.adHoc;
     $("smp-adhoc").textContent = adHoc ? `Ad Hoc: ${adHoc.split(/[\\/]/).pop()}` : "Ad Hoc Folder";
-    $("smp-adhoc").title = adHoc ? `For now the samples go to ${adHoc}` : "For now, the samples go to another folder (Set Folder, in Presets, stays as it is)";
+    $("smp-adhoc").title = adHoc ? `For now the samples go to ${adHoc}` : "For now, the samples go to another folder (Set Folder stays as it is)";
     const chord = st.s.mode === "chord";
     $("smp-zone-wrap").hidden = chord;
     $("smp-clear-row").hidden = chord;
@@ -1293,9 +1294,9 @@
 
   // ---------------------------------------------------------------- Presets
   function renderPresets() {
-    if (!st.shown || st.tab !== "presets") return;
+    if (!st.shown) return;
     const n = st.native || {};
-    $("smp-folder-text").textContent = `The samples go to: ${n.folder || ""}\nSet Folder (kept): ${n.moduleFolder || ""}\nAd Hoc Folder (this run only): ${n.adHoc || "none"}`;
+    $("smp-set-folder").title = `Set Folder: where the samples go (kept)\nThe samples go to: ${n.folder || ""}\nSet Folder: ${n.moduleFolder || ""}\nAd Hoc Folder (this run only): ${n.adHoc || "none"}`;
   }
 
   // ---------------------------------------------------------------- the Loop Editor
@@ -1499,7 +1500,6 @@
     st.tab = tab;
     for (const t of document.querySelectorAll(".smp-tab")) t.setAttribute("aria-selected", String(t.dataset.tab === tab));
     $("smp-tab-sampling").hidden = tab !== "sampling";
-    $("smp-tab-presets").hidden = tab !== "presets";
     $("smp-tab-loop").hidden = tab !== "loop";
     $("smp-tab-blob").hidden = tab !== "blob";
     if (Hub.samplingBlob) Hub.samplingBlob.setVisible(st.shown && tab === "blob");

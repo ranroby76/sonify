@@ -15,6 +15,8 @@ namespace
     constexpr int maxChaptersPerRead = 4;
     constexpr int maxFound = 3;                // chapters that go with the question
     constexpr int maxFoundLength = 16000;      // their text, at most
+    constexpr int maxTranslateTokens = 12000;  // a long chapter in a script that takes many tokens (the server allows no more)
+    constexpr int maxTranslateLength = 30000;  // characters of one chapter, at most
 
     juce::var object()
     {
@@ -65,6 +67,21 @@ namespace
         "\n"
         "The guide's contents:\n"
         "\n";
+
+    /** How Fanan AI translates a page of the guide. */
+    const char* const translateInstructions =
+        "You translate one page of Sonify's user guide (Sonify is a music studio, a DAW, by Fanan) into the language "
+        "the user names. Reply with the translation only: no preface, no notes, no code fences.\n"
+        "\n"
+        "- Keep the page's Markdown exactly: a first line starting \"## \" (the page's title, translated), then \"### \" "
+        "headings, \"- \" bullets, lines starting \"1.\", \"2.\" for steps, \"> \" for tips, **bold** marks and one "
+        "paragraph per line, in the same order and the same number of lines.\n"
+        "- Text inside **bold** marks is the name of a button, menu, tab or key as Sonify shows it, in English: keep each "
+        "one exactly as it is, in English, so the user can find it on screen. Product and studio names (Sonify, Fanan, "
+        "Fanan AI, Natura, Cayman, Tomahawk and the like) stay as they are. Key names (Ctrl, Shift, Enter) stay as they are.\n"
+        "- A \"> Tip:\" line keeps the word \"Tip:\" translated.\n"
+        "- Plain natural wording, as a native speaker would write a help page. Use the language's usual script and "
+        "numerals. Don't add, shorten or explain anything.";
 
     juce::var readGuideTool()
     {
@@ -526,6 +543,7 @@ juce::var GuideAi::request() const
     fields->setProperty ("tools", juce::Array<juce::var> { readGuideTool() });
     fields->setProperty ("messages", messages);
     fields->setProperty ("max_tokens", maxAnswerTokens);
+    fields->setProperty ("mode", "guide");   // the Guide's questions are answered from the guide: the quickest model
     return body;
 }
 
@@ -648,6 +666,68 @@ void GuideAi::fail (const juce::String& message)
     turn.clear();
     busy = false;
     changed();
+}
+
+//==============================================================================
+void GuideAi::translate (int id, const juce::String& language, const juce::String& text)
+{
+    const auto done = [this, flag = alive] (int page, bool ok, const juce::String& words)
+    {
+        if (flag->load() && onTranslated != nullptr)
+            onTranslated (page, ok, words);
+    };
+
+    if (language.isEmpty() || text.trim().isEmpty() || text.length() > maxTranslateLength)
+    {
+        done (id, false, "That page couldn't be translated.");
+        return;
+    }
+
+    auto body = object();
+    auto* fields = body.getDynamicObject();
+    fields->setProperty ("system", juce::Array<juce::var> { textBlock (translateInstructions) });
+    fields->setProperty ("messages", juce::Array<juce::var> { makeMessage ("user", "Translate this page into " + language + ":\n\n" + text) });
+    fields->setProperty ("max_tokens", maxTranslateTokens);
+    fields->setProperty ("mode", "agent");   // Sonnet: translation that keeps the page's marks and names right
+
+    server.chat (body, [done, id] (const juce::Result& result, const juce::var& answer)
+    {
+        if (result.failed())
+        {
+            done (id, false, result.getErrorMessage().isNotEmpty() ? result.getErrorMessage()
+                                                                   : juce::String ("The translation didn't come. Please try again."));
+            return;
+        }
+
+        const auto ending = answer.getProperty ("stop", {}).toString();
+
+        if (ending == "refused")
+        {
+            done (id, false, "Fanan AI declined to translate that page.");
+            return;
+        }
+
+        juce::String translated;
+
+        if (const auto* content = answer.getProperty ("content", {}).getArray())
+        {
+            for (const auto& block : *content)
+                if (block.getProperty ("type", {}).toString() == "text")
+                    translated << block.getProperty ("text", {}).toString();
+        }
+
+        if (translated.isEmpty())
+            translated = answer.getProperty ("reply", {}).toString();
+
+        translated = translated.trim();
+
+        if (translated.isEmpty())
+            done (id, false, "The translation didn't come. Please try again.");
+        else if (ending == "cut")
+            done (id, false, "That page is too long to translate in one go.");
+        else
+            done (id, true, translated);
+    });
 }
 
 void GuideAi::changed()

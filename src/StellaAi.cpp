@@ -684,7 +684,7 @@ void StellaAi::runNextTool()
 
     // Nothing in the plugin changes without a plan the user approved.
     static const juce::StringArray changeTools { "set_layout", "edit_layout", "save_preset", "write_file", "delete_file", "set_graph", "build",
-                                                 "paint_picture", "make_look" };
+                                                 "paint_picture", "make_look", "use_gallery_look" };
 
     // The design brief is written before the plan: it's what the plan is made from.
     const bool designBrief = name == "write_file" && input.getProperty ("path", {}).toString().trim().equalsIgnoreCase (ProjectTools::designFileName);
@@ -694,7 +694,7 @@ void StellaAi::runNextTool()
         toolResults.add (makeToolResult (id, proposalPending
                                                  ? "Not done: the plan is waiting for the user's approval. Nothing changes until they start it."
                                                  : "Not done: nothing in the plugin changes before the user approves a plan. Size this request "
-                                                   "with propose_plan first (read_project, read_file, search_reference, read_skill and analyze_sound are fine before it).",
+                                                   "with propose_plan first (read_project, read_file, search_reference, read_skill, analyze_sound and find_gallery_looks are fine before it).",
                                          true));
         runNextTool();
         return;

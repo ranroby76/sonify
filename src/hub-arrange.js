@@ -5,6 +5,9 @@
 //
 //   Zoom        Ctrl + mouse wheel (around the mouse), the slider under the lanes,
 //               or Ctrl + = / Ctrl + - (Ctrl + 0 goes back to the default).
+//   Height zoom every track taller or shorter at once (their own heights and the Track size
+//               alike): Ctrl + Shift + mouse wheel (around the mouse), the slider under the
+//               lanes with its - and +, or Shift + E / Shift + W (View > Zoom In / Out Vertically).
 //   Ruler, top  the loop lane: drag to draw a loop, drag its ends or its middle to
 //               change it, click it to switch looping on or off.
 //   Ruler, rest click or drag to move the song position.
@@ -53,15 +56,19 @@
 
   /** A track's height in the arrangement: its own, or the view's size; 0 while the track filter
       hides it (hub-tracks.js). */
-  const heightOf = (track) => (track && Hub.isTrackShown && !Hub.isTrackShown(track) ? 0
-                               : track && track.height > 0 ? track.height : SIZES[view.size]);
+  const heightOf = (track) => (track && Hub.isTrackShown && !Hub.isTrackShown(track) ? 0 : shownHeight(track));
+
+  /** A track's height as the height zoom shows it (its own, or the view's size, times the zoom). */
+  const MIN_ROW = 24;                                         // the header's top row still fits
+  const scaled = (height) => Math.max(MIN_ROW, Math.round(height * view.vzoom));
+  const shownHeight = (track) => scaled(track && track.height > 0 ? track.height : SIZES[view.size]);
 
   /** Where a row starts, in content pixels (rows past the last continue at the view's size). */
   function rowTop(index) {
     const tracks = Hub.state.tracks;
     let top = 0;
     for (let i = 0; i < Math.min(index, tracks.length); i++) top += heightOf(tracks[i]);
-    if (index > tracks.length) top += (index - tracks.length) * SIZES[view.size];
+    if (index > tracks.length) top += (index - tracks.length) * scaled(SIZES[view.size]);
     return top;
   }
 
@@ -74,7 +81,7 @@
       if (y < next) return i;
       top = next;
     }
-    return tracks.length + Math.max(0, Math.floor((y - top) / SIZES[view.size]));
+    return tracks.length + Math.max(0, Math.floor((y - top) / scaled(SIZES[view.size])));
   }
 
   const contentHeight = () => rowTop(Hub.state.tracks.length);
@@ -82,6 +89,7 @@
   /** One of the track list's Options (hub-trackoptions.js), or its default before that's there. */
   const option = (name, fallback) => (Hub.trackOption ? Hub.trackOption(name) : fallback);
   const MIN_ZOOM = 2, MAX_ZOOM = 960, DEFAULT_ZOOM = 56;    // pixels per quarter note
+  const MIN_VZOOM = 0.3, MAX_VZOOM = 3;                       // the height zoom: times the tracks' heights
   const LOOP_LANE = 13;                                      // ruler rows above this are the loop lane
   const MAIN_RULER = 34;                                     // the ruler's height; the second ruler goes under it
   /** The second ruler's timebase, when it shows ("" when it doesn't). */
@@ -92,7 +100,7 @@
   const QUANTIZE = [["1/1", 4], ["1/2", 2], ["1/4", 1], ["1/8", 0.5], ["1/16", 0.25], ["1/32", 0.125], ["1/64", 0.0625]];
   const SECONDS_STEPS = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
 
-  const view = { zoom: DEFAULT_ZOOM, snap: "adaptive", snapOn: true, quantize: 0.25, timebase: "bars", follow: true, size: "normal", tool: "arrow", automation: false,
+  const view = { zoom: DEFAULT_ZOOM, vzoom: 1, snap: "adaptive", snapOn: true, quantize: 0.25, timebase: "bars", follow: true, size: "normal", tool: "arrow", automation: false,
                  shape: "freehand",
                  // The Snap menu's (Studio One's): what else snaps, besides the grid.
                  fps: 30, snapCursor: false, snapEvents: false, snapZero: false, snapGrid: true, snapEnd: false, relativeGrid: false,
@@ -151,6 +159,7 @@
   let clipboard = null;         // copied clips: {items: [{indexOffset, startOffset, length, offset, notes}]}
   let clipIdsBefore = null;     // when an edit makes new clips, the ids that existed before it
   let recordStart = 0;          // where the current recording began (for the growing take)
+  const takeWaves = new Map();  // an audio take's waveform as it's written: track id -> { key, ppq, peaks }
   let hoverClip = null;         // the audio clip under the pointer: its handles show
   let wasRecording = false;
   let loopPreview = null;       // the loop being drawn or changed, before the engine has it
@@ -426,14 +435,14 @@
     context.fillStyle = "#18191b";
     context.fillRect(0, 0, width, LOOP_LANE);
 
-    // Loop lane: the locators' line, green (brighter while the loop is on), with grab handles at both ends.
+    // Loop lane: the locators' line, in the leading colour (brighter while the loop is on), with grab handles at both ends.
     // With Autopunch on, it's the punch range too: red, as Studio One shows it.
     const loop = loopShown();
     const punch = Boolean(Hub.recordOptions && Hub.recordOptions().autopunch);
     const x0 = xOf(loop.start), x1 = xOf(loop.end);
-    context.fillStyle = punch ? (loop.on ? "#b3363d" : "#82292f") : loop.on ? "#25984d" : "#1f6a3a";
+    context.fillStyle = punch ? (loop.on ? "#b3363d" : "#82292f") : loop.on ? Hub.theme.accent : Hub.theme.accentSet.dim;
     context.fillRect(x0, 2, Math.max(1, x1 - x0), LOOP_LANE - 4);
-    context.fillStyle = punch ? "#f2a3a8" : loop.on ? "#94d3a1" : "#5fb375";
+    context.fillStyle = punch ? "#f2a3a8" : loop.on ? Hub.theme.accentSet.pale : Hub.theme.accentSet.soft;
     context.fillRect(x0, 1, 2, LOOP_LANE - 2);
     context.fillRect(x1 - 2, 1, 2, LOOP_LANE - 2);
 
@@ -552,7 +561,7 @@
 
     const loop = loopShown();
     if (loop.on) {
-      context.fillStyle = "rgba(37, 152, 77, 0.08)";
+      context.fillStyle = Hub.accentRgba(0.08);
       context.fillRect(xOf(loop.start), 0, xOf(loop.end) - xOf(loop.start), height);
     }
 
@@ -612,9 +621,9 @@
     if (d && d.kind === "box") {
       const x = Math.min(d.from.x, d.to.x) - scrollX, y = Math.min(d.from.y, d.to.y) - scrollY;
       const w = Math.abs(d.to.x - d.from.x), h = Math.abs(d.to.y - d.from.y);
-      context.fillStyle = "rgba(37, 152, 77, 0.15)";
+      context.fillStyle = Hub.accentRgba(0.15);
       context.fillRect(x, y, w, h);
-      context.strokeStyle = "#25984d";
+      context.strokeStyle = Hub.theme.accent;
       context.strokeRect(x + 0.5, y + 0.5, w, h);
     }
 
@@ -622,24 +631,34 @@
     if (rangeSel) {
       const x0 = Math.round(xOf(rangeSel.from)), x1 = Math.round(xOf(rangeSel.to));
       const y0 = rowTop(rangeSel.top) - scrollY, y1 = rowTop(rangeSel.bottom + 1) - scrollY;
-      context.fillStyle = "rgba(37, 152, 77, 0.2)";
+      context.fillStyle = Hub.accentRgba(0.2);
       context.fillRect(x0, y0, x1 - x0, y1 - y0);
-      context.strokeStyle = "#3fd47a";
+      context.strokeStyle = Hub.accentLine();
       context.strokeRect(x0 + 0.5, y0 + 0.5, Math.max(1, x1 - x0 - 1), Math.max(1, y1 - y0 - 1));
     }
 
     if (view.automation) drawEnvelopes(context, width, height, scrollY);
     else drawClipEnvelope(context, width, height, scrollY);
 
-    // Recording: armed audio tracks show the take growing in red, as in Studio One.
+    // Recording: armed audio tracks show the take growing in red, as in Studio One, with its
+    // waveform drawn as it's written (takeWave).
     const t = Hub.transportInfo();
     if (t.recording && t.playing) {
       Hub.state.tracks.forEach((track, index) => {
         if (track.kind !== "audio" || !track.recordArm || !heightOf(track)) return;
-        const from = xOf(recordStart), to = xOf(Hub.songPosition());
+        const wave = takeWaves.get(track.id);
+        const start = wave ? wave.ppq : recordStart;
+        const from = xOf(start), to = xOf(Hub.songPosition());
         if (to <= from) return;
+        const top = tops[index] - scrollY + 2, height = heightOf(track) - 5;
         context.fillStyle = "rgba(229, 72, 77, 0.35)";
-        context.fillRect(from, tops[index] - scrollY + 2, to - from, heightOf(track) - 5);
+        context.fillRect(from, top, to - from, height);
+        if (wave && wave.peaks.length) {
+          context.save();
+          drawWaveform(context, { audioFile: wave.key, gain: 0 }, { start, length: Hub.songPosition() - start, audioOffset: 0 },
+                       from, to, top + 2, height - 4, width);
+          context.restore();
+        }
       });
     }
 
@@ -736,7 +755,7 @@
       strokeClip(context, x0, x1, top, height, selected);
       // An effect from the Browser about to land on it: the clip's own.
       if (Hub.effectDropClip && Hub.effectDropClip() === clip.id) {
-        context.strokeStyle = "#3fd47a";
+        context.strokeStyle = Hub.accentLine();
         context.lineWidth = 3;
         clipPath(context, x0 + 1.5, top + 1.5, x1 - x0 - 3, height - 3);
         context.stroke();
@@ -1007,7 +1026,7 @@
     const coarse = Hub.state.peaks[clip.audioFile];
     const fine = Hub.state.finePeaks[clip.audioFile];
     const pixelsPerSecond = pxPerPpq(shape.start) * map().bpmAt(shape.start) / 60;
-    const wantFine = coarse && pixelsPerSecond > 1.5 * coarse.rate / coarse.bucket;
+    const wantFine = coarse && pixelsPerSecond > 1.5 * coarse.rate / coarse.bucket && !String(clip.audioFile).startsWith("take:");
 
     if (wantFine && !fine && !askedFine.has(clip.audioFile)) {
       askedFine.add(clip.audioFile);
@@ -1977,6 +1996,30 @@
     return x >= 0 && x <= lanes().clientWidth ? x : undefined;
   }
 
+  // ---------------------------------------------------------------- height zoom
+  const vzoomToSlider = (vzoom) => Math.round(1000 * Math.log(vzoom / MIN_VZOOM) / Math.log(MAX_VZOOM / MIN_VZOOM));
+  const sliderToVzoom = (value) => MIN_VZOOM * Math.pow(MAX_VZOOM / MIN_VZOOM, value / 1000);
+
+  /** Every track taller or shorter, keeping what's at anchorY (px from the lanes' top) in place. */
+  function setVZoom(vzoom, anchorY) {
+    const box = lanes();
+    const anchor = anchorY === undefined ? 0 : anchorY;
+    const before = contentHeight() || 1;
+    const at = box.scrollTop + anchor;
+    view.vzoom = Hub.clamp(Math.abs(vzoom - 1) < 0.03 ? 1 : vzoom, MIN_VZOOM, MAX_VZOOM);   // 100% catches
+    Hub.emit("trackHeights");                                // the track list's headers follow
+    updateSizes();
+    box.scrollTop = Math.max(0, at * contentHeight() / before - anchor);
+    $("tracklist").scrollTop = box.scrollTop;
+    $("vzoom").value = String(vzoomToSlider(view.vzoom));
+    $("vzoom").title = `Height zoom: ${Math.round(view.vzoom * 100)}% (Ctrl + Shift + mouse wheel; double-click for 100%)`;
+    Hub.emit("viewChanged");
+  }
+
+  Hub.commands.zoomInVertical = () => setVZoom(view.vzoom * 1.25);
+  Hub.commands.zoomOutVertical = () => setVZoom(view.vzoom / 1.25);
+  Hub.commands.zoomResetVertical = () => setVZoom(1);
+
   Hub.commands.zoomIn = () => setZoom(view.zoom * 1.5, zoomAnchor());
   Hub.commands.zoomOut = () => setZoom(view.zoom / 1.5, zoomAnchor());
   Hub.commands.zoomReset = () => setZoom(DEFAULT_ZOOM, zoomAnchor());
@@ -2465,6 +2508,14 @@
     slider.value = String(zoomToSlider(view.zoom));
     slider.addEventListener("input", () => setZoom(sliderToZoom(Number(slider.value)), zoomAnchor()));
 
+    // The height zoom: its slider, - and +; a double-click on the slider goes back to 100%.
+    const vslider = $("vzoom");
+    vslider.value = String(vzoomToSlider(view.vzoom));
+    vslider.addEventListener("input", () => setVZoom(sliderToVzoom(Number(vslider.value))));
+    vslider.addEventListener("dblclick", () => setVZoom(1));
+    $("vzoom-in").addEventListener("click", () => Hub.run("zoomInVertical"));
+    $("vzoom-out").addEventListener("click", () => Hub.run("zoomOutVertical"));
+
     const size = $("track-size");
     size.value = view.size;
     size.addEventListener("change", () => {
@@ -2487,6 +2538,19 @@
     if (!option("scrollPausesAutoscroll", true)) return;
     const x = contentX(Hub.songPosition());
     if (x < box.scrollLeft || x > box.scrollLeft + box.clientWidth) followPaused = true;
+  }
+
+  /** Brings a song position into the clips' view when it's outside it (Return to Zero, a bar
+      step): put a little in from the left edge, as Autoscroll pages it. */
+  function reveal(ppq) {
+    const box = lanes();
+    if (!box || box.clientWidth <= 0) return;
+    followPaused = false;
+    const x = contentX(Math.max(0, ppq));
+    if (x < box.scrollLeft || x > box.scrollLeft + box.clientWidth * 0.95) {
+      box.scrollLeft = Math.max(0, x - box.clientWidth * 0.05);
+      followLeft = box.scrollLeft;
+    }
   }
 
   function animate() {
@@ -2875,13 +2939,22 @@
       showMenu(event);
     });
 
-    // Ctrl + wheel zooms around the mouse, over the lanes and over the ruler.
-    for (const area of [box, $("ruler-wrap")]) {
+    // Ctrl + wheel zooms around the mouse, over the lanes and over the ruler; with Shift too, the
+    // tracks' heights (over the lanes and the track list), around the mouse.
+    for (const area of [box, $("ruler-wrap"), $("tracklist")]) {
       area.addEventListener("wheel", (event) => {
         if (!event.ctrlKey) return;
+        const delta = event.deltaY || event.deltaX;   // Shift turns the wheel sideways in some browsers
+        if (event.shiftKey) {
+          event.preventDefault();
+          event.stopImmediatePropagation();   // not the track list's own scrolling too
+          setVZoom(view.vzoom * (delta < 0 ? 1.15 : 1 / 1.15), event.clientY - box.getBoundingClientRect().top);
+          return;
+        }
+        if (area === $("tracklist")) return;
         event.preventDefault();
-        setZoom(view.zoom * (event.deltaY < 0 ? 1.2 : 1 / 1.2), event.clientX - box.getBoundingClientRect().left);
-      }, { passive: false });
+        setZoom(view.zoom * (delta < 0 ? 1.2 : 1 / 1.2), event.clientX - box.getBoundingClientRect().left);
+      }, { passive: false, capture: area === $("tracklist") });
     }
 
     if (window.ResizeObserver) new ResizeObserver(updateSizes).observe(box);
@@ -2893,6 +2966,7 @@
     $("track-size").value = view.size;
     document.body.classList.remove("tracks-tiny", "tracks-small", "tracks-large");
     if (view.size !== "normal") document.body.classList.add(`tracks-${view.size}`);
+    Hub.emit("trackHeights");
     updateSizes();
   }
 
@@ -2907,7 +2981,7 @@
 
   /** The view settings a song keeps. */
   function getView() {
-    return { zoom: view.zoom, snap: view.snap, snapOn: view.snapOn, quantize: view.quantize, timebase: view.timebase, follow: view.follow, size: view.size,
+    return { zoom: view.zoom, vzoom: view.vzoom, snap: view.snap, snapOn: view.snapOn, quantize: view.quantize, timebase: view.timebase, follow: view.follow, size: view.size,
              fps: view.fps, snapCursor: view.snapCursor, snapEvents: view.snapEvents, snapZero: view.snapZero, snapGrid: view.snapGrid,
              snapEnd: view.snapEnd, relativeGrid: view.relativeGrid, grid: view.grid, linear: view.linear,
              automation: view.automation, ruler2: view.ruler2 || "off", songChannel: Boolean(Hub.songLanes && Hub.songLanes.isShown()),
@@ -2937,6 +3011,8 @@
     $("quantize").value = String(view.quantize);
     showTimebase();
     $("follow").setAttribute("aria-pressed", String(view.follow));
+    view.vzoom = Number.isFinite(v.vzoom) ? Hub.clamp(v.vzoom, MIN_VZOOM, MAX_VZOOM) : 1;
+    $("vzoom").value = String(vzoomToSlider(view.vzoom));
     setTrackSize(v.size);
     Hub.state.selectedClips = [];
     lanes().scrollTop = 0;
@@ -2965,8 +3041,10 @@
     setAutoTarget: (trackId, key) => { autoTargets.set(trackId, key); autoSelected = null; drawArrangement(); },
     openClipAutomation,
     laneKey,
-    trackHeight: () => SIZES[view.size],
+    trackHeight: () => scaled(SIZES[view.size]),
     heightOf,
+    shownHeight,
+    vzoom: () => view.vzoom,
     rowTop,
     trackAt,
     clipAt,
@@ -2985,6 +3063,7 @@
     ppqOfContentX,
     pxPerPpq,
     scrollLeft: () => lanes().scrollLeft,
+    reveal,
     setZoom,
     // A clip's own effect (the Audio menu, a Browser effect dropped on a clip: hub-tracks.js).
     effectMenu,
@@ -3030,6 +3109,27 @@
   });
   Hub.on("layout", () => requestAnimationFrame(updateSizes));
   Hub.on("takeGrew", () => updateSizes());   // a take recording: its clips grew (the song may be longer)
+
+  // An audio take's waveform as it's written: new peaks a few times a second, per track (a new
+  // pass starts it again). Drawn over the growing take; gone once the take is a clip (takeWaves).
+  Hub.on("takeWave", (data) => {
+    for (const item of (data && data.tracks) || []) {
+      const key = `take:${item.id}`;
+      let wave = takeWaves.get(item.id);
+      if (!wave || item.reset) {
+        wave = { key, ppq: item.ppq, peaks: [] };
+        takeWaves.set(item.id, wave);
+      }
+      wave.ppq = item.ppq;
+      for (const value of item.peaks || []) wave.peaks.push(value);
+      Hub.state.peaks[key] = { file: key, rate: item.rate, bucket: item.bucket, peaks: wave.peaks };
+    }
+  });
+  Hub.on("tracks", () => {
+    if (Hub.transportInfo().recording) return;
+    for (const wave of takeWaves.values()) delete Hub.state.peaks[wave.key];
+    takeWaves.clear();
+  });
 
   Hub.on("ready", () => {
     setupControls();

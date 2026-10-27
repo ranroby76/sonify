@@ -21,7 +21,7 @@
   "use strict";
 
   const { $, element } = Hub;
-  const BUILTIN = { builtin: true, file: "", id: "test-synth", name: "Test Synth", vendor: "Built-in", kind: "instrument",
+  const BUILTIN = { builtin: true, file: "", id: "test-synth", name: "Cayman", vendor: "Built-in", kind: "instrument",
                     category: "Synth", folder: "Built-in", features: ["instrument", "synthesizer"] };
   const KIND_TEXT = { instrument: "Instrument", effect: "Effect", noteEffect: "Note FX" };
   const RECENT_COUNT = 10;
@@ -42,7 +42,7 @@
   const isOpen = (key) => opened.has(key) || query.trim() !== "";
 
   const keyOf = (entry) => entry.builtin ? "builtin" : `${entry.file}|${entry.id}`;
-  // Built into Sonify: the Test Synth (the page's own) and Sonify's own effects (the engine's).
+  // Built into Sonify: Cayman (the page's own) and Sonify's own effects (the engine's).
   const isBuiltin = (entry) => Boolean(entry.builtin) || entry.format === "Built-in";
   const typeOf = (entry) => entry.category || KIND_TEXT[entry.kind] || "Plugin";
   const inTab = (entry) => tab === "effects" ? entry.kind === "effect" : entry.kind !== "effect";
@@ -55,7 +55,7 @@
 
   function entriesForTab() {
     const text = query.trim().toLowerCase();
-    // The Test Synth is in the library as a built-in plugin (its window, its sound): listed once.
+    // Cayman is in the library as a built-in plugin (its window, its sound): listed once.
     const hasTestSynth = Hub.state.library.some((entry) => entry.id === "sonify.builtin.testsynth");
     return [...(hasTestSynth ? [] : [BUILTIN]), ...Hub.state.library].filter(inTab)
                                           .filter((entry) => matches(entry, text))
@@ -499,6 +499,7 @@
     $("browser-add").addEventListener("click", () => Hub.run("addLibraryFiles"));
     $("files-places").addEventListener("change", (event) => { openFolder(event.target.value); event.target.blur(); });
     $("files-up").addEventListener("click", () => { if (listing.parent) openFolder(listing.parent); });
+    $("files-open").addEventListener("click", () => Hub.send("chooseFilesFolder"));
     $("files-preview").addEventListener("click", () => { if (chosenFile) togglePreview(chosenFile); });
     $("files-import").addEventListener("click", () => { if (chosenFile) importFile(chosenFile); });
     $("browser-folders").addEventListener("click", () => Hub.run("pluginFolders"));

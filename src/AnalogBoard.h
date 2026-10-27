@@ -22,7 +22,10 @@
     tools mix the song into Main's outputs:
 
       each strip   the preamp (Trim, Drive, phase), a high-pass filter, a four-band EQ, a
-                   compressor, two sends (the Plate and the Tape Echo), pan, fader, mute, solo
+                   compressor, a dynamic EQ (two bells that dip while a key is loud in their bands:
+                   the strip's own sound, or another strip's, so a vocal can carve its room in a
+                   guitar only while it sings), two sends (the Plate and the Tape Echo), pan,
+                   fader, mute, solo
       the master   the Plate (a plate reverb) and the Tape Echo, back into the mix, then the Bus
                    Compressor, the Tape Machine and the master fader
 
@@ -38,7 +41,7 @@ namespace AnalogBoard
     /** A setting as the page, songs and Sonify AI know it. */
     struct ParamSpec
     {
-        enum class Kind { knob, toggle, choice, fader };
+        enum class Kind { knob, toggle, choice, fader, track };   // track: another strip, by its track's id (0: none)
 
         const char* id;              // "lmfFreq": songs and Sonify AI name it so
         const char* name;            // "LMF Freq": what the page shows
@@ -63,6 +66,9 @@ namespace AnalogBoard
         hpf,
         lf, lfFreq, lmf, lmfFreq, hmf, hmfFreq, hf, hfFreq, eqOn,
         compOn, threshold, ratio, release, fastAttack, makeup,
+        deqOn, deqFreq, deqQ, deqThreshold, deqRange,
+        deq2On, deq2Freq, deq2Q, deq2Threshold, deq2Range,
+        deqRelease, deqKey,
         sendPlate, sendEcho,
         pan, volume, mute, solo,
         numStripParams
@@ -222,8 +228,10 @@ namespace AnalogBoard
         std::atomic<float> vuLeft { -100.0f }, vuRight { -100.0f };
         std::atomic<float> peakLeft { 0.0f }, peakRight { 0.0f };
         std::atomic<float> reduction { 0.0f };
+        std::atomic<float> dynamicReduction { 0.0f };   // a strip's dynamic EQ: how far its bell dips (dB, the block's most)
 
-        void measure (const float* left, const float* right, int numSamples, double sampleRate, float reductionDb) noexcept;
+        void measure (const float* left, const float* right, int numSamples, double sampleRate, float reductionDb,
+                      float dynamicReductionDb = 0.0f) noexcept;
         void clear() noexcept;
 
     private:
@@ -320,6 +328,178 @@ namespace AnalogBoard
     };
 
     //==============================================================================
+    /** A channel's dynamic EQ (Grex's ducker, two bells): each bell's band round its Freq (its
+        width by its Q) dips while the key is loud in that same band, as far over the bell's
+        Threshold as it goes (4:1) and no deeper than its Range. The key is the strip's own sound
+        (taming a harsh band only when it rings) or another strip's (a vocal clearing its room in
+        a guitar only while it sings); both bells hear the same key, each in its own band, and
+        share the Release. Each bell's gain is worked out every 16 samples and glided between;
+        switched in or out it glides over 30 ms, never a jump. Audio thread, but set(). */
+    class DynamicEq
+    {
+    public:
+        static constexpr int numBells = 2;
+        static constexpr float ratio = 4.0f;
+        static constexpr float attackMs = 5.0f;
+
+        void prepare (double rate) noexcept    { sampleRate = rate > 0.0 ? rate : 48000.0; reset(); }
+
+        void reset() noexcept
+        {
+            for (auto& bell : bells)
+                bell.clear();
+
+            reductionDb = 0.0f;
+        }
+
+        /** A bell's band and how it dips; release is the bells' together. */
+        void set (int bellIndex, float frequency, float q, float thresholdDb, float rangeDb, float releaseMs) noexcept
+        {
+            auto& bell = bells[static_cast<size_t> (juce::jlimit (0, numBells - 1, bellIndex))];
+            bell.band = SonifyDsp::Biquad::bandPass (sampleRate, frequency, q);
+            bell.threshold = thresholdDb;
+            bell.floor = juce::Decibels::decibelsToGain (-juce::jmax (0.0f, rangeDb));
+            attack = coefficient (attackMs);
+            release = coefficient (releaseMs);
+        }
+
+        /** In place. keyLeft / keyRight: what it listens to (the sound itself when they're the
+            same pointers: each sample is heard before it's changed); null: silence (nothing dips).
+            on: each bell works; off, the sound goes through as it came once its glide is over
+            (it rests: nothing runs). settle: switched as it's asked, no glide (a mixdown's first
+            block). */
+        void process (float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples,
+                      std::array<bool, numBells> on, bool settle) noexcept
+        {
+            reductionDb = 0.0f;
+            bool anyRunning = false;
+
+            for (size_t b = 0; b < bells.size(); ++b)
+            {
+                auto& bell = bells[b];
+
+                if (on[b] != bell.working)
+                {
+                    bell.working = on[b];
+                    bell.glide = settle ? 0 : juce::roundToInt (0.03 * sampleRate);
+
+                    // Coming in from rest: its filters start empty (its gain is 1, so nothing jumps).
+                    if (on[b] && bell.resting())
+                        bell.clear (true);
+                }
+
+                // At rest: out, and its glide back to 1 over.
+                bell.running = bell.working || bell.glide > 0 || bell.gain < 0.99999f;
+
+                if (! bell.running)
+                {
+                    bell.gain = 1.0f;
+                    bell.step = 0.0f;
+                }
+
+                anyRunning = anyRunning || bell.running;
+            }
+
+            if (! anyRunning)
+                return;
+
+            const bool hearsKey = keyLeft != nullptr && keyRight != nullptr;
+            float deepest = 1.0f;
+
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const auto kl = hearsKey ? keyLeft[i] : 0.0f;
+                const auto kr = hearsKey ? keyRight[i] : 0.0f;
+                auto l = left[i], r = right[i];
+
+                for (auto& bell : bells)
+                {
+                    if (! bell.running)
+                        continue;
+
+                    // The ear: the key in this bell's band, its louder side.
+                    const auto heard = hearsKey ? juce::jmax (std::abs (bell.key[0].process (bell.band, kl)), std::abs (bell.key[1].process (bell.band, kr)))
+                                                : 0.0f;
+                    bell.envelope += (heard > bell.envelope ? attack : release) * (heard - bell.envelope);
+
+                    if (bell.count <= 0)
+                    {
+                        auto target = 1.0f;
+
+                        if (bell.working)
+                        {
+                            const auto over = 20.0f * std::log10 (juce::jmax (1.0e-6f, bell.envelope)) - bell.threshold;
+
+                            if (over > 0.0f)
+                                target = juce::jmax (bell.floor, juce::Decibels::decibelsToGain (-over * (1.0f - 1.0f / ratio), -200.0f));
+                        }
+
+                        bell.step = (target - bell.gain) / static_cast<float> (juce::jmax (16, bell.glide));
+                        bell.glide = juce::jmax (0, bell.glide - 16);
+                        bell.count = 16;
+                    }
+
+                    --bell.count;
+                    bell.gain = juce::jlimit (0.0f, 1.0f, bell.gain + bell.step);
+                    deepest = juce::jmin (deepest, bell.gain);
+
+                    // The bell at gain g: x + (g - 1) * its band (its centre at g); the two in turn.
+                    const auto g = bell.gain - 1.0f;
+                    l += g * bell.music[0].process (bell.band, l);
+                    r += g * bell.music[1].process (bell.band, r);
+                }
+
+                left[i] = l;
+                right[i] = r;
+            }
+
+            reductionDb = deepest < 0.99999f ? -20.0f * std::log10 (juce::jmax (1.0e-6f, deepest)) : 0.0f;
+        }
+
+        /** How far the deeper bell dipped in the last block (dB, 0 or more). */
+        float getReductionDb() const noexcept   { return reductionDb; }
+
+    private:
+        struct Bell
+        {
+            SonifyDsp::Biquad band;
+            std::array<SonifyDsp::BiquadState, 2> music {}, key {};
+            float threshold = -30.0f, floor = 0.5f;
+            float envelope = 0.0f, gain = 1.0f, step = 0.0f;
+            int count = 0, glide = 0;
+            bool working = false, running = false;
+
+            bool resting() const noexcept   { return gain >= 0.99999f && step == 0.0f; }
+
+            /** Its memory emptied (and, unless keepSwitch, switched out at rest). */
+            void clear (bool keepSwitch = false) noexcept
+            {
+                music = {};
+                key = {};
+                envelope = 0.0f;
+                count = 0;
+
+                if (! keepSwitch)
+                {
+                    gain = 1.0f;
+                    step = 0.0f;
+                    glide = 0;
+                    working = running = false;
+                }
+            }
+        };
+
+        float coefficient (float ms) const noexcept
+        {
+            return 1.0f - std::exp (-1.0f / (juce::jmax (0.1f, ms) * 0.001f * static_cast<float> (sampleRate)));
+        }
+
+        double sampleRate = 48000.0;
+        std::array<Bell, numBells> bells {};
+        float attack = 0.0f, release = 0.0f, reductionDb = 0.0f;
+    };
+
+    //==============================================================================
     /** One track's channel strip. */
     class Strip
     {
@@ -332,11 +512,36 @@ namespace AnalogBoard
         void prepare (double sampleRate, int maxBlockSize);
         void reset() noexcept;
 
-        /** The track's dry block through the strip: the result (after the fader) is kept as
-            getOutput() gives it, mixed into the master's bus and sent to its Plate and Echo.
+        /** The track's dry block through the strip, in two steps, so a strip's dynamic EQ can
+            listen to any other strip whatever order they play in: first every strip's chain
+            (processChain: the preamp, the filters, the EQ and the compressor, kept as its key for
+            the others), then every strip's finish (the dynamic EQ, hearing its key, then pan,
+            fader and sends). The result (after the fader) is kept as getOutput() gives it, mixed
+            into the master's bus and sent to its Plate and Echo.
+            block: the engine's block count (a key is heard only when its chain ran in this block).
             audible: not muted, and not left out by another strip's solo. settle: the fader and
             sends start where they are, without a ramp (a mixdown's first block). */
+        void processChain (const float* left, const float* right, int numSamples, juce::uint64 block, bool settle) noexcept;
+
+        /** keyLeft / keyRight: what its dynamic EQ listens to (keyOf: its own, or another strip's; null: silence). */
+        void finish (const float* keyLeft, const float* keyRight, Master& master, bool audible, bool settle) noexcept;
+
+        /** Both steps, the dynamic EQ hearing the strip's own sound (or nothing, keyed elsewhere). */
         void process (const float* left, const float* right, int numSamples, Master& master, bool audible, bool settle) noexcept;
+
+        /** Its chain ran this block, and its finish is still to come. */
+        bool isWaitingToFinish() const noexcept               { return waiting; }
+
+        /** The track whose strip its dynamic EQ listens to (0: its own sound). */
+        int getKeyTrack() const noexcept                      { return static_cast<int> (settings.get (deqKey)); }
+
+        /** What another strip's dynamic EQ hears of this one, in this block: its sound after its
+            compressor, before its own dynamic EQ and its fader; null when its chain didn't run in
+            this block, or it's muted. */
+        const float* getKey (int channel, juce::uint64 block) const noexcept
+        {
+            return chainBlock == block && ! settings.isOn (mute) ? keyCopy.getReadPointer (juce::jlimit (0, 1, channel)) : nullptr;
+        }
 
         const float* getOutput (int channel) const noexcept   { return output.getReadPointer (juce::jlimit (0, 1, channel)); }
         int getOutputSamples() const noexcept                 { return outputSamples; }
@@ -365,10 +570,13 @@ namespace AnalogBoard
         Chain chain;                                    // as it plays now; a change crossfades over a block
         std::array<ChainState, 2> states {};
         ChannelCompressor compressor;
+        DynamicEq dynamicEq;
         float lastLeftGain = 1.0f, lastRightGain = 1.0f, lastPlate = 0.0f, lastEcho = 0.0f;
-        juce::AudioBuffer<float> output, scratch;
+        float compressorReduction = 0.0f;               // this block's, for the meter
+        juce::AudioBuffer<float> output, scratch, keyCopy;
         int outputSamples = 0;
-        bool wasCompressing = false, fresh = true;
+        juce::uint64 chainBlock = 0;                    // the block its chain last ran in
+        bool wasCompressing = false, fresh = true, waiting = false;
     };
 
     //==============================================================================

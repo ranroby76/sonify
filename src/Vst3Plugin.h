@@ -68,6 +68,10 @@ public:
     /** Its settings as a .vstpreset (its class id inside), as other hosts read them (Export
         DAWproject). Empty when it isn't a VST3 or can't give them. Message thread. */
     juce::MemoryBlock getVst3Preset();
+
+    /** Takes settings from a .vstpreset (one made for this plugin, by any host). False when it
+        isn't a VST3, or the preset isn't its own. Message thread. */
+    bool setVst3Preset (const juce::MemoryBlock& preset);
     int takeTouchedParameter() noexcept override                         { return touchedParameter.exchange (-1); }
 
     const std::vector<Parameter>& getParameters() const noexcept override { return parameters; }

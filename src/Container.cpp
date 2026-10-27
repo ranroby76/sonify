@@ -992,6 +992,45 @@ void ContainerPlugin::setNodeMuted (Graph::NodeID id, bool shouldMute)
     }
 }
 
+int ContainerPlugin::getPluginMuted (const Plugin& plugin) const
+{
+    for (auto* node : graph->getNodes())
+    {
+        if (auto* pluginNode = dynamic_cast<PluginNode*> (node->getProcessor()))
+        {
+            if (&pluginNode->getPlugin() == &plugin)
+                return node->isBypassed() ? 1 : 0;
+
+            if (auto* inner = pluginNode->asContainer())
+                if (const auto muted = inner->getPluginMuted (plugin); muted >= 0)
+                    return muted;
+        }
+    }
+
+    return -1;
+}
+
+bool ContainerPlugin::setPluginMuted (const Plugin& plugin, bool muted)
+{
+    for (auto* node : graph->getNodes())
+    {
+        if (auto* pluginNode = dynamic_cast<PluginNode*> (node->getProcessor()))
+        {
+            if (&pluginNode->getPlugin() == &plugin)
+            {
+                setNodeMuted (node->nodeID, muted);
+                return true;
+            }
+
+            if (auto* inner = pluginNode->asContainer())
+                if (inner->setPluginMuted (plugin, muted))
+                    return true;
+        }
+    }
+
+    return false;
+}
+
 void ContainerPlugin::forEachPluginNode (const std::function<void (PluginNode&)>& fn) const
 {
     for (auto* node : graph->getNodes())

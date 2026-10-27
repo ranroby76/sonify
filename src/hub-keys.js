@@ -21,7 +21,8 @@
   // Sonify's commands that keys can run, in the groups the Settings list shows. Ones marked
   // only exist in some maps (FL Studio's Ctrl+Z, Live's draw mode) and are listed only there.
   const COMMANDS = [
-    ["Transport", [["togglePlay", "Start / Stop"], ["returnToZero", "Return to Zero"], ["toggleRecord", "Record"],
+    ["Transport", [["togglePlay", "Start / Stop"], ["returnToZero", "Return to Zero"], ["barBack", "Back One Bar"],
+                   ["barForward", "Forward One Bar"], ["toggleRecord", "Record"],
                    ["toggleLoop", "Loop Active"], ["toggleMetronome", "Metronome"]]],
     ["File", [["newSong", "New Song"], ["openSong", "Open"], ["saveSong", "Save"], ["saveSongAs", "Save As"],
               ["importAudioFiles", "Import Media Files..."], ["exportMixdown", "Export Mixdown"], ["exportStems", "Export Stems"]]],
@@ -35,7 +36,8 @@
               ["songChannelTempo", "Master Song Channel: Tempo"], ["chordPads", "Chord Pads"],
               ["songChannelVolume", "Master Song Channel: Volume"],
               ["toggleAutomation", "Automation"], ["zoomIn", "Zoom In"], ["zoomOut", "Zoom Out"],
-              ["zoomFull", "Zoom to the Whole Song"], ["zoomReset", "Default Zoom"]]],
+              ["zoomFull", "Zoom to the Whole Song"], ["zoomReset", "Default Zoom"],
+              ["zoomInVertical", "Zoom In Vertically"], ["zoomOutVertical", "Zoom Out Vertically"]]],
     ["Tools", [["toolArrow", "Arrow"], ["toolRange", "Range"], ["toolSplit", "Split"], ["toolEraser", "Eraser"],
                ["toolPaint", "Paint (Pencil)"], ["toolMute", "Mute"], ["toolListen", "Listen"],
                ["toolPaintToggle", "Draw Mode On / Off", true]]],
@@ -49,7 +51,8 @@
     studioOne: {
       name: "Studio One",
       keys: {
-        togglePlay: ["Space"], returnToZero: ["Num .", "Home"], toggleRecord: ["Num *"], toggleLoop: ["Num /", "/"],
+        togglePlay: ["Space"], returnToZero: ["Num .", "Home"], barBack: ["Num -"], barForward: ["Num +"],
+        toggleRecord: ["Num *"], toggleLoop: ["Num /", "/"],
         toggleMetronome: ["C"],
         newSong: ["Ctrl+N"], openSong: ["Ctrl+O"], saveSong: ["Ctrl+S"], saveSongAs: ["Ctrl+Alt+S"], exportMixdown: ["Ctrl+E"],
         undo: ["Ctrl+Z"], redo: ["Ctrl+Y", "Ctrl+Shift+Z"], cut: ["Ctrl+X"], copy: ["Ctrl+C"], paste: ["Ctrl+V"],
@@ -57,6 +60,7 @@
         quantize: ["Q"],
         toggleEditor: ["F2"], toggleConsole: ["F3"], toggleBrowser: ["F5"], toggleAutomation: ["A"],
         zoomIn: ["E", "Ctrl+=", "Ctrl+Num +"], zoomOut: ["W", "Ctrl+-", "Ctrl+Num -"], zoomFull: ["Alt+Z"], zoomReset: ["Ctrl+0"],
+        zoomInVertical: ["Shift+E"], zoomOutVertical: ["Shift+W"],
         toolArrow: ["1"], toolRange: ["2"], toolSplit: ["3"], toolEraser: ["4"], toolPaint: ["5"], toolMute: ["6"], toolListen: ["8"],
         addTracks: ["T"]
       }
@@ -64,12 +68,14 @@
     cubase: {
       name: "Cubase",
       keys: {
-        togglePlay: ["Space"], returnToZero: ["Num ."], toggleRecord: ["Num *"], toggleLoop: ["Num /"], toggleMetronome: ["C"],
+        togglePlay: ["Space"], returnToZero: ["Num ."], barBack: ["Num -"], barForward: ["Num +"],
+        toggleRecord: ["Num *"], toggleLoop: ["Num /"], toggleMetronome: ["C"],
         newSong: ["Ctrl+N"], openSong: ["Ctrl+O"], saveSong: ["Ctrl+S"], saveSongAs: ["Ctrl+Shift+S"],
         undo: ["Ctrl+Z"], redo: ["Ctrl+Shift+Z"], cut: ["Ctrl+X"], copy: ["Ctrl+C"], paste: ["Ctrl+V"],
         duplicate: ["Ctrl+D"], selectAll: ["Ctrl+A"], delete: ["Delete", "Backspace"], splitAtPlayhead: ["Alt+X"], quantize: ["Q"],
         toggleEditor: ["Ctrl+E"], toggleConsole: ["F3"], toggleBrowser: ["F5"],
         zoomIn: ["H"], zoomOut: ["G"], zoomFull: ["Shift+F"], zoomReset: ["Ctrl+0"],
+        zoomInVertical: ["Shift+H"], zoomOutVertical: ["Shift+G"],
         toolArrow: ["1"], toolRange: ["2"], toolSplit: ["3"], toolEraser: ["5"], toolMute: ["7"], toolPaint: ["8"], toolListen: ["9"],
         deselectAll: ["Ctrl+Shift+A"]
       }
@@ -78,12 +84,14 @@
       name: "Logic Pro",
       note: "Logic is a Mac DAW: its Cmd is Ctrl here, and Option is Alt. Tools come from the Tool menu: press T, then the tool's letter.",
       keys: {
-        togglePlay: ["Space"], returnToZero: ["Enter"], toggleRecord: ["R"], toggleLoop: ["C"], toggleMetronome: ["K"],
+        togglePlay: ["Space"], returnToZero: ["Enter"], barBack: [","], barForward: ["."],
+        toggleRecord: ["R"], toggleLoop: ["C"], toggleMetronome: ["K"],
         newSong: ["Ctrl+N"], openSong: ["Ctrl+O"], saveSong: ["Ctrl+S"], saveSongAs: ["Ctrl+Shift+S"], exportMixdown: ["Ctrl+B"],
         undo: ["Ctrl+Z"], redo: ["Ctrl+Shift+Z"], cut: ["Ctrl+X"], copy: ["Ctrl+C"], paste: ["Ctrl+V"],
         duplicate: ["Ctrl+R"], selectAll: ["Ctrl+A"], delete: ["Backspace", "Delete"], splitAtPlayhead: ["Ctrl+T"], quantize: ["Q"],
         toggleEditor: ["P"], toggleConsole: ["X"], toggleBrowser: ["Y", "F"], toggleAutomation: ["A"],
         zoomIn: ["Ctrl+Right"], zoomOut: ["Ctrl+Left"], zoomFull: ["Z"], zoomReset: ["Ctrl+0"],
+        zoomInVertical: ["Ctrl+Down"], zoomOutVertical: ["Ctrl+Up"],
         toolArrow: ["T, T"], toolRange: ["T, R"], toolSplit: ["T, I"], toolEraser: ["T, E"], toolPaint: ["T, P"], toolMute: ["T, M"],
         toolListen: ["T, S"], deselectAll: ["Ctrl+Shift+A"],
         addTrack: ["Ctrl+Alt+S"], addAudioTrack: ["Ctrl+Alt+A"]
@@ -92,13 +100,15 @@
     proTools: {
       name: "Pro Tools",
       keys: {
-        togglePlay: ["Space", "Num 0"], returnToZero: ["Enter"], toggleRecord: ["Ctrl+Space", "F12", "Num 3"],
+        togglePlay: ["Space", "Num 0"], returnToZero: ["Enter"], barBack: ["Num 1"], barForward: ["Num 2"],
+        toggleRecord: ["Ctrl+Space", "F12", "Num 3"],
         toggleLoop: ["Ctrl+Shift+L", "Num 4"], toggleMetronome: ["Num 7"],
         newSong: ["Ctrl+N"], openSong: ["Ctrl+O"], saveSong: ["Ctrl+S"], exportMixdown: ["Ctrl+Alt+B"],
         undo: ["Ctrl+Z"], redo: ["Ctrl+Shift+Z"], cut: ["Ctrl+X"], copy: ["Ctrl+C"], paste: ["Ctrl+V"],
         duplicate: ["Ctrl+D"], selectAll: ["Ctrl+A"], delete: ["Backspace", "Delete"], splitAtPlayhead: ["Ctrl+E"], quantize: ["Alt+0"],
         toggleConsole: ["Ctrl+="], toggleBrowser: ["Alt+;"], toggleAutomation: ["Alt+-"],
         zoomIn: ["Ctrl+]"], zoomOut: ["Ctrl+["], zoomFull: ["Alt+A"],
+        zoomInVertical: ["Ctrl+Alt+]"], zoomOutVertical: ["Ctrl+Alt+["],
         toolArrow: ["F8"], toolRange: ["F7"], toolListen: ["F9"], toolPaint: ["F10"],
         addTrack: ["Ctrl+Shift+N"]
       }
@@ -113,6 +123,7 @@
         toggleEditor: ["Ctrl+Alt+L", "Ctrl+Alt+3"], toggleConsole: ["Ctrl+Alt+M"], toggleBrowser: ["Ctrl+Alt+B", "Ctrl+Alt+5"],
         toggleAutomation: ["A"],
         zoomIn: ["=", "Shift+=", "Num +"], zoomOut: ["-", "Num -"], zoomFull: ["W"], zoomReset: ["Ctrl+0"],
+        zoomInVertical: ["Alt+="], zoomOutVertical: ["Alt+-"],
         toolPaintToggle: ["B"],
         addTrack: ["Ctrl+Shift+T"], addAudioTrack: ["Ctrl+T"]
       }
@@ -126,6 +137,7 @@
         duplicate: ["Ctrl+D"], selectAll: ["Ctrl+A"], delete: ["Delete"], splitAtPlayhead: ["S"], quantize: ["Q"],
         toggleEditor: ["Alt+3"], toggleConsole: ["Alt+2"], toggleBrowser: ["B"], toggleAutomation: ["Shift+A"],
         zoomIn: ["Ctrl+Right"], zoomOut: ["Ctrl+Left"], zoomFull: ["Shift+F", "Ctrl+Alt+F"], zoomReset: ["Ctrl+0"],
+        zoomInVertical: ["Ctrl+Down"], zoomOutVertical: ["Ctrl+Up"],
         toolArrow: ["F5", "F6"], toolSplit: ["F8"], toolEraser: ["F10"], toolPaint: ["F9"], deselectAll: ["Ctrl+Shift+A"],
         addAudioTrack: ["Ctrl+T"]
       }
@@ -212,7 +224,7 @@
   const NOTES_TOO = new Set(["cut", "copy", "paste", "duplicate"]);   // in the Editor, on its notes
   const FILE = new Set(["newSong", "openSong", "saveSong", "saveSongAs"]);
   // What acts in every studio, not only in the Studio: the transport, Undo and Redo.
-  const EVERY_STUDIO = new Set(["togglePlay", "returnToZero", "toggleRecord", "toggleLoop", "toggleMetronome",
+  const EVERY_STUDIO = new Set(["togglePlay", "returnToZero", "barBack", "barForward", "toggleRecord", "toggleLoop", "toggleMetronome",
                                 "undo", "redo", "undoToggle"]);
 
   /** Picks a tool in the area with focus (the arrangement's, or the Editor's: its Pencil is the

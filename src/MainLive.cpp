@@ -235,7 +235,7 @@ void MainComponent::handleLive (const juce::var& event)
 
     if (action == "mode")
     {
-        setLiveMode (event.getProperty ("mode", "dj").toString());
+        setLiveMode (event.getProperty ("mode", "live").toString());
         return;
     }
 
@@ -978,7 +978,8 @@ void MainComponent::alignDeckBeat (int d, int lead)
 //==============================================================================
 void MainComponent::setLiveMode (const juce::String& mode)
 {
-    const auto next = mode == "live" || mode == "stream" ? mode : juce::String ("dj");
+    // DJ show isn't offered (its tab is hidden): anything but Live streaming is Live & podcasts.
+    const auto next = mode == "stream" ? mode : juce::String ("live");
 
     if (next == liveMode)
         return;
@@ -4316,11 +4317,11 @@ void MainComponent::loadSongDecks()
     if (juce::var extras; engine.takeLiveShowExtras (extras))
     {
         taken = true;
-        const auto mode = extras.getProperty ("mode", "dj").toString();
+        const auto mode = extras.getProperty ("mode", "live").toString();
 
         // (A stream going out stays where it's run from.)
         if (! (liveMode == "stream" && liveVideo != nullptr && liveVideo->isStreaming()))
-            liveMode = mode == "live" || mode == "stream" ? mode : juce::String ("dj");
+            liveMode = mode == "stream" ? mode : juce::String ("live");   // a song saved in DJ show opens in Live & podcasts
 
         livePlaylist.clear();
         livePlaylistNext = 1;

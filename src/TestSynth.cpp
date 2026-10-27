@@ -1,6 +1,6 @@
 // D:\workspace\Fanan_web_hub\src\TestSynth.cpp
 //
-// The Test Synth as a plugin: the tone a track plays before it has an instrument of its own
+// Cayman (the test synth) as a plugin: the tone a track plays before it has an instrument of its own
 // (Track.cpp's: a sine with two harmonics that fade, quick to judge latency by), grown into a
 // small synth with a panel (panel_testsynth.json).
 //
@@ -638,7 +638,7 @@ Plugin::Descriptor TestSynths::describe()
 {
     Plugin::Descriptor descriptor;
     descriptor.id = Builtins::testSynthId;
-    descriptor.name = "Test Synth";
+    descriptor.name = "Cayman";
     descriptor.vendor = "Sonify";
     descriptor.version = "2.0";
     descriptor.features = { "instrument", "synthesizer", "stereo" };

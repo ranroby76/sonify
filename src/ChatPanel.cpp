@@ -46,6 +46,8 @@ namespace
             "  \xe2\x80\xa2 Effect: a warm tape delay with wow and flutter\n"
             "  \xe2\x80\xa2 MIDI FX: an arpeggiator that follows the chord\n"
             "  \xe2\x80\xa2 Widget: anything else, like a tuner or a spectrum display\n\n"
+            "What to expect: a plugin like that bass synth is about 300 credits to build. Fanan AI prices "
+            "every plan before it starts, and nothing is built until you approve it.\n\n"
             "Then reshape its panel in Edit UI, and play it in your songs.");
     }
 }

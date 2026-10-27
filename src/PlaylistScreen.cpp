@@ -2,6 +2,7 @@
 
 #include "PlaylistScreen.h"
 #include "VideoScreen.h"
+#include "PluginHeader.h"
 
 #include <cmath>
 
@@ -1194,9 +1195,10 @@ namespace
             : juce::DocumentWindow ("Playlist Player", Look::page, juce::DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar (true);
+            PluginHeader::attach (*this, player);
             setContentOwned (PlaylistScreen::createPage (player).release(), true);
             setResizable (true, true);
-            setResizeLimits (760, 420, 8000, 6000);
+            getConstrainer()->setSizeLimits (760, 420, 8000, 6000);
             centreWithSize (getWidth(), getHeight());
         }
 

@@ -47,6 +47,14 @@ public:
 
     bool isBusy() const noexcept    { return busy; }
 
+    /** The Guide's "Translate this page to": one chapter's text (Markdown, as the guide has it) goes to
+        Fanan AI, with the language's name, and comes back in that language. id is the page's own number
+        for it. Apart from the questions: a translation and a question can be under way together. */
+    void translate (int id, const juce::String& language, const juce::String& text);
+
+    /** A translation is done: ok with its text, or not with why (a message the user can read). */
+    std::function<void (int id, bool ok, const juce::String& textOrError)> onTranslated;
+
     /** What the Guide's panel shows: { busy, entries: [{ role: "user" | "ai" | "notice", text }] }. */
     juce::var getState() const;
 

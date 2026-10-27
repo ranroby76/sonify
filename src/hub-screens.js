@@ -7,7 +7,9 @@
 //   native   VST3 editors open in a window of their own; nothing to show here.
 //   panel    the page's own windows (a MIDI FX device's settings, hub-miditools.js): Hub.screens.panel.
 // Drag a window by its title, resize it from its corner; a click brings it to the front.
-// A window closes by itself when its plugin is removed.
+// A plugin's window has its ON/OFF and its format in the title bar, as its own windows have on
+// their header (PluginHeader.cpp): ON/OFF is its bypass where it sits (pluginOn), shown as the
+// tracks say. A window closes by itself when its plugin is removed.
 
 (() => {
   "use strict";
@@ -62,6 +64,24 @@
     win.root.style.zIndex = String(++topZ);
   }
 
+  /** What a format is called on a window ("Sonify" for Sonify's own plugins). */
+  const formatLabel = (format) => String(format || "").toUpperCase();
+
+  /** ON/OFF and the format, as the tracks say. */
+  function showPower(win) {
+    if (!win.power) return;
+    const plugin = pluginAt(win.channel, win.slot);
+    const known = Boolean(plugin) && typeof plugin.bypass === "boolean";
+    const on = !(plugin && plugin.bypass);
+    win.power.hidden = !known;
+    win.power.classList.toggle("off", !on);
+    win.power.textContent = on ? "ON" : "OFF";
+    win.power.title = on ? "On: click to switch it off (bypassed)" : "Off (bypassed): click to switch it on";
+    win.power.setAttribute("aria-pressed", String(on));
+    win.root.classList.toggle("plugin-off", known && !on);
+    win.format.textContent = plugin ? formatLabel(plugin.format) : "";
+  }
+
   function close(key, tellEngine = true) {
     const win = windows.get(key);
     if (!win) return;
@@ -83,7 +103,21 @@
     shut.title = "Close";
     shut.setAttribute("aria-label", `Close ${title}`);
     shut.addEventListener("click", () => close(key));
-    bar.append(name, shut);
+    // A plugin's window: its ON/OFF before the name, its format after.
+    let power = null, format = null;
+    if (kind !== "panel") {
+      power = element("button", "screen-power", "ON");
+      power.type = "button";
+      power.hidden = true;
+      power.addEventListener("click", () => {
+        const plugin = pluginAt(channel, slot);
+        if (plugin) Hub.send("pluginOn", { channel, slot, on: Boolean(plugin.bypass) });
+      });
+      format = element("span", "screen-format");
+      bar.append(power, name, format, shut);
+    } else {
+      bar.append(name, shut);
+    }
 
     const body = element("div", "screen-body");
     const grip = element("div", "screen-resize");
@@ -100,12 +134,12 @@
     root.style.width = `${w}px`;
     root.style.height = `${h}px`;
 
-    const win = { root, body, channel, slot, kind, frame: null, params: new Map() };
+    const win = { root, body, channel, slot, kind, frame: null, params: new Map(), power, format };
     root.addEventListener("pointerdown", () => bringToFront(win), true);
 
     // Move by the title bar.
     bar.addEventListener("pointerdown", (event) => {
-      if (event.target === shut) return;
+      if (event.target === shut || event.target === power) return;
       event.preventDefault();
       const startX = event.clientX, startY = event.clientY;
       const left = root.offsetLeft, top = root.offsetTop;
@@ -145,6 +179,7 @@
     $("screens").appendChild(root);
     windows.set(key, win);
     bringToFront(win);
+    showPower(win);
     return win;
   }
 
@@ -254,6 +289,7 @@
         close(key);
         continue;
       }
+      showPower(win);
       if (win.kind === "generic") {
         for (const p of plugin.params || []) {
           const row = win.params.get(p.index);

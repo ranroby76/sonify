@@ -42,6 +42,8 @@
 #include "VideoMp4.h"
 #include "VideoScreen.h"
 #include "DawProject.h"
+#include "AiMix.h"
+#include "MixAnalysis.h"
 
 #include <map>
 #include <optional>
@@ -78,8 +80,10 @@ class CreatorStudio;
         transport action "record" toggles recording,
         addLibraryFiles, removeLibraryFile {file},
         choosePlugins {thirdParty}   the answer to the question at startup,
+        aiSettings {deep?}   Fanan AI's Deep switch: every request to the strongest model,
         voiceSettings {enabled?, input?}   voice control on or off, and the song input its mic is on (-1: none),
-        remoteSettings {enabled}   Sonify Remote (the phone page) on or off,
+        remoteSettings {enabled?, newKey?}   Sonify Remote (the phone pages) on or off; newKey: a new pairing key (phones scan again),
+        aiCommandList {names}   the page's commands (Hub.commands), for Fanan AI's run_app_command,
         undoToggle   FL Studio's Ctrl+Z: undo, or redo right after an undo,
         masterSong {loudness: dynamic|streaming|loud, character: clean|warm|bright}   Song > Mastering
         Assistant, cancelMastering, masteringState (the page asks how it stands),
@@ -212,7 +216,7 @@ class CreatorStudio;
         midiToolsList, midiToolInstall {tool}, midiToolRemove {id}
 
     File > Settings (MainSettings.cpp)
-        getSettings, setPreference {luminance?, contrast?, keymap?, discoverable?, autosave?, autosaveMinutes?,
+        getSettings, setPreference {luminance?, contrast?, accent?, keymap?, discoverable?, autosave?, autosaveMinutes?,
                                     releaseInBackground?, timecodeRate?},
         chooseUserDataFolder, resetUserDataFolder,
         audioSetupGet {rescan?}, audioSetupSet {type? | device?, output?, input?, rate?, buffer?, inputChannels?: [bool]},
@@ -227,6 +231,7 @@ class CreatorStudio;
         status   20 times a second once the page reports uiReady (with the Sub outputs' meters; volume
                  and pan for tracks automation or a control surface moves, masterVolume for Main's)
         runCommand {command}   a page command a control surface asked for (zoomIn, zoomOut)
+        aiRun {command} | {event, payload}   Fanan AI runs a page command, or has the page send an event as it would (AiTools)
         tracks   whenever the track list, a plugin or the Main mute changes (tracks, fxChannels and busChannels,
                  each with the bus it plays into; includes the Main channel, and
                  the song's inputs and outputs with the device's channels and what Reset to Default goes back to)
@@ -236,7 +241,7 @@ class CreatorStudio;
                  view settings after New or Open; songFolder  a folder picked for new songs
         param    reply to setParam
         voiceState  {offered, enabled, why, stage: off|listening|command, heard, message, input, inputs}
-        remoteState {offered, enabled, why, connected, problem, url, email}
+        remoteState {offered, enabled, why, connected, problem, url, email, localUrl, localProblem, localSeen}
         settings    Sonify's settings (Preferences::toVar) with the MIDI ports (inputs {id, name, enabled,
                     busy (another app holds it), link (usb, bluetooth, virtual or "")}, outputs {id,
                     name}), the usual plugin folders, the computer's name, any MIDI output that couldn't
@@ -610,6 +615,10 @@ private:
     class WebTabView;
     class WebTabLayer;
 
+    // Sonify's own page (webView): it never leaves Sonify's own address, so no page from
+    // outside ever gets its bridge to the engine (a link dropped on the window, say).
+    class HubPageView;
+
     struct WebTab
     {
         int id = 0;
@@ -647,6 +656,11 @@ private:
     std::unique_ptr<Splash> splash;
     void placeSplash();
     void dismissSplash (int milliseconds);
+
+    // The ON/OFF on every plugin window's header (PluginHeader.h): the engine says and switches
+    // it for each plugin in the song (AudioEngine::getPluginOn); the page's windows send pluginOn.
+    int pluginSwitcher = 0;
+    void switchPlugin (const Plugin& plugin, bool on);
 
     //==============================================================================
     // The song as a document: its file, unsaved changes, recent songs.
@@ -718,12 +732,22 @@ private:
     juce::var boardMeters();
     bool linkBoardSetting (const juce::StringArray& parts,
                            std::function<void (AnalogBoard::Settings<AnalogBoard::numStripParams>&, int)> strip,
-                           std::function<void (AnalogBoard::Settings<AnalogBoard::numMasterParams>&, int)> master);
+                           std::function<void (AnalogBoard::Settings<AnalogBoard::numMasterParams>&, int)> master,
+                           std::function<void (MasterSection::Settings&, int)> mastering);
     void linkMoveBoard (const juce::StringArray& parts, float position);
     void linkSetBoard (const juce::StringArray& parts, bool on);
     bool linkIsOnBoard (const juce::StringArray& parts);
 
     bool boardShown = false, boardDue = false;
+
+    // The Mastering section (MasterSection.h, on Main after its fader): its window over the page,
+    // opened from the board, Main's strip or Song > Mastering Section; the same "board" events
+    // with strip "mastering". File > Master a File...: a new song of one audio file, mastered.
+    bool masteringShown = false;
+    juce::var masteringMeters();
+    juce::String masteringModeNow();                 // Auto resolved: "mixAndMaster" or "masterOnly"
+    void masterFile();
+    std::unique_ptr<juce::FileChooser> masterFileChooser;
     double boardPushedMs = 0.0;
 
     //==============================================================================
@@ -875,10 +899,12 @@ private:
 
     bool liveShown = false;
     bool liveStale = false;    // tracks changed while the show was hidden: pushed as it's shown
-    juce::String liveMode { "dj" };                     // "dj", "live" (Live & podcasts), "stream"
+    juce::String liveMode { "live" };                   // "live" (Live & podcasts) or "stream" ("dj", DJ show, isn't offered)
     float liveDjDecks = 0.0f;                           // DJ show's decks (0: two, 1: four), kept while the other tabs play two
     bool liveOnAir = false;                             // Live streaming: Enable streaming (what goes to the stream)
-    bool liveMicsMuted = true, livePlaybackMuted = true;   // Live & podcasts, Live streaming: muted as Sonify starts
+    // Live & podcasts, Live streaming: the mics start muted (an open mic by surprise feeds back);
+    // the player doesn't, so pressing Play is heard.
+    bool liveMicsMuted = true, livePlaybackMuted = false;
     juce::Array<juce::var> livePlaylist;                // {id, path, title, sync, key, volume, timing}
     int livePlaylistNext = 1;
     bool livePlaylistAuto = true;                       // the playlist plays itself
@@ -1012,7 +1038,7 @@ private:
     void handleBlobMaker (const juce::var& event);
     void pushBlobMaker();
     std::unique_ptr<BlobMaker> blobMaker;                // made when its tab first asks
-    std::unique_ptr<juce::FileChooser> blobChooser;
+    std::unique_ptr<juce::FileChooser> blobChooser;      // SFZ to Blob's dialogs
 
     // MIDI In (AudioEngine::setMidiFocus): the studio in front takes the live MIDI; the page says
     // which (studioShown {id}). The Sampling Studio's MIDI monitor, while it's in front.
@@ -1081,6 +1107,56 @@ private:
     std::unique_ptr<AiAgent> deviceAgent;
 
     //==============================================================================
+    // AI Mix and AI Master (MainAiMix.cpp, AiMix.h): Fanan AI mixing the song on the Analog Board
+    // and mastering it in the Mastering section, for a genre, a reference track or neither. Sonify
+    // measures the song (rendered: MixAnalysis), Fanan AI sets the knobs and measures again; then
+    // Sonify measures the result, and the user compares it with what they had (A/B, the original
+    // at the suggestion's loudness) and applies it or discards it. Its window: "aiMix" events.
+    enum class AiMixPhase { idle, measuring, working, checking, suggestion };
+
+    struct AiMixRender
+    {
+        bool running = false, analysing = false;
+        juce::File folder;
+        std::vector<MixAnalysis::Input> inputs;
+        std::function<void (const juce::var&)> done;
+    };
+
+    void setupAiMix();
+    void handleAiMix (const juce::var& event);
+    void pushAiMix();
+    void startAiMix (const juce::var& event);
+    void aiMixMeasure (std::function<void (const juce::var&)> done);
+    void updateAiMixRender();                          // from updateMixdown, while its render runs
+    void aiMixRequestEnded (bool changed);
+    void aiMixListen (bool suggestion);
+    void aiMixEnd (bool apply);                        // Apply, or Discard
+    void aiMixStop();
+    void chooseAiMixReference();
+    juce::var boardSnapshot();
+    void restoreBoardSnapshot (const juce::var& snapshot);
+
+    std::unique_ptr<AiMix> aiMixTools;
+    std::unique_ptr<AiAgent> aiMixAgent;
+    AiMixPhase aiMixPhase = AiMixPhase::idle;
+    bool aiMixMasterOnly = false;
+    bool aiMixShown = false;
+    bool aiMixListeningBefore = false;
+    int aiMixGeneration = 0;                           // the song it works on
+    juce::String aiMixProblem, aiMixLabel;
+    juce::File aiMixReference;
+    juce::var aiMixReferenceReport;                    // the reference's numbers, measured once it's chosen
+    bool aiMixReferenceBusy = false;
+    juce::var aiMixBefore, aiMixAfter;                 // the board's and the Mastering section's settings
+    juce::var aiMixBeforeReport, aiMixAfterReport;
+    std::atomic<double> aiMixProgress { 0.0 };
+    double aiMixPushedMs = 0.0;
+    AiMixRender aiMixRender;
+    std::shared_ptr<std::atomic<bool>> aiMixCancelled = std::make_shared<std::atomic<bool>> (false);
+    std::unique_ptr<juce::FileChooser> aiMixChooser;
+    juce::ThreadPool aiMixWorker { juce::ThreadPoolOptions{}.withThreadName ("Sonify AI Mix listening").withNumberOfThreads (1) };
+
+    //==============================================================================
     // The Plugins Creator Studio (MainCreator.cpp): Stella AI Studio inside Sonify, in a window
     // of its own over the page's studio area while it's in front. It makes MIDI FX with the
     // Device Studio above. (The studio itself is declared after the web view: it goes first.)
@@ -1129,6 +1205,7 @@ private:
     std::unique_ptr<PhoneRemote> phoneRemote;
     void pushRemote();
     void askFromPhone (const juce::String& text, bool spoken);
+    juce::StringArray pageCommands;   // the page's commands, for Fanan AI (aiCommandList)
 
     //==============================================================================
     // File > Settings (MainSettings.cpp): how Sonify looks and which shortcuts it uses (the page
@@ -1234,6 +1311,12 @@ private:
     void updateRecordingFolder();
     void listFolder (const juce::String& path);
 
+    /** The Files tab's Open: a folder chosen becomes the song's files folder (kept with it) and the
+        one new songs show. showSongFilesFolder: the song's own, else the one for new songs. */
+    void chooseFilesFolder();
+    void showSongFilesFolder();
+    juce::var withFilesFolder (juce::var song) const;
+
     /** A folder's subfolders and audio (and video, unless audioOnly) files, and the places to go:
         the Browser's Files tab and the Live Show's library. */
     juce::var folderListing (const juce::String& path, bool audioOnly);
@@ -1289,6 +1372,8 @@ private:
     bool songChanged = false;
     bool askingToSave = false;
     juce::var songView;                // the page's view settings, kept with the song
+    juce::String songFilesFolder;      // the Files tab's folder for this song (empty: the one for new songs)
+    std::unique_ptr<juce::FileChooser> filesFolderChooser;
     juce::StringArray recentSongs;     // newest first
     std::unique_ptr<juce::FileChooser> songChooser;
     std::unique_ptr<juce::FileChooser> dawProjectChooser;
@@ -1518,11 +1603,18 @@ private:
     double takeClipsPushedMs = 0.0;
     void pushTakeClips();
 
+    // An audio take's waveform as it's written ("takeWave"), the new peaks ten times a second:
+    // track id -> (the bucket its pass shows from, the buckets sent so far).
+    std::map<int, std::pair<juce::int64, juce::int64>> takeWaveSent;
+    double takeWavesPushedMs = 0.0;
+    void pushTakeWaves (double nowMs);
+
     // Its listener reads the engine: declared after it, so it goes first (the destructor also
     // ends it before anything else).
     std::unique_ptr<VoiceControl> voice;
     Library library;
     std::unique_ptr<juce::WebBrowserComponent> webView;
+    std::set<juce::String> screenOrigins;   // web plugin screens with their own address (their frames may load it)
 
     // The Plugins Creator Studio plays in the engine and talks to the server: declared after
     // them (and the web view), so it goes first; its window goes after it.

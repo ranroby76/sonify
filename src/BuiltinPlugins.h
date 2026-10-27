@@ -19,8 +19,10 @@
     on Main); Grex's effects (Chorus, Phaser, Auto-Wah, Reverb, Delay, Sweetener, Ducker:
     BuiltinEffects.cpp); the Test Synth (TestSynth.cpp); and the system tools: Container and FX
     Container (Container.h), the Playlist Player (PlaylistPlayer.h) and the Sonify Sampler
-    (SonifySampler.h). Always there, whatever plugins the user has, so the Browser offers them
-    and Sonify AI can use them.
+    (SonifySampler.h). And Sonify's own plugins, each written the way a plugin is and hosted as a
+    VST3 is, only made in Sonify (InternalPlugin.h): Natura, its modelling synth, and Zax, its drum
+    synth. Always there, whatever plugins the user has, so the Browser offers them and Sonify AI
+    can use them.
 
     They're named by their plugin ids (all starting with idPrefix); the executable stands in
     as their file in the Browser and in songs, and a song finds them wherever Sonify is.
@@ -43,6 +45,11 @@ namespace Builtins
     inline constexpr const char* sweetenerId = "sonify.builtin.sweetener";
     inline constexpr const char* duckerId = "sonify.builtin.ducker";
     inline constexpr const char* testSynthId = "sonify.builtin.testsynth";
+
+    // Sonify's own plugins (InternalPlugin.h): their ids are listed in Internals::entries(), and
+    // these are the two Sonify asks for by name.
+    inline constexpr const char* naturaId = "sonify.builtin.natura";
+    inline constexpr const char* zaxId = "sonify.builtin.zax";
 
     bool isBuiltinId (const juce::String& pluginId);
 
@@ -103,6 +110,12 @@ public:
     /** How many decimals a parameter's values keep, and show: none on a percentage (0..100 in
         whole steps), at most two on the rest (enough for about a hundred steps on its range). */
     static int decimalsOf (const Spec& spec) noexcept;
+
+    /** A frequency or time over a wide range: its knob turns as it's heard (log), so its value
+        is kept exactly (rounding it to whole units would hold the knob at the bottom quarter)
+        and shown with the decimals its size calls for. */
+    static bool isLogRange (const Spec& spec) noexcept;
+    static int decimalsFor (const Spec& spec, double value) noexcept;
 
     /** A value as the parameter keeps it: in its range, on its steps. */
     static double quantised (const Spec& spec, double value) noexcept;

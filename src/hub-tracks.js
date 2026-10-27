@@ -28,13 +28,13 @@
 
   const pluginKey = (file, id) => `${file}|${id}`;
 
-  // The Test Synth: what a track plays before it has an instrument (the engine's own tone), and
+  // Cayman: what a track plays before it has an instrument (the engine's own tone), and
   // the same as a built-in plugin with its window. Lists show it once; opening it on a track loads
   // the plugin (its first sound is the same tone) and shows its window.
   const TEST_SYNTH_ID = "sonify.builtin.testsynth";
   const testSynthEntry = () => Hub.state.library.find((entry) => entry.id === TEST_SYNTH_ID) || null;
   const isTestSynth = (plugin) => Boolean(plugin) && plugin.id === TEST_SYNTH_ID;
-  const openWhenLoaded = new Set();   // tracks whose Test Synth window opens once it's loaded
+  const openWhenLoaded = new Set();   // tracks whose Cayman window opens once it's loaded
 
   Hub.openTestSynth = (trackId) => {
     const track = Hub.trackById(trackId);
@@ -90,7 +90,7 @@
     if (select.dataset.signature !== signature) {
       select.dataset.signature = signature;
       select.textContent = "";
-      select.add(new Option("Test Synth", BUILTIN_KEY));
+      select.add(new Option("Cayman", BUILTIN_KEY));
 
       for (const entry of entries)
         select.add(new Option(entry.name, pluginKey(entry.file, entry.id)));
@@ -128,8 +128,8 @@
           <button class="track-kind" type="button">${ICON_KEYS}</button>
         </div>
         <div class="track-meter" title="What the track sends out: left above, right below"><i></i><i></i></div>
-        <label class="track-fader"><span>Vol</span><input type="range" data-control="volume" min="0" max="1" step="0.001"><output></output></label>
-        <label class="track-fader pan-row"><span>Pan</span><input type="range" data-control="pan" min="-1" max="1" step="0.01"><output></output></label>
+        <label class="track-fader"><span>Vol</span><input type="range" data-control="volume" min="0" max="1" step="0.001"><output title="Double-click to type the volume"></output></label>
+        <label class="track-fader pan-row"><span>Pan</span><input type="range" data-control="pan" min="-1" max="1" step="0.01"><output title="Double-click to type the pan"></output></label>
         <select class="track-instrument" data-control="instrument" aria-label="Instrument"></select>
         <button class="track-midi" type="button" aria-haspopup="true" aria-expanded="false"
           title="MIDI in: the MIDI devices and tracks this instrument hears"></button>
@@ -237,11 +237,11 @@
       kindIcon.dataset.icon = icon;
       kindIcon.innerHTML = choir ? ICON_CHOIR : track.kind === "audio" ? ICON_WAVE : ICON_KEYS;
     }
-    // Without an instrument it plays the Test Synth: its window loads it.
+    // Without an instrument it plays Cayman: its window loads it.
     const hasWindow = track.kind !== "audio" && (Boolean(track.instrument) || Boolean(testSynthEntry()));
     kindIcon.disabled = choir ? false : !hasWindow || Boolean(track.frozen);   // a frozen track's plugins rest
     kindIcon.classList.toggle("no-window", track.kind !== "audio" && !hasWindow);
-    const instrumentName = track.instrument ? track.instrument.name : "the Test Synth";
+    const instrumentName = track.instrument ? track.instrument.name : "Cayman";
     kindIcon.title = choir ? "Choir: its voices and their parts" : track.kind === "audio" ? "Audio track"
                    : track.frozen ? `${instrumentName}: frozen (unfreeze it to open it)` : `Open ${instrumentName}`;
     kindIcon.setAttribute("aria-label", kindIcon.title);
@@ -281,9 +281,26 @@
     autoOptions(row.querySelector('[data-control="autoTarget"]'), track);
     showMidiSummary(row.querySelector(".track-midi"), track);
 
-    // A height of its own (dragged), or the view's size from the style sheet.
-    if (!row.classList.contains("resizing")) row.style.height = track.height > 0 ? `${track.height}px` : "";
+    applyHeight(row, track);
   }
+
+  /** A row as tall as its lane: its own height (dragged) or the view's size, times the height
+      zoom (hub-arrange.js). Short rows show less: a small header (Vol only), then the top row alone. */
+  function applyHeight(row, track) {
+    if (row.classList.contains("resizing")) return;
+    const shown = Hub.arrange && Hub.arrange.shownHeight ? Hub.arrange.shownHeight(track) : 0;
+    row.style.height = shown > 0 ? `${shown}px` : track.height > 0 ? `${track.height}px` : "";
+    row.classList.toggle("fit-small", shown > 0 && shown < 80);
+    row.classList.toggle("fit-tiny", shown > 0 && shown < 52);
+  }
+
+  // The height zoom or the Track size changed: every header follows its lane.
+  Hub.on("trackHeights", () => {
+    for (const track of Hub.state.tracks) {
+      const row = rows.get(track.id);
+      if (row) applyHeight(row, track);
+    }
+  });
 
   // ---------------------------------------------------------------- MIDI in
   /** A track's MIDI sources by name: devices as they are, one channel of a split device as
@@ -596,10 +613,12 @@
       row.classList.add("resizing");
       edge.setPointerCapture(event.pointerId);
 
+      // Dragged as it shows (the height zoom on it); kept as its own height at 100%.
+      const zoom = Hub.arrange && Hub.arrange.vzoom ? Hub.arrange.vzoom() : 1;
       const move = (e) => {
-        const height = Math.round(Math.max(56, Math.min(600, startHeight + e.clientY - startY)));
+        const height = Math.round(Math.max(56, Math.min(600, (startHeight + e.clientY - startY) / zoom)));
         track.height = height;
-        row.style.height = `${height}px`;
+        row.style.height = `${Hub.arrange ? Hub.arrange.shownHeight(track) : height}px`;
         if (Hub.arrange) { Hub.arrange.updateSizes(); Hub.arrange.redraw(); }
       };
       const up = () => {
@@ -607,6 +626,7 @@
         edge.removeEventListener("pointerup", up);
         edge.removeEventListener("pointercancel", up);
         row.classList.remove("resizing");
+        applyHeight(row, track);
         Hub.send("trackSettings", { id: track.id, height: track.height || 0 });
       };
       edge.addEventListener("pointermove", move);
@@ -621,7 +641,7 @@
       const track = Hub.trackById(Number(row.dataset.id));
       if (!track) return;
       track.height = 0;
-      row.style.height = "";
+      applyHeight(row, track);
       if (Hub.arrange) { Hub.arrange.updateSizes(); Hub.arrange.redraw(); }
       Hub.send("trackSettings", { id: track.id, height: 0 });
     });
@@ -673,6 +693,68 @@
     return row ? Number(row.dataset.id) : 0;
   }
 
+  /** Double-click a header's volume or pan value to type it: dB for volume (-72 to +10, lower
+      is off), -100 (left) to 100 (right) for pan; digits, a minus and at most two decimals.
+      Enter or leaving the field sets it, Escape keeps what was there. */
+  function startValueEdit(output) {
+    const slider = output.previousElementSibling;
+    const control = slider && slider.dataset.control;
+    const id = trackIdFrom(output);
+    const track = Hub.trackById(id);
+    if (!track || (control !== "volume" && control !== "pan") || output.hidden) return;
+
+    const current = control === "volume" ? (track.volume <= Hub.SILENT_DB ? -72 : track.volume) : track.pan * 100;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "track-value-edit";
+    input.inputMode = "decimal";
+    input.spellcheck = false;
+    input.value = String(Math.round(current * 100) / 100);
+    input.setAttribute("aria-label", control === "volume" ? "Volume in dB" : "Pan, -100 left to 100 right");
+    input.title = control === "volume" ? "Volume in dB (-72 to +10)" : "Pan: -100 left to 100 right";
+    output.hidden = true;
+    output.after(input);
+    input.focus();
+    input.select();
+
+    let last = input.value;
+    input.addEventListener("input", () => {
+      // Digits only, a minus in front, at most two digits after the point.
+      if (/^-?\d*(\.\d{0,2})?$/.test(input.value)) last = input.value;
+      else {
+        const at = Math.max(0, input.selectionStart - (input.value.length - last.length));
+        input.value = last;
+        input.setSelectionRange(at, at);
+      }
+    });
+
+    let finished = false;
+    const finish = (save) => {
+      if (finished || !input.isConnected) return;
+      finished = true;
+      const typed = Number(input.value);
+      input.remove();
+      output.hidden = false;
+      if (!save || input.value.trim() === "" || input.value === "-" || !Number.isFinite(typed)) return;
+      const value = control === "volume"
+        ? (typed <= Hub.SILENT_DB ? Hub.faderToDb(0) : Hub.clamp(Math.round(typed * 100) / 100, Hub.SILENT_DB, Hub.MAX_DB))
+        : Hub.clamp(Math.round(typed * 100) / 10000, -1, 1);
+      const shown = Hub.trackById(id);
+      if (!shown) return;
+      slider.value = String(control === "volume" ? Hub.dbToFader(value) : value);
+      output.textContent = control === "volume" ? Hub.dbText(value) : Hub.panText(value);
+      Hub.setTrackValue(id, control, value, slider);
+    };
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); finish(true); }
+      if (event.key === "Escape") { event.preventDefault(); finish(false); }
+      event.stopPropagation();
+    });
+    input.addEventListener("blur", () => finish(true));
+    for (const type of ["pointerdown", "click", "dblclick"]) input.addEventListener(type, (event) => event.stopPropagation());
+  }
+
   function startRename(nameElement, track) {
     Hub.inlineRename(nameElement, track.name, (value) => Hub.send("trackSettings", { id: track.id, name: value }));
   }
@@ -699,7 +781,7 @@
       if (kindIcon) {
         const track = Hub.trackById(id);
         if (track && track.choir && Hub.choir) Hub.choir.open(id);   // a choir track's voices
-        else if (track && !track.instrument) Hub.openTestSynth(id);   // the Test Synth, loaded as a plugin
+        else if (track && !track.instrument) Hub.openTestSynth(id);   // Cayman, loaded as a plugin
         else Hub.openScreen(id, 0);   // the instrument's window, as the Inspector opens it
         return;
       }
@@ -764,8 +846,15 @@
       Hub.setTrackValue(trackIdFrom(event.target), control, value, event.target);
     });
 
-    // Double-click a fader to reset it, as in Studio One.
+    // Double-click a fader to reset it, as in Studio One; its value, to type one.
     list.addEventListener("dblclick", (event) => {
+      const value = event.target.closest(".track-fader output");
+      if (value) {
+        event.preventDefault();
+        startValueEdit(value);
+        return;
+      }
+
       const control = event.target.dataset && event.target.dataset.control;
 
       if (control === "volume" || control === "pan") {
@@ -841,7 +930,7 @@
       const value = event.target.value;
       event.target.blur();
 
-      // The Test Synth: the built-in plugin (the tone it starts with is the one a track plays without one).
+      // Cayman: the built-in plugin (the tone it starts with is the one a track plays without one).
       if (value === BUILTIN_KEY) {
         const entry = testSynthEntry();
         if (entry) Hub.send("loadPlugin", { trackId: id, file: entry.file, pluginId: entry.id });
@@ -1082,7 +1171,7 @@
 
     const instruments = $("add-tracks-instrument");
     instruments.textContent = "";
-    instruments.add(new Option("Test Synth", BUILTIN_KEY));
+    instruments.add(new Option("Cayman", BUILTIN_KEY));
     for (const entry of Hub.state.library.filter((item) => item.kind !== "effect" && !item.missing && item.id !== TEST_SYNTH_ID))
       instruments.add(new Option(entry.name, pluginKey(entry.file, entry.id)));
 

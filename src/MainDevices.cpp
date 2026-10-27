@@ -8,6 +8,7 @@
 // what a MIDI controller would.
 
 #include "MainComponent.h"
+#include "SipFiles.h"
 #include "Licences.h"
 #include "CreatorStudio.h"
 
@@ -48,6 +49,11 @@ void MainComponent::setupDevices()
 {
     MidiFx::setExternalMaker (Devices::makeFx);
     Devices::setMyDevicesFolder (UserData::getFolder().getChildFile ("Devices"));
+
+    // Every Sonify plugin is one .sip in <user data>\Plugins: the old made-plugin folders and
+    // .sonidev files are turned into .sip files once (before the Browser lists them).
+    Sip::migrate();
+
     Devices::setSampleRate (engine.getPlaybackRate());
 
     deviceStudio = std::make_unique<DeviceStudio> (engine, DeviceStudio::Hooks {
@@ -65,6 +71,8 @@ void MainComponent::setupDevices()
             pushDeviceAi();
         },
         [this] { pushDeviceAi(); } });
+
+    deviceAgent->setMode ("device");   // it writes a device's code: the strongest model, always
 
     deviceTimer.startTimerHz (60);
 }
@@ -319,7 +327,7 @@ void MainComponent::handleDeviceStudio (const juce::var& event)
     }
     else if (action == "reveal")
     {
-        const auto folder = Devices::myDevicesFolder();
+        const auto folder = Devices::devicesFolder();
         folder.createDirectory();
         folder.revealToUser();
     }
@@ -329,7 +337,7 @@ void MainComponent::handleDeviceStudio (const juce::var& event)
             return problem ("Fanan AI is working on this device: stop it first (or wait for it).");
 
         fileChooser = std::make_unique<juce::FileChooser> ("Add a Sonify device", juce::File::getSpecialLocation (juce::File::userHomeDirectory),
-                                                           juce::String ("*") + Devices::fileExtension);
+                                                           juce::String ("*") + Devices::fileExtension + ";*" + Devices::oldFileExtension);
         fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                                   [safe = juce::Component::SafePointer<MainComponent> (this), problem] (const juce::FileChooser& chooser)
         {

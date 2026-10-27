@@ -1374,7 +1374,7 @@ public:
         h ("Getting plugins in");
         p ("- Drag a plugin from Sonify's Browser (the right panel) and drop it on the Rack.\n"
            "- Browse (in the bar) picks a plugin file. It opens the VST3 folder the first time, then the folder last used.\n"
-           "- Drop a plugin file (.vst3, .clap, .sonifyplugin) from the computer's folders onto the Rack.\n"
+           "- Drop a plugin file (.vst3, .clap, .sip) from the computer's folders onto the Rack.\n"
            "- Right-click an empty spot: the System Tools, Sonify's instruments, effects and note FX, and the saved patches.");
 
         h ("Wiring");
@@ -1406,7 +1406,7 @@ public:
            "and set its channel, CC, steps, rate, type, order, speed, swing and smoothing along the bottom.\n"
            "Transient Splitter: a stereo sound in, its attacks out of pins 1-2 and what sustains out of pins 3-4. E opens its "
            "settings: sensitivity, decay, hold, smoothing, a detection band, the two gains, balance, gate and swap.\n"
-           "Also: Stereo Meter, MIDI Monitor, Playlist Player and Sonify Sampler.");
+           "Also: Stereo Meter, MIDI Monitor, Playlist Player, Sonify Sampler and Tomahawk.");
 
         h ("Tempo");
         p ("The rack follows the song: plugins and tools inside it get the song's tempo, time signature and position. A node's T "

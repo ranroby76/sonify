@@ -130,6 +130,16 @@ public:
     void useLook (int widgetIndex, const juce::String& lookName);
     juce::String giveOwnLook (int widgetIndex);
 
+    /** Edit mode: the Gallery's knobs, sliders and switches (KnobStudio::showGallery) on the panel.
+        useGalleryItem: a control wears one instead of its look, keeping its size, place, parameter,
+        caption and the rest of its settings; only a control of the same kind (a knob for a knob).
+        chooseGalleryItem opens the Gallery to pick one for a control. addGalleryItem: a new control
+        wearing one, centred on a point of the plugin window (or in the middle of what's showing).
+        The item becomes the plugin's own look, its credits kept with it. */
+    void chooseGalleryItem (int widgetIndex);
+    bool useGalleryItem (int widgetIndex, const juce::File& file);
+    void addGalleryItem (const juce::File& file, std::optional<juce::Point<float>> centre = {});
+
     /** Photoshop's Global Light window: the panel's one light (the layout's "light"), which
         lights the looks, the shapes and painted backgrounds. */
     void editGlobalLight();
@@ -648,6 +658,9 @@ private:
 
     // Something dragged over the canvas: where it would land, in plugin pixels.
     std::optional<juce::Rectangle<int>> dropGhost;
+
+    /** A Gallery item as one of the plugin's own looks: its name ("" when it can't be read, said). */
+    juce::String lookFromGallery (const juce::File& file, Looks::Kind& kind);
 
     std::unique_ptr<ElementMenu> menu;
     std::unique_ptr<AiBanner> banner;

@@ -13,8 +13,9 @@
 /**
     The library database: every plugin the Browser offers, and what's known about it.
 
-    Plugins come from the Plugin Folders (searched, sub-folders too, for VST3 plugins
-    and for WCLAPs: .wasm files, .wclap bundle folders and .wclap.tar.gz archives) and
+    Plugins come from the Plugin Folders (searched, sub-folders too, for VST3 plugins,
+    for native CLAP plugins: .clap libraries, and .clap bundle folders on a Mac, and for
+    WCLAPs: .wasm files, .wclap bundle folders and .wclap.tar.gz archives) and
     from files added one at a time. The system's VST3 and CLAP folders are added the first
     time (Settings > Locations > Plug-ins lists them all).
     A plugin that crashes the Hub while it's being read is left out after the restart
@@ -43,13 +44,14 @@ public:
         juce::int64 lastUsed = 0;      // ms since 1970; 0: never
         int uses = 0;
 
-        juce::String format() const;   // "VST3", "WCLAP", "Built-in" or "Sonify" (made in the Plugins Creator Studio)
+        juce::String format() const;   // "VST3", "CLAP", "WCLAP", "Built-in" or "Sonify" (made in the Plugins Creator Studio)
     };
 
     explicit Library (const juce::File& databaseFile = getDefaultFile());
 
     const std::vector<Entry>& getEntries() const noexcept      { return entries; }
     const juce::StringArray& getFolders() const noexcept       { return folders; }
+    const juce::StringArray& getAddedFiles() const noexcept    { return addedFiles; }
 
     //==============================================================================
     /** For this run only, from the question at startup: whether third-party plugins are
@@ -115,7 +117,7 @@ public:
 
     const juce::StringArray& getFormatPriority() const noexcept   { return formatPriority; }
     void setFormatPriority (const juce::StringArray& formats);   // known formats, in order; the rest keep theirs after
-    static juce::StringArray defaultFormatPriority()              { return { "VST3", "WCLAP", "Sonify" }; }
+    static juce::StringArray defaultFormatPriority()              { return { "VST3", "CLAP", "WCLAP", "Sonify" }; }
 
     /** Whether duplicates are hidden after every scan, by the format order. */
     bool hidesDuplicatesAfterScans() const noexcept             { return hideDuplicatesAfterScans; }

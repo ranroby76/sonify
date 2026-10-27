@@ -3,6 +3,7 @@
 #include "Song.h"
 #include "BuiltinPlugins.h"
 #include "Container.h"
+#include "CreatorPlugin.h"
 #include "DeviceHost.h"
 #include "Preferences.h"
 
@@ -59,8 +60,9 @@ namespace
         const auto pluginId = item.getProperty ("pluginId", {}).toString();
 
         // Sonify's own effects are wherever Sonify is now, whatever path the song kept.
-        const juce::File file (Builtins::isBuiltinId (pluginId) ? Builtins::file().getFullPathName()
-                                                                 : item.getProperty ("file", {}).toString());
+        // A made plugin kept as an old .sonifyplugin folder: its .sip now, found by its id.
+        const auto file = Builtins::isBuiltinId (pluginId) ? Builtins::file()
+                                                           : MadePlugins::resolve (juce::File (item.getProperty ("file", {}).toString()), pluginId);
 
         if (! juce::File::isAbsolutePath (file.getFullPathName()) || ! file.exists())
         {
@@ -591,6 +593,9 @@ namespace
         trackFields->setProperty ("monitorDecided", track.monitorDecided);
         trackFields->setProperty ("recordArm", track.recordArm.load());
         trackFields->setProperty ("instrument", track.instrument != nullptr ? pluginToVar (*track.instrument) : juce::var());
+
+        if (track.instrument != nullptr && track.instrumentOff.load())
+            trackFields->setProperty ("instrumentOff", true);
         trackFields->setProperty ("inserts", insertsToVar (track.inserts, withIds));
 
         if (track.midiFx.size() > 0)
@@ -667,11 +672,25 @@ namespace
         trackFields->setProperty ("sends", sendList);
         trackFields->setProperty ("height", track.height);
 
-        // Its strip on the Analog Board: the settings away from where a strip starts.
+        // Its strip on the Analog Board: the settings away from where a strip starts. Its dynamic
+        // EQ's key (another track) is named by its place, as ids are made afresh when a song opens.
         if (! track.isMixChannel())
-            if (const auto board = track.board.settings.toVar(); board.getDynamicObject() != nullptr
-                                                                  && board.getDynamicObject()->getProperties().size() > 0)
-                trackFields->setProperty ("board", board);
+        {
+            const auto board = track.board.settings.toVar();
+
+            if (auto* boardFields = board.getDynamicObject())
+            {
+                boardFields->removeProperty ("deqKey");
+
+                if (boardFields->getProperties().size() > 0)
+                    trackFields->setProperty ("board", board);
+            }
+
+            if (const auto key = track.board.getKeyTrack(); key != 0 && key != track.id)
+                for (size_t i = 0; i < allTracks.size(); ++i)
+                    if (allTracks[i]->id == key)
+                        trackFields->setProperty ("boardKey", static_cast<int> (i));
+        }
 
         // Its channel on the Live Show: whether it's one of the show's channels, and its settings
         // away from where a channel starts.
@@ -771,7 +790,13 @@ namespace
         const auto instrument = item.getProperty ("instrument", {});
 
         if (instrument.isObject())
+        {
             restorePlugin (engine, id, instrument, problems);
+
+            // Switched off on its window's header when the song was saved.
+            if (auto* restored = engine.findTrack (id); restored != nullptr && restored->instrument != nullptr)
+                restored->instrumentOff.store (static_cast<bool> (item.getProperty ("instrumentOff", false)));
+        }
 
         const auto placed = restoreInserts (engine, id, item.getProperty ("inserts", {}), problems, keepIds);
 
@@ -926,6 +951,12 @@ namespace
                 engine.setTrackChoir (id, withChords);
             }
         }
+
+        // Its Analog Board strip's dynamic EQ key: the strip it listens to, named by its place.
+        if (songTrack.hasProperty ("boardKey"))
+            if (const auto index = static_cast<int> (number (songTrack.getProperty ("boardKey", {}), -1.0)); index >= 0 && index < static_cast<int> (ids.size()))
+                if (auto* keyed = engine.findTrack (id); keyed != nullptr && ! keyed->isMixChannel() && ids[static_cast<size_t> (index)] != id)
+                    keyed->board.settings.set (AnalogBoard::deqKey, static_cast<float> (ids[static_cast<size_t> (index)]));
 
         // The bus it plays into (named by its place, as it may come after it).
         if (songTrack.hasProperty ("bus"))
@@ -1243,6 +1274,10 @@ juce::var Song::capture (AudioEngine& engine, const juce::String& name, const ju
         }
     }
 
+    // The Mastering section on Main: its settings away from where a new song's start.
+    if (const auto mastering = engine.getMastering().settings.toVar(); mastering.getDynamicObject()->getProperties().size() > 0)
+        fields->setProperty ("mastering", mastering);
+
     // The Live Show: its master and its decks (their settings away from where they start, and the
     // tracks on them), its pads' sounds and its headphones' output. Whether it plays isn't kept: a
     // song opens in the Studio.
@@ -1466,6 +1501,10 @@ juce::Result Song::restore (AudioEngine& engine, const juce::var& song, juce::St
         engine.setBoardMixing (static_cast<bool> (board.getProperty ("mixing", false)));
     }
 
+    // The Mastering section (clearSong put it where a new song's starts).
+    if (const auto mastering = song.getProperty ("mastering", {}); mastering.isObject())
+        engine.getMastering().settings.fromVar (mastering, true);
+
     // The Live Show's settings, the tracks its decks had and its pads' sounds (loaded once the song
     // is in: MainLive.cpp). clearSong has started it afresh, so a song without them leaves none of
     // the last song's. An undo's snapshot left the show as it is.
@@ -1580,7 +1619,7 @@ juce::var Song::captureTrackPreset (AudioEngine& engine, const std::vector<int>&
         auto item = captureTrack (engine, *track, {});
         auto* fields = item.getDynamicObject();
 
-        for (const auto* key : { "clips", "automation", "autoMode", "sends", "bus", "output", "input", "height", "frozen", "frozenDry",
+        for (const auto* key : { "clips", "automation", "autoMode", "sends", "bus", "boardKey", "output", "input", "height", "frozen", "frozenDry",
                                  "mute", "solo", "monitor", "monitorDecided", "recordArm", "live", "kept" })
             fields->removeProperty (key);
 

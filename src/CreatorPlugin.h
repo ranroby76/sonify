@@ -25,7 +25,10 @@
     "Made in Sonify", and tracks play it like Sonify's system tools, with its own window: the
     panel designed in Edit UI.
 
-    A made plugin is a folder, "<name>.sonifyplugin", in <user data>\Plugins Creator\Plugins:
+    A made plugin is one file, "<name>.sip", in <user data>\Plugins (SipFiles.h: with every other
+    Sonify plugin, MIDI FX too), holding sip.json (its kind: instrument or fx) and these files,
+    which it plays from once unpacked (Sip::unpacked). Before, it was a folder of them,
+    "<name>.sonifyplugin" (the Store's packages still carry one):
         plugin.json      its name, company, kind, id ("sonify.made." and the project's id) and version
         plugin.wasm      the plugin, as built (it runs in its sandbox, as in the studio)
         description.json what the plugin says of itself: its parameters, modules and displays
@@ -48,26 +51,31 @@
 */
 namespace MadePlugins
 {
-    inline constexpr const char* extension = ".sonifyplugin";
+    inline constexpr const char* extension = ".sip";                 // SipFiles.h
+    inline constexpr const char* folderExtension = ".sonifyplugin";   // the folder it was before, and the Store's package
     inline constexpr const char* idPrefix = "sonify.made.";
     inline constexpr const char* category = "Made in Sonify";
     inline constexpr const char* formatName = "Sonify";
-    inline constexpr const char* folderLabel = "Plugins Creator";
+    inline constexpr const char* folderLabel = "Sonify Plugins";
 
-    /** <user data>\Plugins Creator\Plugins: where they're kept. */
+    /** <user data>\Plugins: where they're kept, as .sip files (Sip::folder). */
     juce::File folder();
 
     /** The song's tempo and position as the plugins hear them (tempo sync); none: 120, stopped. */
     WasmPlugin::Transport transportOf (const clap_event_transport_t* song) noexcept;
 
-    /** Whether a plugin file is a made plugin's folder. */
+    /** Whether a plugin file is a made plugin's: a .sip (or an old .sonifyplugin folder). */
     bool isMadeFile (const juce::String& path);
 
-    /** Every made plugin's folder. */
+    /** Every made plugin's .sip (instruments and effects; MIDI FX are DeviceFiles'). */
     juce::Array<juce::File> installed();
 
-    /** The plugin in a made plugin's folder (none if it can't be read). */
-    std::vector<Plugin::Descriptor> describe (const juce::File& pluginFolder);
+    /** The plugin in a made plugin's .sip or folder (none if it can't be read). */
+    std::vector<Plugin::Descriptor> describe (const juce::File& pluginFile);
+
+    /** The file a song or a container named, as it is now: an old .sonifyplugin folder that was
+        turned into a .sip (or any made plugin's file that's gone) is found again by its id. */
+    juce::File resolve (const juce::File& file, const juce::String& pluginId);
 
     /** What Add to Sonify takes from the studio. */
     struct Package
@@ -83,7 +91,7 @@ namespace MadePlugins
         bool forOthers = false;                   // for other computers (the Store's download): its blobs by name only, never where they are here
     };
 
-    /** Writes it: into the folder this project was added to before (replaced: true), or a new one. */
+    /** Writes it: over the .sip this project was added to before (replaced: true), or a new one. */
     juce::Result install (const Package& package, juce::File& installedFolder, bool& replaced);
 
     /** Writes a made plugin's folder as install does, into target (made or emptied first): the
@@ -97,28 +105,28 @@ namespace MadePlugins
     juce::Result protect (Package& package, const juce::File& projectFolder, const Licences::ProjectProtection& protection,
                           const std::atomic<bool>* cancelled = nullptr);
 
-    /** The made plugin's folder with this id ("sonify.made." ...), or none. */
+    /** The made plugin's .sip with this id ("sonify.made." ...), or none. */
     juce::File findInstalled (const juce::String& id);
 
     /** Its version in plugin.json (0: not installed). */
     int installedVersion (const juce::String& id);
 
     /** A made plugin's folder from the store (unpacked from its package, plugin.json already
-        checked) put into the library: over the one with the same id (replaced: true), or into a
-        new folder named after it. */
+        checked) put into the library as a .sip: over the one with the same id (replaced: true),
+        or a new one named after it. */
     juce::Result installUnpacked (const juce::File& unpacked, const juce::String& id, juce::File& installedFolder, bool& replaced);
 
-    /** Its panel's picture (snapshot.png in its folder; it may not be there yet). */
+    /** Its panel's picture (snapshot.png among its files, unpacked; it may not be there yet). */
     inline constexpr const char* snapshotFileName = "snapshot.png";
     inline constexpr int snapshotWidth = 480;     // at most, in pixels
-    juce::File snapshotOf (const juce::File& pluginFolder);
+    juce::File snapshotOf (const juce::File& pluginFile);
 
-    /** Missing, or older than anything else in the folder (its panel, presets or plugin changed). */
-    bool snapshotDue (const juce::File& pluginFolder);
+    /** Missing, or older than anything else of it (its panel, presets or plugin changed). */
+    bool snapshotDue (const juce::File& pluginFile);
 
     /** Draws its panel as it opens (its first preset), at most snapshotWidth wide, into its
-        snapshot.png. Message thread. */
-    juce::Result makeSnapshot (const juce::File& pluginFolder);
+        snapshot.png (with its unpacked files). Message thread. */
+    juce::Result makeSnapshot (const juce::File& pluginFile);
 
     /** The id a store product's plugin has in Sonify. */
     inline juce::String storeId (const juce::String& product)    { return juce::String (idPrefix) + "store-" + product; }
@@ -132,13 +140,14 @@ namespace MadePlugins
 class CreatorPlugin final : public Plugin
 {
 public:
-    static std::unique_ptr<Plugin> load (const juce::File& pluginFolder, juce::String& error);
+    /** From a .sip (unpacked first) or an old .sonifyplugin folder. */
+    static std::unique_ptr<Plugin> load (const juce::File& pluginFile, juce::String& error);
     ~CreatorPlugin() override;
 
     juce::String getFormatName() const override                          { return MadePlugins::formatName; }
     const Descriptor& getDescriptor() const noexcept override            { return descriptor; }
     const std::vector<Descriptor>& getPluginsInFile() const noexcept override { return inFile; }
-    const juce::File& getSourceFile() const noexcept override            { return sourceFolder; }
+    const juce::File& getSourceFile() const noexcept override            { return sourceFile; }
     Role getRole() const noexcept override                               { return instrument ? Role::instrument : Role::effect; }
     int getMainInputChannels() const noexcept override                   { return instrument ? 0 : 2; }
     int getMainOutputChannels() const noexcept override                  { return 2; }
@@ -228,7 +237,8 @@ private:
 
     Descriptor descriptor;
     std::vector<Descriptor> inFile;
-    juce::File sourceFolder;
+    juce::File sourceFile;      // its .sip (or old folder): what songs keep
+    juce::File sourceFolder;    // its files, unpacked: what it plays from
     bool instrument = true;
 
     std::vector<std::uint8_t> wasmBytes;

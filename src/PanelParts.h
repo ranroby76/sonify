@@ -25,7 +25,10 @@
     Selectors (selectorDisplays):
         cells      a row of buttons (the standard)
         pill       a rounded track with a pill sliding to the chosen position
-        keys       console key caps, the chosen one lit (stacked when the box is tall)
+        keys       console key caps, the chosen one lit (stacked when the box is tall; "columns"
+                   lays them out as a table of that many columns; "icons" draws waveforms and
+                   filter shapes in place of their names: Sine, Saw, Square, Pulse, Triangle,
+                   Noise, Random, Classic, Low Pass, High Pass, Band Pass, Notch, Off)
         lamps      the names, each with a small lamp: the chosen one lights
         vfd        a glowing display window showing the chosen name, arrows to step
         tiles      coloured tiles along a colour ramp, the chosen one raised
@@ -36,6 +39,7 @@
         classic    ivory naturals and black sharps (the standard)
         reverse    black naturals and ivory sharps, as on old harpsichords and some synths
         modern     flat rounded slate keys with gaps; the keys that are down glow
+        graphite   dark naturals under light grey sharps (the sharps carry the contrast)
       Its colour: the keys that are down.
 
     Labels (labelDisplays):

@@ -513,7 +513,7 @@
       context.fillRect(0, row * ed.row - sy, width, ed.row);
       // Scale: the key's rows lit, its root the brightest.
       if (key && inKey(pitch, key)) {
-        context.fillStyle = (pitch - key.root) % 12 === 0 ? "rgba(47, 179, 107, 0.24)" : "rgba(47, 179, 107, 0.11)";
+        context.fillStyle = (pitch - key.root) % 12 === 0 ? Hub.accentRgba(0.24) : Hub.accentRgba(0.11);
         context.fillRect(0, row * ed.row - sy, width, ed.row);
       }
     }
@@ -538,9 +538,9 @@
     // The Range tool's stretch of time, right down the grid.
     if (ed.range) {
       const r0 = Math.round(ed.range.from * ed.zoom - sx), r1 = Math.round(ed.range.to * ed.zoom - sx);
-      context.fillStyle = "rgba(37, 152, 77, 0.14)";
+      context.fillStyle = Hub.accentRgba(0.14);
       context.fillRect(r0, 0, r1 - r0, height);
-      context.fillStyle = Hub.theme.luminance >= 50 ? "#16702f" : "#3fd47a";
+      context.fillStyle = Hub.accentLine();
       context.fillRect(r0, 0, 1, height);
       context.fillRect(r1 - 1, 0, 1, height);
     }
@@ -548,7 +548,7 @@
     // Notes in the track's colour, stronger with velocity, on the grid's own pixels so a note
     // as long as the quantize fills one step exactly. Selected ones stand out in any look:
     // lighter on the dark grid, darker on the bright one, and outlined.
-    const colour = (track() || {}).colour || "#25984d";
+    const colour = (track() || {}).colour || Hub.theme.accent;
     const bright = Hub.theme.luminance >= 50;
     const chosen = bright ? blend(colour, "#000000", 0.45) : blend(colour, "#ffffff", 0.5);
     for (const n of ed.notes) {
@@ -606,9 +606,9 @@
     if (d && d.kind === "box") {
       const x = Math.min(d.from.x, d.to.x) - sx, y = Math.min(d.from.y, d.to.y) - sy;
       const w = Math.abs(d.to.x - d.from.x), h = Math.abs(d.to.y - d.from.y);
-      context.fillStyle = "rgba(37, 152, 77, 0.18)";
+      context.fillStyle = Hub.accentRgba(0.18);
       context.fillRect(x, y, w, h);
-      context.strokeStyle = bright ? "#16702f" : "#3fd47a";
+      context.strokeStyle = Hub.accentLine();
       context.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w), Math.round(h));
     }
   }
@@ -658,12 +658,12 @@
     context.textBaseline = "middle";
     for (let row = firstRow; row <= lastRow; row++) {
       const pitch = pianoRows[row], y = row * ed.row - sy, black = BLACK.has(pitch % 12);
-      context.fillStyle = lit.has(pitch) ? "#25984d" : black ? "#1c1c1f" : "#e6e6e8";
+      context.fillStyle = lit.has(pitch) ? Hub.theme.accent : black ? "#1c1c1f" : "#e6e6e8";
       context.fillRect(0, y, width, ed.row);
       context.fillStyle = "#9ea2a8";
       context.fillRect(0, y + ed.row - 1, width, 1);
       if (inKey(pitch, key)) {
-        context.fillStyle = (pitch - key.root) % 12 === 0 ? "#2fb36b" : "rgba(47, 179, 107, 0.6)";
+        context.fillStyle = (pitch - key.root) % 12 === 0 ? Hub.theme.accentSet.light : Hub.accentRgba(0.6);
         context.fillRect(width - 5, y + 1, 4, ed.row - 2);
       }
       if (ed.row < 8) continue;
@@ -684,7 +684,7 @@
     context.textBaseline = "middle";
     for (let row = firstRow; row <= lastRow; row++) {
       const pitch = drumRows[row], y = row * ed.row - sy;
-      context.fillStyle = lit.has(pitch) ? "#25984d" : row % 2 ? "#1b1c1f" : "#24252a";
+      context.fillStyle = lit.has(pitch) ? Hub.theme.accent : row % 2 ? "#1b1c1f" : "#24252a";
       context.fillRect(0, y, width, ed.row);
       context.fillStyle = "#33353a";
       context.fillRect(0, y + ed.row - 1, width, 1);
@@ -775,7 +775,7 @@
     for (let row = firstRow; row <= lastRow; row++) {
       const pitch = 127 - row;
       if (lit.has(pitch) && !BLACK.has(pitch % 12)) {
-        context.fillStyle = "#95d3a1";
+        context.fillStyle = Hub.theme.accentSet.pale;
         context.fillRect(0, row * ed.row - sy, width, ed.row);
       }
     }
@@ -793,7 +793,7 @@
     for (let row = firstRow; row <= lastRow; row++) {
       const pitch = 127 - row;
       if (!BLACK.has(pitch % 12)) continue;
-      context.fillStyle = lit.has(pitch) ? "#25984d" : "#1c1c1f";
+      context.fillStyle = lit.has(pitch) ? Hub.theme.accent : "#1c1c1f";
       context.fillRect(0, row * ed.row - sy + 1, blackWidth, ed.row - 2);
     }
 
@@ -810,7 +810,7 @@
       for (let row = firstRow; row <= lastRow; row++) {
         const pitch = 127 - row;
         if (!inKey(pitch, key)) continue;
-        context.fillStyle = (pitch - key.root) % 12 === 0 ? "#2fb36b" : "rgba(47, 179, 107, 0.6)";
+        context.fillStyle = (pitch - key.root) % 12 === 0 ? Hub.theme.accentSet.light : Hub.accentRgba(0.6);
         context.fillRect(width - 5, row * ed.row - sy + 1, 4, ed.row - 2);
       }
     }
@@ -831,7 +831,7 @@
 
     // The clip's extent along the top.
     const c0 = ed.clipStart * ed.zoom - sx, c1 = clipEnd() * ed.zoom - sx;
-    context.fillStyle = (track() || {}).colour || "#25984d";
+    context.fillStyle = (track() || {}).colour || Hub.theme.accent;
     context.fillRect(c0, 0, c1 - c0, 3);
 
     // Ticks where the grid has lines (quantize steps, beats, bars), numbers as room allows.
@@ -920,7 +920,7 @@
     timeLines(context, sx, width, height, { fine: colours.velocity, beat: colours.velocityLine, bar: colours.bar }, 6);
 
     const c0 = ed.clipStart * ed.zoom - sx, c1 = clipEnd() * ed.zoom - sx;
-    const colour = (track() || {}).colour || "#25984d";
+    const colour = (track() || {}).colour || Hub.theme.accent;
 
     if (BARS.has(ed.lane)) {
       const chance = ed.lane === "chance";

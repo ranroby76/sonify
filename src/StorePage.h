@@ -227,6 +227,7 @@ private:
     void visitWebsite();
     void addToSonify();
     void showMoreMenu();
+    void reportAd();
     void hideOrShow();
     void deleteAd();
     void itemChanged();                                    // after something was done: the marks and buttons again
@@ -251,6 +252,8 @@ private:
     void takeFormPicture();
     void writeFormStory();
     void postForm();
+    void postWithRules (StorePublisher::Item item);   // the Store's rules accepted first (once)
+    void sendPost (StorePublisher::Item item);
 
     StoreClient& client;
     StorePublisher& publisher;

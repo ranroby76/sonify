@@ -19,6 +19,9 @@
 //      sample <tab> frames=.. <tab> rate=.. <tab> channels=1|2 <tab> format=s16|s24|f32 <tab> offset=.. <tab> name=..
 //      region <tab> sample=<n> <tab> <opcode>=<value> ...   every opcode the SFZ gave it (flattened:
 //          its <global>, <master> and <group> in it), keys as MIDI note numbers
+//      lines of other kinds (Index::extra), last: what else is packed in the blob, which a reader
+//          that doesn't know the kind keeps as it is and passes on. AXIS's packs of amp captures
+//          and cabinet IRs are written in them (AxisPack.h).
 //   samples, encrypted: each sample's frames, interleaved, from its offset (16-byte aligned)
 //
 // Everything after the head is encrypted with ChaCha20 (RFC 8439), its keystream counted from the
@@ -129,6 +132,14 @@ namespace stella::blob
         std::string name;
         std::vector<SampleEntry> samples;
         std::vector<RegionEntry> regions;
+
+        /** Index lines of a kind this file's own reader doesn't know, each whole and as it is:
+            written after the samples and the regions (indexText), and kept when one is read
+            (parseIndex), so what's packed in a blob can be more than an instrument without every
+            reader of blobs having to know what. AXIS's packs of amp captures and cabinet IRs are
+            written in them (AxisPack.h): a sampler opening one of those sees an instrument with
+            no regions, as it should, and AXIS reads its own lines from here. */
+        std::vector<std::string> extra;
     };
 
     std::string indexText (const Index& index);
@@ -157,6 +168,23 @@ namespace stella::blob
     };
 
     bool summarise (const std::string& path, Summary& summary, std::string& error, const std::uint8_t* key = nullptr);
+
+    //==========================================================================
+    // Reading what else a blob holds (Index::extra): AXIS's packs of amp captures and cabinet IRs
+    // (AxisPack.h) are read through these, so there's one blob format, one cipher and one way in
+    // for whatever is packed in one.
+
+    /** A blob opened for reading: its head, its index (Index::extra holds the lines an instrument's
+        reader passes over) and the cipher its samples are read through. The key is the blob's own -
+        an open blob's, or a locked one's from the license.soni in its folder - unless one is given.
+        The file is the caller's to close. false, and why, when it can't be opened. */
+    bool openForReading (std::FILE* file, const std::string& path, Head& head, Cipher& cipher,
+                         Index& index, std::string& error, const std::uint8_t* key = nullptr);
+
+    /** One sample's frames from a blob opened with openForReading, as floats: left, and right when
+        it's a stereo one (empty when it's mono). false, and why, when they can't be read. */
+    bool readSample (std::FILE* file, const Head& head, const Cipher& cipher, const SampleEntry& sample,
+                     std::vector<float>& left, std::vector<float>& right, std::string& error);
 
     //==========================================================================
     // Protected blobs (see the top of this file).
@@ -876,6 +904,22 @@ namespace stella::blob
             text += "\n";
         }
 
+        // What's packed in it besides an instrument (Index::extra), last, each line as it was
+        // given: its tabs are its own fields, so only what would end the line is taken out.
+        for (const auto& line : index.extra)
+        {
+            if (line.empty())
+                continue;
+
+            auto kept = line;
+
+            for (auto& c : kept)
+                if (c == '\n' || c == '\r')
+                    c = ' ';
+
+            text += kept + "\n";
+        }
+
         return text;
     }
 
@@ -891,6 +935,12 @@ namespace stella::blob
 
             if (end == std::string::npos)
                 end = text.size();
+
+            // The line as it is, for a kind this reader doesn't know (Index::extra).
+            auto rawLine = text.substr (start, end - start);
+
+            while (! rawLine.empty() && (rawLine.back() == '\r' || rawLine.back() == ' '))
+                rawLine.pop_back();
 
             std::vector<std::string> fields;
             std::size_t f = start;
@@ -997,7 +1047,12 @@ namespace stella::blob
                 }
 
                 index.regions.push_back (std::move (r));
+                continue;
             }
+
+            // A kind this reader doesn't know: kept as it is for whoever does (Index::extra).
+            if (! rawLine.empty() && index.extra.size() < 1048576)
+                index.extra.push_back (std::move (rawLine));
         }
 
         if (! header)
@@ -1183,6 +1238,90 @@ namespace stella::blob
 
         std::fclose (file);
         return ok;
+    }
+
+    bool openForReading (std::FILE* file, const std::string& path, Head& head, Cipher& cipher,
+                         Index& index, std::string& error, const std::uint8_t* key)
+    {
+        if (file == nullptr)
+        {
+            error = "It isn't there.";
+            return false;
+        }
+
+        if (! readHead (file, head, error))
+            return false;
+
+        std::uint8_t bytes[32];
+
+        if (! keyFor (head, key, bytes))
+        {
+            licence::Soni soni;
+
+            if (! soniKeyFor (path, head, bytes, soni, error))
+                return false;
+        }
+
+        cipher.setKey (bytes, head.nonce);
+        return readIndex (file, head, cipher, index, error);
+    }
+
+    bool readSample (std::FILE* file, const Head& head, const Cipher& cipher, const SampleEntry& sample,
+                     std::vector<float>& left, std::vector<float>& right, std::string& error)
+    {
+        left.clear();
+        right.clear();
+
+        const auto channels = sample.channels > 1 ? 2 : 1;
+        const auto count = (std::size_t) sample.frames * (std::size_t) channels;
+
+        if (file == nullptr || sample.frames <= 0)
+        {
+            error = "It has no frames.";
+            return false;
+        }
+
+        const auto size = count * (std::size_t) bytesOf (sample.format);
+        const auto at = head.dataOffset + sample.offset;
+
+        if (at + size > sizeOf (file))
+        {
+            error = "It's cut short.";
+            return false;
+        }
+
+        std::vector<std::uint8_t> raw (size);
+
+        if (! seekFile (file, at) || std::fread (raw.data(), 1, size, file) != size)
+        {
+            error = "It can't be read.";
+            return false;
+        }
+
+        if ((head.flags & 1) != 0)
+            cipher.apply (raw.data(), raw.size(), at - headBytes);
+
+        std::vector<float> frames (count);
+        detail::decode (raw.data(), sample.format, count, frames.data());
+
+        left.resize ((std::size_t) sample.frames);
+
+        if (channels == 1)
+        {
+            std::memcpy (left.data(), frames.data(), left.size() * sizeof (float));
+        }
+        else
+        {
+            right.resize ((std::size_t) sample.frames);
+
+            for (std::size_t i = 0; i < left.size(); ++i)
+            {
+                left[i] = frames[i * 2];
+                right[i] = frames[i * 2 + 1];
+            }
+        }
+
+        return true;
     }
 
     //==========================================================================

@@ -15,6 +15,7 @@
 // A native CLAP plugin's own window opens in a window of Sonify's (the app; not the engine tests).
 #if JUCE_MODULE_AVAILABLE_juce_gui_basics
  #include <juce_gui_basics/juce_gui_basics.h>
+ #include "PluginHeader.h"
  #define FANAN_CLAP_WINDOWS 1
 #else
  #define FANAN_CLAP_WINDOWS 0
@@ -1749,7 +1750,8 @@ bool CLAP_ABI WclapPlugin::outputEventsTryPush (const clap_output_events_t* list
 }
 
 //==============================================================================
-// A native plugin's own window (CLAP's gui extension), in a window of Sonify's.
+// A native plugin's own window (CLAP's gui extension), in a window of Sonify's: the header
+// (PluginHeader.h: ON/OFF, the name, the format) at the top, the plugin's window under it.
 #if FANAN_CLAP_WINDOWS
 class WclapPlugin::NativeScreen final : public juce::DocumentWindow
 {
@@ -1758,6 +1760,7 @@ public:
         : DocumentWindow (title, juce::Colour (0xff2b2d31), DocumentWindow::closeButton), owner (plugin)
     {
         setUsingNativeTitleBar (true);
+        PluginHeader::attach (*this, plugin);
         holder.setSize (400, 300);
         setContentNonOwned (&holder, true);
         setResizable (false, false);
@@ -1765,16 +1768,39 @@ public:
 
     ~NativeScreen() override
     {
+        area.removeFromDesktop();   // the plugin's parent, before this window's own goes
         clearContentComponent();
     }
 
     void closeButtonPressed() override   { owner.hideNativeScreen(); }
 
-    /** Where the plugin's window goes: this window's own (it fills it, under the title bar). */
+    /** Where the plugin's window goes. A CLAP plugin fills the window it's given from its top
+        left, so it isn't given this one (it would cover the header): it's given a window of its
+        own inside this one, over the content, which follows the content wherever it is. Made
+        when first asked, once this window is on the screen. */
     void* getParentHandle()
     {
-        auto* peer = getPeer();
-        return peer != nullptr ? peer->getNativeHandle() : nullptr;
+        if (! area.isOnDesktop())
+        {
+            auto* peer = getPeer();
+
+            if (peer == nullptr)
+                return nullptr;
+
+            area.addToDesktop (0, peer->getNativeHandle());
+            placeArea();
+            area.setVisible (true);
+        }
+
+        auto* areaPeer = area.getPeer();
+        return areaPeer != nullptr ? areaPeer->getNativeHandle() : nullptr;
+    }
+
+    /** The plugin's window, over the content (in this window's own coordinates: it's a child). */
+    void placeArea()
+    {
+        if (area.isOnDesktop())
+            area.setBounds (getLocalArea (&holder, holder.getLocalBounds()));
     }
 
     double getScale()
@@ -1804,16 +1830,28 @@ private:
 
         void resized() override
         {
+            window.placeArea();
+
             if (! window.settingSize)
                 window.owner.nativeScreenResized (getWidth(), getHeight());
         }
 
+        void moved() override                                        { window.placeArea(); }
+
         NativeScreen& window;
+    };
+
+    // The plugin's parent: a native child window of this one.
+    struct Area final : public juce::Component
+    {
+        Area()                                                       { setOpaque (true); }
+        void paint (juce::Graphics& g) override                      { g.fillAll (juce::Colours::black); }
     };
 
     WclapPlugin& owner;
     bool settingSize = false;
     Holder holder { *this };
+    Area area;
 };
 #else
 class WclapPlugin::NativeScreen {};
@@ -1839,9 +1877,7 @@ bool WclapPlugin::showNativeScreen (const juce::String& title)
         screen->centreWithSize (screen->getWidth(), screen->getHeight());
         screen->setVisible (true);   // its window first: the plugin's goes in it
 
-        auto* parent = screen->getParentHandle();
-
-        if (parent == nullptr || ! guiExt->create (plugin, windowApi, false))
+        if (screen->getPeer() == nullptr || ! guiExt->create (plugin, windowApi, false))
             return false;
 
         guiCreated = true;
@@ -1861,6 +1897,19 @@ bool WclapPlugin::showNativeScreen (const juce::String& title)
         if (guiExt->get_size != nullptr && guiExt->get_size (plugin, &width, &height) && width > 0 && height > 0)
             screen->setPluginSize (static_cast<int> (width), static_cast<int> (height));
 
+        // Resizable or not before the plugin's parent is made: with the system's title bar, a
+        // window that changes that is made again, and what was in the old one would go with it.
+        screen->setResizable (guiExt->can_resize != nullptr && guiExt->can_resize (plugin), false);
+
+        auto* parent = screen->getParentHandle();
+
+        if (parent == nullptr)
+        {
+            guiExt->destroy (plugin);
+            guiCreated = false;
+            return false;
+        }
+
         clap_window_t window {};
         window.api = windowApi;
        #if JUCE_WINDOWS
@@ -1878,7 +1927,6 @@ bool WclapPlugin::showNativeScreen (const juce::String& title)
             return false;
         }
 
-        screen->setResizable (guiExt->can_resize != nullptr && guiExt->can_resize (plugin), false);
         nativeScreen = std::move (screen);
     }
 

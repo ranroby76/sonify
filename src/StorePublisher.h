@@ -24,6 +24,12 @@
     its picture. Once posted, the ad's id stays for good: every later post updates the same ad.
 
     Posting:
+        0. the Store's rules (no hate, insults, sexual content, violence, harassment, scams,
+           impersonation, stolen work...), accepted once per account (and again when they
+           change: their version), then "check": Fanan AI reads the ad's words against them on
+           the store's side; one that breaks a rule isn't posted, and says which and why. Three
+           such blocked posts close posting for the account for good (the store keeps count; it
+           checks the pictures too, at "publish", before the ad is on the board);
         1. "begin": the store gives the ad's id (the first time), the post's number, and where
            to send the files: its picture, the developer's logo and (when offered) the package;
         2. when the Sonify version is offered from the open project, it's packed: a plugin as
@@ -129,6 +135,20 @@ public:
     using Progress = std::function<void (const juce::String& step)>;
     using Posted = std::function<void (const juce::Result& result, const Listing& listing)>;
     using Written = std::function<void (const juce::Result& result, const Listing& story)>;
+
+    /** The Store's rules, as the store has them for this account: whether it accepted them
+        (their version), how many of its posts broke them, and whether posting is closed to it. */
+    struct Rules
+    {
+        bool accepted = false, banned = false;
+        int version = 1, strikes = 0;
+        juce::String text;
+    };
+
+    void rules (std::function<void (const juce::Result&, const Rules&)> done);
+
+    /** The account accepts that version of the rules (once: posting needs it). */
+    void acceptRules (int version, std::function<void (const juce::Result&)> done);
 
     /** Posts it (see above). done gets the listing as the store has it now (its id, post). */
     void post (Item item, Progress progress, Posted done);

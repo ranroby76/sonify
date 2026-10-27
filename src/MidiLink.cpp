@@ -2,6 +2,7 @@
 
 #include "MidiLink.h"
 #include "AnalogBoard.h"
+#include "MasterSection.h"
 #include "LiveShow.h"
 #include "Preferences.h"
 
@@ -88,11 +89,20 @@ namespace
             return index >= 0 ? &AnalogBoard::masterSpecs()[static_cast<size_t> (index)] : nullptr;
         }
 
+        // The Mastering section's ("board.mastering.<setting>").
+        if (parts[1] == "mastering")
+        {
+            const auto index = MasterSection::indexOf (parts[2]);
+            return index >= 0 ? &MasterSection::specs()[static_cast<size_t> (index)] : nullptr;
+        }
+
         if (! parts[1].containsOnly ("0123456789") || parts[1].getIntValue() < 1)
             return nullptr;
 
+        // (A strip's dynamic EQ key names another track: not a control to link.)
         const auto index = AnalogBoard::stripIndexOf (parts[2]);
-        return index >= 0 ? &AnalogBoard::stripSpecs()[static_cast<size_t> (index)] : nullptr;
+        return index >= 0 && AnalogBoard::stripSpecs()[static_cast<size_t> (index)].kind != AnalogBoard::ParamSpec::Kind::track
+                 ? &AnalogBoard::stripSpecs()[static_cast<size_t> (index)] : nullptr;
     }
 
     /** The Live Show's: 1 a knob or fader, 0 a button, -1 not one of its controls.

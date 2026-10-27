@@ -48,7 +48,7 @@ namespace
 
         void run (const juce::String& name, const juce::var& input, std::function<void (const juce::var&)> done) override
         {
-            done (tools.run (name, input));
+            tools.runAsync (name, input, std::move (done));   // removing what the user made asks them first
         }
 
         juce::String describe (const juce::String& name, const juce::var& input, const juce::var& result) override
@@ -59,7 +59,8 @@ namespace
         // Tools that only look: they don't change the song.
         bool looksOnly (const juce::String& name) override
         {
-            return name == "get_song" || name == "get_clip" || name == "find_plugins" || name == "get_plugin_params" || name == "get_board";
+            return name == "get_song" || name == "get_clip" || name == "find_plugins" || name == "get_plugin_params"
+                || name == "get_board" || name == "app_features";
         }
 
     private:
@@ -80,6 +81,32 @@ AiAgent::AiAgent (FananServer& s, Toolbox& t, Hooks h)
 AiAgent::~AiAgent()
 {
     *alive = false;   // an answer arriving later finds no one
+}
+
+void AiAgent::setMode (const juce::String& newMode)
+{
+    const auto wanted = newMode.trim();
+
+    if (wanted.isNotEmpty())
+        mode = wanted;
+}
+
+void AiAgent::setDeep (bool shouldBeDeep)
+{
+    if (deep == shouldBeDeep)
+        return;
+
+    deep = shouldBeDeep;
+    notify();
+}
+
+juce::String AiAgent::getMode() const
+{
+    // Another AI (the Device Studio's) keeps its own mode: only Sonify AI's steps up.
+    if (mode != "agent" && mode != "deep")
+        return mode;
+
+    return deep || steps >= deepAfterSteps ? juce::String ("deep") : juce::String ("agent");
 }
 
 juce::String AiAgent::systemPrompt()
@@ -314,6 +341,7 @@ void AiAgent::callModel()
     fields->setProperty ("tools", cachedTools);
     fields->setProperty ("messages", compacted());
     fields->setProperty ("max_tokens", maxAnswerTokens);
+    fields->setProperty ("mode", getMode());
 
     server.chat (body, [this, flag = alive] (const juce::Result& result, const juce::var& answer)
     {
@@ -655,6 +683,8 @@ juce::var AiAgent::getState() const
     fields->setProperty ("busy", busy);
     fields->setProperty ("stopping", stopping);
     fields->setProperty ("steps", steps);
+    fields->setProperty ("deep", deep);
+    fields->setProperty ("deepNow", getMode() == "deep");
     fields->setProperty ("entries", entries);
     return state;
 }

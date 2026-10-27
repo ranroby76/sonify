@@ -2,6 +2,10 @@
 
 #include "Vst3Plugin.h"
 
+#if FANAN_PLUGIN_WINDOWS
+ #include "PluginHeader.h"
+#endif
+
 #include <map>
 
 namespace
@@ -290,14 +294,16 @@ Vst3Plugin::Vst3Plugin (std::unique_ptr<juce::AudioPluginInstance> pluginInstanc
 
 //==============================================================================
 #if FANAN_PLUGIN_WINDOWS
-/** The plugin's own window: floats over the Hub, hides when closed, and goes with the plugin. */
+/** The plugin's own window: floats over the Hub, hides when closed, and goes with the plugin.
+    Its header (PluginHeader.h) is over the editor: ON/OFF, the name, the format. */
 class Vst3Plugin::ScreenWindow final : public juce::DocumentWindow
 {
 public:
-    ScreenWindow (const juce::String& title, juce::AudioProcessorEditor* editor)
+    ScreenWindow (Plugin& plugin, const juce::String& title, juce::AudioProcessorEditor* editor)
         : DocumentWindow (title, juce::Colour (0xff2b2d31), DocumentWindow::closeButton)
     {
         setUsingNativeTitleBar (true);
+        PluginHeader::attach (*this, plugin);
         setContentOwned (editor, true);
         setResizable (editor->isResizable(), false);
         centreWithSize (getWidth(), getHeight());
@@ -326,7 +332,7 @@ bool Vst3Plugin::showNativeScreen (const juce::String& title)
         if (editor == nullptr)
             return false;
 
-        screenWindow = std::make_unique<ScreenWindow> (title, editor);
+        screenWindow = std::make_unique<ScreenWindow> (*this, title, editor);
     }
 
     screenWindow->setName (title);
@@ -382,6 +388,20 @@ juce::MemoryBlock Vst3Plugin::getVst3Preset()
         return client->getPreset();
 
     return {};
+}
+
+bool Vst3Plugin::setVst3Preset (const juce::MemoryBlock& preset)
+{
+    if (formatName != "VST3" || instance == nullptr || preset.isEmpty())
+        return false;
+
+    if (auto* client = instance->getVST3Client(); client != nullptr && client->setPreset (preset))
+    {
+        stateChanged.store (true);
+        return true;
+    }
+
+    return false;
 }
 
 int Vst3Plugin::findParameter (uint32_t id) const noexcept

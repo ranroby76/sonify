@@ -380,7 +380,7 @@
 
     start() {
       if (backend) {
-        for (const id of ["status", "tracks", "library", "param", "song", "songFolder", "audioPeaks", "audioPeaksFine", "folderListing", "audioFileInfo", "pluginScreen", "screenMessages", "mixdown", "mixdownFolder", "webTabOpened", "webTabState", "webTabClosed", "webTabsRestore", "account", "fananContent", "contentProgress", "contentResult", "contentPreviewing", "pluginChoice", "pluginScan", "internetBlocked", "aiState", "voiceState", "remoteState", "settings", "audioSetup", "runCommand", "mastering", "sessionSetup", "sessionChords", "sessionPlayers", "stems", "midiLink", "selectTracks", "songChannel", "audioJob", "audioTempo", "audioAnalysis", "silenceAreas", "transients", "midiFxTypes", "midiFxAdded", "midiToolResult", "magentaRequest", "midiTools", "midiToolProgress", "midiToolInstalled", "songBlocks", "songBlockMade", "songBlocksBuilt", "songLive", "pluginParams", "takeClips", "songVideo", "videoExport", "deviceStudio", "deviceStudioMessage", "deviceAiState", "deviceLive", "board", "live", "creator", "sampling"])
+        for (const id of ["status", "tracks", "library", "param", "song", "songFolder", "audioPeaks", "audioPeaksFine", "folderListing", "audioFileInfo", "pluginScreen", "screenMessages", "mixdown", "mixdownFolder", "webTabOpened", "webTabState", "webTabClosed", "webTabsRestore", "account", "fananContent", "contentProgress", "contentResult", "contentPreviewing", "pluginChoice", "pluginScan", "internetBlocked", "aiState", "aiRun", "voiceState", "remoteState", "settings", "audioSetup", "runCommand", "mastering", "sessionSetup", "sessionChords", "sessionPlayers", "stems", "midiLink", "selectTracks", "songChannel", "audioJob", "audioTempo", "audioAnalysis", "silenceAreas", "transients", "midiFxTypes", "midiFxAdded", "midiToolResult", "magentaRequest", "midiTools", "midiToolProgress", "midiToolInstalled", "songBlocks", "songBlockMade", "songBlocksBuilt", "songLive", "pluginParams", "takeClips", "takeWave", "songVideo", "videoExport", "deviceStudio", "deviceStudioMessage", "deviceAiState", "deviceLive", "board", "live", "creator", "sampling"])
           backend.addEventListener(id, (data) => Hub.emit(id, data));
       }
 
@@ -629,10 +629,30 @@
   /** a at 0, b at 0.5 (the default), c at 1. */
   const mix3 = (a, b, c, t) => (t <= 0.5 ? mix(a, b, t * 2) : mix(b, c, (t - 0.5) * 2));
 
-  function makeTheme(luminance, contrast) {
+  // The colour that leads the palette (the Start page; green is the look Sonify always had).
+  // main: buttons, selections and bars, with on (its text) on it; dark: pressed buttons; light:
+  // lines and marks on the dark; onBright: the same on bright lanes and rolls (Luminance past
+  // the middle); panel: the Start page's New and Open; glow: the Start page's backdrop. Every
+  // one keeps at least 3:1 against what it sits on, in the dark and in the bright.
+  const ACCENTS = {
+    green:  { name: "Green",  main: "#25984d", dark: "#0d7f3b", light: "#3fd47a", onBright: "#16702f", on: "#ffffff", panel: "#5cad5c", glow: ["#194f29", "#152f1b"] },
+    yellow: { name: "Yellow", main: "#d9a90f", dark: "#a87d00", light: "#ffd84a", onBright: "#7a5c00", on: "#17150c", panel: "#e3c04f", glow: ["#4d3d0c", "#2a230d"] },
+    blue:   { name: "Blue",   main: "#2f7ed8", dark: "#1c64b8", light: "#6fb2ff", onBright: "#1a56a0", on: "#ffffff", panel: "#6fa0d8", glow: ["#163c66", "#13233a"] },
+    purple: { name: "Purple", main: "#9460e0", dark: "#6d3bbd", light: "#b78cff", onBright: "#5f2fae", on: "#ffffff", panel: "#a487d6", glow: ["#3a2463", "#22183a"] },
+    red:    { name: "Red",    main: "#d23f45", dark: "#b02a30", light: "#ff7378", onBright: "#9e1f25", on: "#ffffff", panel: "#d97b7e", glow: ["#5c1c20", "#321416"] },
+    orange: { name: "Orange", main: "#d9681a", dark: "#b85310", light: "#ff9b4f", onBright: "#974105", on: "#ffffff", panel: "#e09a5f", glow: ["#5c2e10", "#33200f"] }
+  };
+  Hub.ACCENTS = ACCENTS;
+
+  function makeTheme(luminance, contrast, accentName = "green") {
     const l = Hub.clamp01(luminance / 100), c = Hub.clamp01(contrast / 100);
+    const accentKey = ACCENTS[accentName] ? accentName : "green", set = ACCENTS[accentKey];
     return {
       luminance, contrast,
+      accentName: accentKey,
+      accent: set.main,
+      accentSet: { ...set, rgb: rgb(set.main).join(", "), dim: mix(set.main, "#000000", 0.32),
+                   soft: mix(set.main, "#ffffff", 0.25), pale: mix(set.main, "#ffffff", 0.55) },
       text: mix3("#a9abaf", "#d6d7d9", "#ffffff", c),
       bright: mix3("#c3c5c8", "#eceded", "#ffffff", c),
       muted: mix3("#6e7278", "#8e939a", "#b6bac0", c),
@@ -667,10 +687,26 @@
 
   Hub.theme = makeTheme(0, 50);
 
-  /** Applies Settings > Appearance at once (the settings remember it). */
-  Hub.setAppearance = ({ luminance = Hub.theme.luminance, contrast = Hub.theme.contrast } = {}) => {
-    const theme = Hub.theme = makeTheme(luminance, contrast);
+  /** The accent at an alpha, for the canvases. */
+  Hub.accentRgba = (alpha) => `rgba(${Hub.theme.accentSet.rgb}, ${alpha})`;
+
+  /** The accent's lines and marks: light on the dark lanes, deep on the bright. */
+  Hub.accentLine = () => (Hub.theme.luminance >= 50 ? Hub.theme.accentSet.onBright : Hub.theme.accentSet.light);
+
+  /** Applies Settings > Appearance (and the Start page's colour) at once (the settings remember it). */
+  Hub.setAppearance = ({ luminance = Hub.theme.luminance, contrast = Hub.theme.contrast, accent = Hub.theme.accentName } = {}) => {
+    const theme = Hub.theme = makeTheme(luminance, contrast, accent);
     const root = document.documentElement.style;
+    const set = theme.accentSet;
+    root.setProperty("--accent", set.main);
+    root.setProperty("--accent-2", set.dark);
+    root.setProperty("--accent-light", set.light);
+    root.setProperty("--accent-rgb", set.rgb);
+    root.setProperty("--on-accent", set.on);
+    root.setProperty("--accent-panel", set.panel);
+    root.setProperty("--accent-glow", set.glow[0]);
+    root.setProperty("--accent-glow-2", set.glow[1]);
+    document.documentElement.dataset.accent = theme.accentName;
     root.setProperty("--text", theme.text);
     root.setProperty("--bright", theme.bright);
     root.setProperty("--muted", theme.muted);

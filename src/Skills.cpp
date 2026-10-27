@@ -70,7 +70,8 @@ namespace
 
     bool isFor (const Skill& skill, Skills::For readers)
     {
-        return skill.readers == "all" || skill.readers == (readers == Skills::For::plugins ? "plugins" : "devices");
+        return skill.readers == "all" || skill.readers == (readers == Skills::For::plugins ? "plugins"
+                                                         : readers == Skills::For::devices ? "devices" : "mixing");
     }
 
     const Skill* find (const juce::String& name)

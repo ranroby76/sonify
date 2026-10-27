@@ -404,7 +404,7 @@ void ContainerGraphCanvas::addPluginFile (Containers::Spot at)
        #endif
     }
 
-    chooser = std::make_shared<juce::FileChooser> ("Browse for a Plugin", folder, "*.vst3;*.clap;*.sonifyplugin");
+    chooser = std::make_shared<juce::FileChooser> ("Browse for a Plugin", folder, "*.vst3;*.clap;*.sip;*.sonifyplugin");
     juce::Component::SafePointer<ContainerGraphCanvas> safeThis (this);
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::canSelectDirectories,
                           [safeThis, at] (const juce::FileChooser& fc)
@@ -418,6 +418,7 @@ void ContainerGraphCanvas::addPluginFile (Containers::Spot at)
         if (auto* h = Containers::getHost())
             h->setPluginBrowseFolder (result.getParentDirectory());
 
+        Plugin::approve (result);   // the user's own pick: it may load, wherever it is
         safeThis->addFromTools ("PLUGIN:" + result.getFullPathName() + "|", at);
     });
 }
@@ -505,6 +506,7 @@ void ContainerGraphCanvas::showPluginMenu (juce::Point<float> virtualPos)
     tools.addItem (6, "Stereo Meter");
     tools.addItem (5, "Playlist Player");
     tools.addItem (8, "Sonify Sampler");
+    tools.addItem (12, "Tomahawk");
     menu.addSubMenu ("System Tools", tools);
     menu.addItem (7, "Browse for a Plugin...");
     menu.addSeparator();
@@ -575,6 +577,7 @@ void ContainerGraphCanvas::showPluginMenu (juce::Point<float> virtualPos)
             case 9: safeThis->addFromTools ("TOOL:Latcher", at); break;
             case 10: safeThis->addFromTools ("TOOL:StepSeq", at); break;
             case 11: safeThis->addFromTools ("TOOL:TransientSplitter", at); break;
+            case 12: safeThis->addFromTools ("PLUGIN:|sonify.builtin.tomahawk", at); break;
             default:
                 if (result >= 100 && result - 100 < static_cast<int> (ids.size()))
                     safeThis->addFromTools (ids[static_cast<size_t> (result - 100)], at);
@@ -1255,7 +1258,7 @@ namespace
     bool isPluginFile (const juce::String& path)
     {
         const juce::File file (path);
-        return file.hasFileExtension ("vst3") || file.hasFileExtension ("clap") || file.hasFileExtension ("sonifyplugin");
+        return file.hasFileExtension ("vst3") || file.hasFileExtension ("clap") || file.hasFileExtension ("sip") || file.hasFileExtension ("sonifyplugin");
     }
 }
 
@@ -1293,8 +1296,13 @@ void ContainerGraphCanvas::filesDropped (const juce::StringArray& files, int x, 
     int placed = 0;
 
     for (const auto& path : files)
+    {
         if (isPluginFile (path))
+        {
+            Plugin::approve (juce::File (path));   // dropped by the user: it may load, wherever it is
             dropAt ("PLUGIN:" + path + "|", x, y + 80 * placed++);
+        }
+    }
 }
 
 //==============================================================================

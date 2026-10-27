@@ -37,6 +37,11 @@ juce::StringArray Preferences::getKeymaps()
     return { "studioOne", "cubase", "logic", "proTools", "ableton", "cakewalk", "flStudio" };
 }
 
+juce::StringArray Preferences::getAccents()
+{
+    return { "green", "yellow", "blue", "purple", "red", "orange" };
+}
+
 juce::StringArray Preferences::getTimecodeRates()
 {
     return { "24", "25", "29.97", "30" };
@@ -134,6 +139,48 @@ juce::File SettingsFolder::folder (const juce::String& name, const juce::String&
     return target;
 }
 
+juce::File SettingsFolder::webViewProfile()
+{
+    return juce::File::getSpecialLocation (juce::File::currentExecutableFile).getSiblingFile ("FananWebHub-WebView2");
+}
+
+void SettingsFolder::removeOldWebViewProfiles()
+{
+    std::vector<juce::File> old;
+
+    for (const auto* name : { "Browser", "Store video" })
+    {
+        old.push_back (get().getChildFile (name));
+
+        // Or where the Sonify before it kept them, not moved over yet.
+        old.push_back (juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Fanan Web Hub").getChildFile (name));
+       #if JUCE_WINDOWS
+        old.push_back (juce::File::getSpecialLocation (juce::File::windowsLocalAppData).getChildFile ("Fanan Web Hub").getChildFile (name));
+       #endif
+    }
+
+    old.erase (std::remove_if (old.begin(), old.end(), [] (const juce::File& f) { return ! f.isDirectory(); }), old.end());
+
+    if (old.empty())
+        return;
+
+    // A big profile takes a while to delete: never on the message thread.
+    juce::Thread::launch (juce::Thread::Priority::background, [old]
+    {
+        for (const auto& folder : old)
+        {
+            folder.deleteRecursively();
+
+            // The old Fanan Web Hub folder goes once nothing is left in it.
+            const auto home = folder.getParentDirectory();
+
+            if (home.getFileName() == "Fanan Web Hub" && home.isDirectory()
+                && home.getNumberOfChildFiles (juce::File::findFilesAndDirectories | juce::File::ignoreHiddenFiles) == 0)
+                home.deleteRecursively();
+        }
+    });
+}
+
 //==============================================================================
 void Preferences::load()
 {
@@ -144,6 +191,7 @@ void Preferences::load()
         const auto appearance = parsed.getProperty ("appearance", {});
         luminance = number (appearance.getProperty ("luminance", {}), luminance, 0, 100);
         contrast = number (appearance.getProperty ("contrast", {}), contrast, 0, 100);
+        accent = text (appearance.getProperty ("accent", {}), accent);
 
         keymap = text (parsed.getProperty ("keymap", {}), keymap);
         discoverable = flag (parsed.getProperty ("discoverable", {}), discoverable);
@@ -151,6 +199,7 @@ void Preferences::load()
         const auto locations = parsed.getProperty ("locations", {});
         userData = text (locations.getProperty ("userData", {}));
         browserFolder = text (locations.getProperty ("browserFolder", {}));
+        filesFolder = text (locations.getProperty ("filesFolder", {}));
         clipExportFolder = text (locations.getProperty ("clipExportFolder", {}));
         nodeRackFolder = text (locations.getProperty ("nodeRackFolder", {}));
         autosave = flag (locations.getProperty ("autosave", {}), autosave);
@@ -191,10 +240,12 @@ bool Preferences::save() const
     juce::DynamicObject::Ptr appearance (new juce::DynamicObject());
     appearance->setProperty ("luminance", luminance);
     appearance->setProperty ("contrast", contrast);
+    appearance->setProperty ("accent", accent);
 
     juce::DynamicObject::Ptr locations (new juce::DynamicObject());
     locations->setProperty ("userData", userData);
     locations->setProperty ("browserFolder", browserFolder);
+    locations->setProperty ("filesFolder", filesFolder);
     locations->setProperty ("clipExportFolder", clipExportFolder);
     locations->setProperty ("nodeRackFolder", nodeRackFolder);
     locations->setProperty ("autosave", autosave);
@@ -232,6 +283,9 @@ void Preferences::tidy()
 {
     luminance = juce::jlimit (0, 100, luminance);
     contrast = juce::jlimit (0, 100, contrast);
+
+    if (! getAccents().contains (accent))
+        accent = "green";
     autosaveMinutes = juce::jlimit (minAutosaveMinutes, maxAutosaveMinutes, autosaveMinutes);
 
     if (! getKeymaps().contains (keymap))
@@ -287,6 +341,7 @@ juce::var Preferences::toVar() const
     juce::DynamicObject::Ptr appearance (new juce::DynamicObject());
     appearance->setProperty ("luminance", luminance);
     appearance->setProperty ("contrast", contrast);
+    appearance->setProperty ("accent", accent);
 
     juce::Array<juce::var> list;
 

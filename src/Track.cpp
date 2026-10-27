@@ -144,6 +144,8 @@ Track::~Track()
 void Track::prepare (double sampleRate, int maxBlockSize)
 {
     synth.setCurrentPlaybackSampleRate (sampleRate);
+    instrumentFadeStep = 1.0f / (float) juce::jmax (1.0, 0.010 * sampleRate);
+    instrumentLevel = instrumentOff.load() ? 0.0f : 1.0f;
     buffer.setSize (2, juce::jmax (maxBlockSize * 2, minimumBufferSize), false, true, true);
     buffer.clear();
     keyBlock.setSize (2, buffer.getNumSamples(), false, true, true);
@@ -405,6 +407,10 @@ void Track::render (const juce::MidiBuffer& liveNotes, const float* const* input
             {
                 const float* data[] = { inLeft, inRight };
                 recorder->write (data, renderedSamples);
+
+                // Its waveform, for the page to draw as it grows.
+                if (livePeaks != nullptr)
+                    livePeaks->take (inLeft, inRight, renderedSamples);
             }
         }
 
@@ -464,6 +470,19 @@ void Track::render (const juce::MidiBuffer& liveNotes, const float* const* input
         // A note effect hears the notes; the test synth stays audible.
         if (source != nullptr)
             source->process (left, right, nullptr, nullptr, renderedSamples, events, &transport);
+    }
+
+    // Its instrument switched off (or on again): faded to silence (or back).
+    if (const auto target = instrumentOff.load (std::memory_order_relaxed) ? 0.0f : 1.0f;
+        target < 1.0f || instrumentLevel < 1.0f)
+    {
+        for (int i = 0; i < renderedSamples; ++i)
+        {
+            instrumentLevel = instrumentLevel < target ? juce::jmin (target, instrumentLevel + instrumentFadeStep)
+                                                       : juce::jmax (target, instrumentLevel - instrumentFadeStep);
+            left[i] *= instrumentLevel;
+            right[i] *= instrumentLevel;
+        }
     }
 
     if (! dry)

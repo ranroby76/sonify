@@ -413,6 +413,29 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
         layer (choice);
     };
 
+    // A knob, slider or switch: the two long buttons under the row, yellow so they're found
+    // without hunting through the tabs. The gallery first, the Knob Studio under it.
+    const auto markColour = [] (juce::TextButton& button)
+    {
+        button.setColour (juce::TextButton::buttonColourId, juce::Colour (0xffe9c126));
+        button.setColour (juce::TextButton::textColourOffId, juce::Colours::black);
+        button.setColour (juce::TextButton::textColourOnId, juce::Colours::black);
+    };
+
+    galleryButton.setTooltip ("Pick a knob (or slider, or switch) from the Gallery to wear instead of this look: "
+                              "it keeps its size, place, parameter, caption and settings");
+    galleryButton.onClick = [this]
+    {
+        const auto index = widget;
+        canvas.chooseGalleryItem (index);
+    };
+    markColour (galleryButton);
+    addChildComponent (galleryButton);
+
+    markColour (knobStudioButton);
+    addChildComponent (knobStudioButton);
+    addChildComponent (similarToggle);
+
     addChildComponent (copyButton);
     addChildComponent (pasteButton);
     addChildComponent (duplicateButton);
@@ -551,7 +574,8 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     backgroundButton.setButtonText (juce::String::fromUTF8 ("Add a background picture\xe2\x80\xa6"));
     backgroundButton.onClick = [this] { canvas.choosePicture (-1); };
 
-    knobStudioButton.setTooltip ("Open its look in the Knob Studio: layers, bevels, textures, the KnobMan gallery");
+    knobStudioButton.setTooltip ("Its look opens in the Knob Studio (the studio's own tab): layers, bevels, "
+                                 "textures, the KnobMan gallery. Come back with the Knob Studio's Back");
     knobStudioButton.onClick = [this]
     {
         if (widget >= 0 && canvas.onEditLook != nullptr)
@@ -754,7 +778,6 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     addRow (look, "Arrowheads", arrowsBox);
     addHeader (look, "Look");
     addRow (look, "Look", style);
-    addRow (look, {}, knobStudioButton, &similarToggle, 0.64f, 28);
     addRow (look, {}, originalLookButton, nullptr, 1.0f, 28);
     addRow (look, {}, restoreLookButton, nullptr, 1.0f, 28);
     addHeader (look, "Picture");
@@ -1167,7 +1190,6 @@ void PluginCanvas::ElementMenu::showFor (int widgetIndex)
 
             style.setSelectedId (w.style.isEmpty() ? standardLookId : lookNames.indexOf (shown) + 1, juce::dontSendNotification);
             setShown (style, true);
-            setShown (knobStudioButton, true);
 
             // Back to the look it had before others were tried.
             if (w.originalKnown && w.originalStyle != w.style)
@@ -1957,6 +1979,14 @@ void PluginCanvas::ElementMenu::showActions (bool forElements)
 {
     copyButton.setVisible (forElements);
     duplicateButton.setVisible (forElements);
+
+    // One knob, slider or switch: the two yellow buttons under the row.
+    const bool wearsALook = forElements && several.empty()
+                         && juce::isPositiveAndBelow (widget, (int) canvas.layout.widgets.size())
+                         && Looks::takesLook (canvas.layout.widgets[(size_t) widget]);
+    galleryButton.setVisible (wearsALook);
+    knobStudioButton.setVisible (wearsALook && canvas.looks != nullptr && canvas.onEditLook != nullptr);
+    similarToggle.setVisible (knobStudioButton.isVisible());
     layerBox.setVisible (forElements);
     pasteButton.setVisible (true);
     pasteButton.setEnabled (! canvas.clipboardElements().empty());
@@ -2046,7 +2076,12 @@ int PluginCanvas::ElementMenu::getIdealHeight() const
     for (const auto& name : tabStrip.names)
         rowsHeight = juce::jmax (rowsHeight, rows.measure (name));
 
-    return headerHeight + actionsHeight + (tabStrip.isVisible() ? tabsHeight : 0) + rowsHeight + 4 + footerSize();
+    return headerHeight + actionsSize() + (tabStrip.isVisible() ? tabsHeight : 0) + rowsHeight + 4 + footerSize();
+}
+
+int PluginCanvas::ElementMenu::actionsSize() const
+{
+    return actionsHeight + (galleryButton.isVisible() ? 34 : 0) + (knobStudioButton.isVisible() ? 34 : 0);
 }
 
 void PluginCanvas::ElementMenu::resized()
@@ -2058,8 +2093,24 @@ void PluginCanvas::ElementMenu::resized()
     removeButton.setBounds (headerArea.withTrimmedRight (8 + 30 + 6).removeFromRight (64).withSizeKeepingCentre (64, 26));
 
     // The actions, in a row: the window's menu has Paste only.
-    actionsArea = area.removeFromTop (actionsHeight);
+    actionsArea = area.removeFromTop (actionsSize());
     auto strip = actionsArea.reduced (pad, 7);
+
+    // Under the row, two long buttons, the lower one taken first: a gallery item in this one's
+    // place, and its look designed in the Knob Studio (with the controls like it, when it's ticked).
+    if (knobStudioButton.isVisible())
+    {
+        auto line = strip.removeFromBottom (28);
+        similarToggle.setBounds (line.removeFromRight (juce::roundToInt ((float) line.getWidth() * 0.36f)));
+        knobStudioButton.setBounds (line.withTrimmedRight (6));
+        strip.removeFromBottom (6);
+    }
+
+    if (galleryButton.isVisible())
+    {
+        galleryButton.setBounds (strip.removeFromBottom (28));
+        strip.removeFromBottom (6);
+    }
 
     if (! copyButton.isVisible())
     {

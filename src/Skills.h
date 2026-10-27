@@ -16,14 +16,15 @@
 
         ---
         name: synth-engines
-        for: plugins            plugins (the Plugins Creator Studio's builder) or devices (MIDI devices)
+        for: plugins            plugins (the Plugins Creator Studio's builder), devices (MIDI devices)
+                                or mixing (AI Mix and AI Master, on the Analog Board and Main)
         title: Synth engines    a few words for the chat ("Reading up on synth engines")
         description: ...        one line: what's in it and when to read it
         ---
 */
 namespace Skills
 {
-    enum class For { plugins, devices };
+    enum class For { plugins, devices, mixing };
 
     /** The list for a guide: a heading, how to use them, and one line per skill. Empty if
         there are none for these readers. */

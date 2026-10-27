@@ -115,6 +115,13 @@ public:
         track plays nothing meanwhile, not the test synth. Set and cleared under that lock. */
     bool instrumentAway = false;
 
+    /** Its instrument switched off (the header on its window, the instrument's ON/OFF): it still
+        plays, so nothing it holds is lost or left hanging, but it's heard silent. Going off or on
+        it fades over a few milliseconds (instrumentLevel, on the audio thread). A new instrument
+        comes in on. */
+    std::atomic<bool> instrumentOff { false };
+    float instrumentLevel = 1.0f, instrumentFadeStep = 1.0f / 480.0f;
+
     //==============================================================================
     // Clips. The message thread owns the clips; after a change the engine builds a new
     // Sequence and swaps it in under its graph lock, and the audio thread plays that.
@@ -155,6 +162,45 @@ public:
     std::atomic<float> inputPeakLeft { 0.0f }, inputPeakRight { 0.0f };   // its input as it hears it, each side
     std::unique_ptr<const AudioPlaylist> playlist;
     juce::AudioFormatWriter::ThreadedWriter* recorder = nullptr;
+
+    /** A take's waveform as it's recorded, for the page to draw it growing: each bucket of
+        peakBucket file samples its loudest and quietest sample (both channels together, -127..127,
+        as AudioData::peaks are). The audio thread adds buckets while it records; the message
+        thread reads the first `buckets` of them. Its room is made before the take starts. */
+    struct LivePeaks
+    {
+        static constexpr int peakBucket = 512;
+        std::vector<juce::int8> data;          // two a bucket, made to its full size before the take
+        std::atomic<int> buckets { 0 };        // written so far
+        float high = 0.0f, low = 0.0f;
+        int inBucket = 0;
+
+        void take (const float* left, const float* right, int numSamples) noexcept
+        {
+            for (int i = 0; i < numSamples; ++i)
+            {
+                high = juce::jmax (high, left[i], right[i]);
+                low = juce::jmin (low, left[i], right[i]);
+
+                if (++inBucket < peakBucket)
+                    continue;
+
+                const auto at = buckets.load (std::memory_order_relaxed);
+
+                if (2 * static_cast<size_t> (at) + 1 < data.size())
+                {
+                    data[2 * static_cast<size_t> (at)] = static_cast<juce::int8> (juce::jlimit (-127, 127, juce::roundToInt (high * 127.0f)));
+                    data[2 * static_cast<size_t> (at) + 1] = static_cast<juce::int8> (juce::jlimit (-127, 127, juce::roundToInt (low * 127.0f)));
+                    buckets.store (at + 1, std::memory_order_release);
+                }
+
+                high = low = 0.0f;
+                inBucket = 0;
+            }
+        }
+    };
+
+    LivePeaks* livePeaks = nullptr;            // set with recorder, under the engine's graph lock
 
     /** An audio clip's own effect (MidiClip::effect), live: its plugin plays that clip's sound
         alone, all the time (so its tail rings on past the clip's end), and adds it to the track
@@ -266,6 +312,7 @@ public:
 
     /** Its strip on the Analog Board (AnalogBoard.h): instrument and audio tracks have one. */
     AnalogBoard::Strip board;
+    bool boardInputUnheard = false;  // audio thread: this block, its input isn't heard on its strip (the Sampling Studio holds it, not monitored)
 
     /** Its channel on the Live Show's mixer (LiveShow.h), and whether it's one of the show's
         channels (a singer's mic, a player's instrument): instrument and audio tracks. */

@@ -1,6 +1,7 @@
 // D:\workspace\Fanan_web_hub\src\VideoMedia.cpp
 
 #include "VideoMedia.h"
+#include "VideoMedia_Apple.h"
 #include "VideoMp4.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -19,6 +20,14 @@
 
 namespace
 {
+    // Every platform's: the waiting that reading a video does, used by what's above VLC's own
+    // part of this file as well as below it.
+    void sleepMs (int ms)
+    {
+        std::this_thread::sleep_for (std::chrono::milliseconds (ms));
+    }
+
+   #if ! JUCE_MAC
     //==============================================================================
     // libvlc 3's C interface: what Sonify uses of it, as its headers declare it. Sonify doesn't
     // link with VLC or need its SDK: it finds these in libvlc when video is first used, and
@@ -137,14 +146,9 @@ namespace
             if (path.isEmpty())
             {
                #if JUCE_WINDOWS
+                // Windows: VLC ships with Sonify, next to Sonify.exe (Vlc.cmake puts it there).
                 const auto file = folder.getChildFile ("libvlc.dll");
-               #elif JUCE_MAC
-                const auto file = folder.getSiblingFile ("Frameworks").getChildFile ("libvlc.dylib");
-               #else
-                const juce::File file;
-               #endif
 
-               #if JUCE_WINDOWS || JUCE_MAC
                 if (! file.existsAsFile())
                 {
                     problem = "Video needs VLC (" + file.getFileName() + " and its plugins folder) next to Sonify: building Sonify puts them there.";
@@ -153,6 +157,9 @@ namespace
 
                 path = file.getFullPathName();
                #else
+                // Linux: the one the machine has (the package "vlc", or libvlc5 with
+                // vlc-plugin-base), which knows where its own plugins are. A Mac uses
+                // AVFoundation instead and never comes here.
                 path = "libvlc.so.5";
                #endif
             }
@@ -230,11 +237,6 @@ namespace
     double nowSeconds() noexcept
     {
         return juce::Time::getMillisecondCounterHiRes() * 0.001;
-    }
-
-    void sleepMs (int ms)
-    {
-        std::this_thread::sleep_for (std::chrono::milliseconds (ms));
     }
 
     //==============================================================================
@@ -357,6 +359,8 @@ namespace
         api.libvlc_media_player_release (player);
         return result;
     }
+
+   #endif   // ! JUCE_MAC
 
     //==============================================================================
     juce::File& cacheRoot()
@@ -565,28 +569,14 @@ namespace
         return juce::Result::ok();
     }
 
-    /** The JPEGs VLC wrote one after another, into one grid of cells. */
-    juce::Result buildThumbnails (const juce::File& frames, VideoMedia::Thumbnails& thumbs)
+    /** The small pictures, in the order they were taken, into one grid of cells. Both platforms
+        end here: VLC's JPEGs are read into images first, a Mac's come as images already. */
+    juce::Result writeThumbnailSheet (const std::vector<juce::Image>& shots, VideoMedia::Thumbnails& thumbs)
     {
-        juce::MemoryBlock block;
-
-        if (! frames.loadFileAsData (block) || block.getSize() < 4)
+        if (shots.empty())
             return juce::Result::fail ("No pictures came out of the video.");
 
-        const auto* data = static_cast<const juce::uint8*> (block.getData());
-        const auto size = block.getSize();
-        std::vector<size_t> starts;
-
-        for (size_t i = 0; i + 3 <= size; ++i)
-            if (data[i] == 0xff && data[i + 1] == 0xd8 && data[i + 2] == 0xff)
-                starts.push_back (i);
-
-        starts.resize (juce::jmin (starts.size(), static_cast<size_t> (maxThumbnails)));
-
-        if (starts.empty())
-            return juce::Result::fail ("No pictures came out of the video.");
-
-        const auto count = static_cast<int> (starts.size());
+        const auto count = juce::jmin (static_cast<int> (shots.size()), maxThumbnails);
         const auto columns = juce::jmin (thumbnailColumns, count);
         const auto rows = (count + columns - 1) / columns;
         juce::Image sheet (juce::Image::RGB, columns * thumbs.cellWidth, rows * thumbs.cellHeight, true, juce::SoftwareImageType());
@@ -598,9 +588,7 @@ namespace
 
             for (int i = 0; i < count; ++i)
             {
-                const auto from = starts[static_cast<size_t> (i)];
-                const auto to = i + 1 < count ? starts[static_cast<size_t> (i + 1)] : size;
-                const auto image = juce::ImageFileFormat::loadFrom (data + from, to - from);
+                const auto& image = shots[static_cast<size_t> (i)];
 
                 if (! image.isValid())
                     continue;
@@ -635,16 +623,54 @@ namespace
         thumbs.columns = columns;
         return juce::Result::ok();
     }
+
+   #if ! JUCE_MAC
+    /** The JPEGs VLC wrote one after another, read into images. */
+    juce::Result buildThumbnails (const juce::File& frames, VideoMedia::Thumbnails& thumbs)
+    {
+        juce::MemoryBlock block;
+
+        if (! frames.loadFileAsData (block) || block.getSize() < 4)
+            return juce::Result::fail ("No pictures came out of the video.");
+
+        const auto* data = static_cast<const juce::uint8*> (block.getData());
+        const auto size = block.getSize();
+        std::vector<size_t> starts;
+
+        for (size_t i = 0; i + 3 <= size; ++i)
+            if (data[i] == 0xff && data[i + 1] == 0xd8 && data[i + 2] == 0xff)
+                starts.push_back (i);
+
+        starts.resize (juce::jmin (starts.size(), static_cast<size_t> (maxThumbnails)));
+
+        std::vector<juce::Image> shots;
+        shots.reserve (starts.size());
+
+        for (size_t i = 0; i < starts.size(); ++i)
+        {
+            const auto from = starts[i];
+            const auto to = i + 1 < starts.size() ? starts[i + 1] : size;
+            shots.push_back (juce::ImageFileFormat::loadFrom (data + from, to - from));
+        }
+
+        return writeThumbnailSheet (shots, thumbs);
+    }
+   #endif
 }
 
 //==============================================================================
 juce::String VideoMedia::problem()
 {
+   #if JUCE_MAC
+    return AppleVideo::problem();
+   #else
     return vlcReady() ? juce::String() : vlc().problem.isNotEmpty() ? vlc().problem : juce::String ("VLC has stopped.");
+   #endif
 }
 
 void VideoMedia::shutdown()
 {
+   #if ! JUCE_MAC
     auto& api = vlc();
     const std::lock_guard<std::mutex> guard (api.lock);
 
@@ -653,6 +679,7 @@ void VideoMedia::shutdown()
         api.libvlc_release (api.instance);
         api.instance = nullptr;
     }
+   #endif
 }
 
 juce::String VideoMedia::wildcards()
@@ -704,6 +731,9 @@ juce::File VideoMedia::cacheFolder()
 //==============================================================================
 std::optional<VideoMedia::Info> VideoMedia::probe (const juce::File& video, juce::String& error)
 {
+   #if JUCE_MAC
+    return AppleVideo::probe (video, error);
+   #else
     if (! vlcReady())
     {
         error = problem();
@@ -898,6 +928,7 @@ std::optional<VideoMedia::Info> VideoMedia::probe (const juce::File& video, juce
         info.fps = 25.0;
 
     return info;
+   #endif
 }
 
 std::optional<VideoMedia::Prepared> VideoMedia::cached (const juce::File& video, Wanted wanted)
@@ -951,8 +982,10 @@ VideoMedia::Prepared VideoMedia::prepareNow (const juce::File& video, Wanted wan
 
     const auto folder = folderFor (video);
 
+   #if ! JUCE_MAC
     if (! chainCanWrite (folder))
         return fail ("VLC can't write into " + folder.getFullPathName() + " (the folder's name has { or } in it).");
+   #endif
 
     // (Twice: another preparation may make the cache folder itself at the same moment.)
     if (folder.createDirectory().failed() && folder.createDirectory().failed() && ! folder.isDirectory())
@@ -1006,14 +1039,19 @@ VideoMedia::Prepared VideoMedia::prepareNow (const juce::File& video, Wanted wan
     // The sound: VLC writes it as it reads it, then it's lined up with the picture.
     if (needSound)
     {
-        const auto raw = folder.getChildFile ("vlc-sound.wav");
+        const auto raw = folder.getChildFile ("raw-sound.wav");
         raw.deleteFile();
 
+       #if JUCE_MAC
+        const auto result = AppleVideo::readSound (video, raw,
+                                                   [&] (double part) { report (soundShare * part); }, cancelled, &reached);
+       #else
         const auto result = runVlc (video, { ":no-sout-video", ":no-sout-spu",
                                              ":sout=#transcode{acodec=fl32,channels=2}:std{access=file,mux=wav,dst=" + chainPath (raw) + "}" },
                                     [&] (double part) { report (soundShare * part); }, cancelled, &reached);
+       #endif
 
-        if (result.failed())
+        if (result.failed() && result.getErrorMessage() != "empty")
         {
             raw.deleteFile();
             return fail (result.getErrorMessage());
@@ -1022,7 +1060,11 @@ VideoMedia::Prepared VideoMedia::prepareNow (const juce::File& video, Wanted wan
         double rate = prepared.info.soundRate, length = 0.0;
         const auto correction = Mp4::soundCorrection (video, rate > 0.0 ? rate : 48000.0);
         const auto part = folder.getChildFile ("sound.part.wav");
-        auto lined = lineUpSound (raw, part, correction, rate, length);
+
+        // A reader that found no sound after all says "empty", as lineUpSound does for a WAV with
+        // nothing in it: either way the video is taken to have none.
+        auto lined = result.failed() ? juce::Result::fail ("empty")
+                                     : lineUpSound (raw, part, correction, rate, length);
         raw.deleteFile();
 
         if (lined.wasOk() && ! putInPlace (part, soundFile))
@@ -1080,6 +1122,21 @@ VideoMedia::Prepared VideoMedia::prepareNow (const juce::File& video, Wanted wan
         thumbs.cellWidth = juce::jlimit (32, 240, static_cast<int> (std::lround (thumbnailHeight * aspect / 2.0)) * 2);
         thumbs.file = folder.getChildFile ("thumbnails.jpg");
 
+       #if JUCE_MAC
+        std::vector<juce::Image> shots;
+        const auto result = AppleVideo::readThumbnails (video, thumbs.cellWidth, thumbs.cellHeight, thumbs.every,
+                                                        maxThumbnails, shots,
+                                                        [&] (double part) { report (soundShare + (1.0 - soundShare) * part); },
+                                                        cancelled, &reached);
+
+        if (result.failed())
+            return fail (result.getErrorMessage());
+
+        const auto built = writeThumbnailSheet (shots, thumbs);
+
+        if (built.failed())
+            return fail (built.getErrorMessage());
+       #else
         const auto frames = folder.getChildFile ("frames.jpgs");
         frames.deleteFile();
 
@@ -1103,6 +1160,7 @@ VideoMedia::Prepared VideoMedia::prepareNow (const juce::File& video, Wanted wan
 
         if (built.failed())
             return fail (built.getErrorMessage());
+       #endif
 
         // Still not known: how many pictures came says it, unless there were as many as are kept
         // (they stop there); then what VLC said reading it.
@@ -1176,6 +1234,9 @@ VideoMedia::Prepared VideoMedia::Preparation::getResult() const
 juce::Result VideoMedia::transcodePicture (const juce::File& video, const juce::File& target,
                                            const std::function<void (double)>& progress, std::atomic<bool>* cancelled)
 {
+   #if JUCE_MAC
+    return AppleVideo::transcodePicture (video, target, progress, cancelled);
+   #else
     // VLC writes into the cache, where its chain can name the file; then it's moved. (Without
     // B-frames: with them, VLC's MP4 puts the picture a frame late.)
     const auto folder = cacheFolder();
@@ -1204,9 +1265,13 @@ juce::Result VideoMedia::transcodePicture (const juce::File& video, const juce::
     }
 
     return juce::Result::ok();
+   #endif
 }
 
 //==============================================================================
+// VLC's Player. A Mac's is in VideoMedia_Apple.mm, over AVPlayer.
+#if ! JUCE_MAC
+
 namespace
 {
     // A picture bigger than this (5K, 8K) comes 4K-sized (4096 x 2304's worth of pixels).
@@ -1984,3 +2049,5 @@ void VideoMedia::Player::setOnFrame (std::function<void()> callback)
     jassert (! isOpen());           // VLC's threads call it: it's set before a video opens
     told = std::move (callback);
 }
+
+#endif   // ! JUCE_MAC

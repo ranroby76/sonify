@@ -57,10 +57,12 @@ public:
     //==============================================================================
     int luminance = 0;                      // 0 dark .. 100 bright: the arrangement and the Editor
     int contrast = 50;                      // 0 low .. 100 high: text and symbols against the dark
+    juce::String accent = "green";          // the colour that leads the palette (the Start page): see getAccents
     juce::String keymap = "studioOne";      // see keymaps
     bool discoverable = false;              // remote control apps on the network can find Sonify
     juce::String userData;                  // empty: the default, Documents\Sonify
     juce::String browserFolder;             // the Browser's Files tab: the folder it last showed
+    juce::String filesFolder;               // the Files tab's Open: the folder new songs (and songs without one) show
     juce::String clipExportFolder;          // where Export Clip to Audio writes (empty: the song's Exports)
     juce::String nodeRackFolder;            // where a Node Rack's Browse opens (empty: the VST3 folder)
     bool autosave = true;
@@ -78,6 +80,9 @@ public:
     /** The keyboard shortcut maps the page knows: Studio One's (the default), Cubase's, Logic's,
         Pro Tools', Ableton Live's, Cakewalk's and FL Studio's. */
     static juce::StringArray getKeymaps();
+
+    /** The colours that may lead the palette (the Start page; the page holds their shades). */
+    static juce::StringArray getAccents();
     static juce::StringArray getTimecodeRates();
 
     /** The track list's Options menu (its wrench, as Studio One's), each by name with its default:
@@ -146,6 +151,16 @@ namespace SettingsFolder
         before (oldName, in roaming or, on Windows, local AppData) is moved over the first time
         it's asked for, and the old Fanan Web Hub folder goes once nothing is left in it. */
     juce::File folder (const juce::String& name, const juce::String& oldName = {});
+
+    /** Windows: the one WebView2 profile every web view in Sonify uses (its page, the Web
+        Browser's tabs, the store's videos), beside Sonify.exe where the page's always was. One
+        profile is one browser process for them all: a new view opens in a moment, where a
+        profile of its own started a browser of its own first and froze Sonify for seconds. */
+    juce::File webViewProfile();
+
+    /** The profiles the Web Browser's tabs and the store's videos had of their own before: gone,
+        on a thread of their own (whatever's left goes at the next start). Any thread. */
+    void removeOldWebViewProfiles();
 }
 
 //==============================================================================

@@ -6,6 +6,7 @@
 
 #include "ContainerCanvas.h"
 #include "NodeRackPages.h"
+#include "PluginHeader.h"
 
 #include <cmath>
 
@@ -501,6 +502,7 @@ namespace
             : juce::DocumentWindow (container.getContainerName(), Style::colBackground, juce::DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar (true);
+            PluginHeader::attach (*this, container);   // the rack's ON/OFF, over its canvas
             auto* editor = new ContainerEditor (container);
             editor->getCanvas().onTitleChanged = [this, &container, editor]
             {
@@ -509,7 +511,7 @@ namespace
             };
             setContentOwned (editor, true);
             setResizable (true, true);
-            setResizeLimits (720, 460, 8000, 6000);
+            getConstrainer()->setSizeLimits (720, 460, 8000, 6000);
             centreWithSize (getWidth(), getHeight());
         }
 

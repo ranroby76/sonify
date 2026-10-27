@@ -1,980 +1,1025 @@
 {
- "width": 960,
- "height": 624,
- "background": {
-  "top": "#FF1A1B1F",
-  "bottom": "#FF0D0D10"
- },
- "light": {
-  "angle": 120,
-  "altitude": 32
- },
- "widgets": [
-  {
-   "type": "rectangle",
-   "x": 0,
-   "y": 0,
-   "w": 960,
-   "h": 624,
-   "material": "anodized",
-   "color": "#FF15161A",
-   "finish": "satin",
-   "grain": 0.7
+  "width": 960,
+  "height": 624,
+  "background": {
+    "top": "#FF1A1C1B",
+    "bottom": "#FF0D0E0E"
   },
-  {
-   "type": "rectangle",
-   "x": 0,
-   "y": 0,
-   "w": 960,
-   "h": 64,
-   "color": "#FF0B0B0D"
+  "light": {
+    "angle": 120,
+    "altitude": 32
   },
-  {
-   "type": "rectangle",
-   "x": 0,
-   "y": 0,
-   "w": 960,
-   "h": 30,
-   "color": "#10FFFFFF"
-  },
-  {
-   "type": "line",
-   "from": [
-    0,
-    64
-   ],
-   "to": [
-    960,
-    64
-   ],
-   "lineWidth": 1,
-   "color": "#FF2A2B30"
-  },
-  {
-   "type": "line",
-   "from": [
-    0,
-    65
-   ],
-   "to": [
-    960,
-    65
-   ],
-   "lineWidth": 1,
-   "color": "#FF050506"
-  },
-  {
-   "type": "rectangle",
-   "x": 24,
-   "y": 20,
-   "w": 4,
-   "h": 24,
-   "rounding": 1,
-   "color": "#FFF2F4F8",
-   "effects": {
-    "dropShadow": {
-     "color": "#FFFFFFFF",
-     "opacity": 70,
-     "distance": 0,
-     "size": 6
-    }
-   }
-  },
-  {
-   "type": "label",
-   "text": "Test Synth",
-   "x": 40,
-   "y": 14,
-   "w": 360,
-   "h": 28,
-   "size": 20,
-   "bold": true,
-   "font": "Montserrat",
-   "color": "#FFF2F4F8"
-  },
-  {
-   "type": "label",
-   "text": "SONIFY  \u00b7  TWO OSCILLATORS  \u00b7  FILTER  \u00b7  LFO",
-   "x": 41,
-   "y": 41,
-   "w": 420,
-   "h": 14,
-   "size": 9.5,
-   "color": "#FF9A9DA4"
-  },
-  {
-   "type": "preset",
-   "label": "Presets",
-   "x": 644,
-   "y": 18,
-   "w": 220,
-   "h": 28,
-   "color": "#FFF2F4F8"
-  },
-  {
-   "type": "label",
-   "text": "OUT",
-   "x": 874,
-   "y": 25,
-   "w": 30,
-   "h": 14,
-   "size": 9.5,
-   "bold": true,
-   "color": "#FF9A9DA4"
-  },
-  {
-   "type": "meter",
-   "source": "out L",
-   "x": 908,
-   "y": 14,
-   "w": 10,
-   "h": 36,
-   "settings": {
-    "display": "segments",
-    "segments": 9,
-    "colorLow": "#FFB9BCC4",
-    "colorMid": "#FFF2F4F8",
-    "colorHigh": "#FFFF4A4A",
-    "background": "#FF0A0A0C"
-   }
-  },
-  {
-   "type": "meter",
-   "source": "out R",
-   "x": 922,
-   "y": 14,
-   "w": 10,
-   "h": 36,
-   "settings": {
-    "display": "segments",
-    "segments": 9,
-    "colorLow": "#FFB9BCC4",
-    "colorMid": "#FFF2F4F8",
-    "colorHigh": "#FFFF4A4A",
-    "background": "#FF0A0A0C"
-   }
-  },
-  {
-   "type": "rectangle",
-   "x": 0,
-   "y": 66,
-   "w": 22,
-   "h": 558,
-   "material": "greywood",
-   "finish": "polished",
-   "effects": {
-    "bevel": {
-     "size": 3,
-     "depth": 120
+  "widgets": [
+    {
+      "type": "rectangle",
+      "x": 0,
+      "y": 0,
+      "w": 960,
+      "h": 624,
+      "material": "anodized",
+      "color": "#FF151816",
+      "finish": "satin",
+      "grain": 0.7
     },
-    "dropShadow": {
-     "opacity": 60,
-     "distance": 3,
-     "size": 6
-    }
-   }
-  },
-  {
-   "type": "rectangle",
-   "x": 938,
-   "y": 66,
-   "w": 22,
-   "h": 558,
-   "material": "greywood",
-   "finish": "polished",
-   "effects": {
-    "bevel": {
-     "size": 3,
-     "depth": 120
+    {
+      "type": "rectangle",
+      "x": 0,
+      "y": 0,
+      "w": 960,
+      "h": 64,
+      "color": "#FF0B0C0B"
     },
-    "dropShadow": {
-     "opacity": 60,
-     "distance": 3,
-     "size": 6
-    }
-   }
-  },
-  {
-   "type": "rectangle",
-   "x": 36,
-   "y": 84,
-   "w": 212,
-   "h": 196,
-   "radius": 10,
-   "color": "#FF0F1013",
-   "effects": {
-    "innerShadow": {
-     "opacity": 80,
-     "distance": 3,
-     "size": 8
+    {
+      "type": "line",
+      "from": [
+        0,
+        64
+      ],
+      "to": [
+        960,
+        64
+      ],
+      "lineWidth": 1,
+      "color": "#FF2A2D2B"
     },
-    "stroke": {
-     "size": 1,
-     "position": "inside",
-     "color": "#FF1E1F24",
-     "opacity": 100
-    }
-   }
-  },
-  {
-   "type": "line",
-   "from": [
-    46,
-    85
-   ],
-   "to": [
-    238,
-    85
-   ],
-   "lineWidth": 1,
-   "color": "#14FFFFFF"
-  },
-  {
-   "type": "label",
-   "text": "OSC 1",
-   "x": 52,
-   "y": 94,
-   "w": 180,
-   "h": 14,
-   "size": 9.5,
-   "bold": true,
-   "color": "#FF9A9DA4"
-  },
-  {
-   "type": "selector",
-   "param": "Osc 1 Wave",
-   "options": [
-    "Classic",
-    "Sine",
-    "Triangle",
-    "Saw",
-    "Square",
-    "Pulse"
-   ],
-   "x": 52,
-   "y": 104,
-   "w": 180,
-   "h": 56,
-   "color": "#FFF2F4F8",
-   "settings": {
-    "display": "vfd",
-    "background": "#FF07080A"
-   }
-  },
-  {
-   "type": "knob",
-   "param": "Osc 1 Octave",
-   "label": "Octave",
-   "x": 56,
-   "y": 160,
-   "size": 52,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Osc 1 Level",
-   "label": "Level",
-   "x": 128,
-   "y": 152,
-   "size": 64,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Pulse Width",
-   "label": "PW",
-   "x": 204,
-   "y": 168,
-   "size": 36,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "rectangle",
-   "x": 260,
-   "y": 84,
-   "w": 300,
-   "h": 196,
-   "radius": 10,
-   "color": "#FF0F1013",
-   "effects": {
-    "innerShadow": {
-     "opacity": 80,
-     "distance": 3,
-     "size": 8
+    {
+      "type": "line",
+      "from": [
+        0,
+        65
+      ],
+      "to": [
+        960,
+        65
+      ],
+      "lineWidth": 1,
+      "color": "#FF050506"
     },
-    "stroke": {
-     "size": 1,
-     "position": "inside",
-     "color": "#FF1E1F24",
-     "opacity": 100
-    }
-   }
-  },
-  {
-   "type": "line",
-   "from": [
-    270,
-    85
-   ],
-   "to": [
-    550,
-    85
-   ],
-   "lineWidth": 1,
-   "color": "#14FFFFFF"
-  },
-  {
-   "type": "label",
-   "text": "OSC 2",
-   "x": 276,
-   "y": 94,
-   "w": 268,
-   "h": 14,
-   "size": 9.5,
-   "bold": true,
-   "color": "#FF9A9DA4"
-  },
-  {
-   "type": "selector",
-   "param": "Osc 2 Wave",
-   "options": [
-    "Classic",
-    "Sine",
-    "Triangle",
-    "Saw",
-    "Square",
-    "Pulse"
-   ],
-   "x": 276,
-   "y": 104,
-   "w": 180,
-   "h": 56,
-   "color": "#FFF2F4F8",
-   "settings": {
-    "display": "vfd",
-    "background": "#FF07080A"
-   }
-  },
-  {
-   "type": "knob",
-   "param": "Osc 2 Level",
-   "label": "Level",
-   "x": 472,
-   "y": 100,
-   "size": 72,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Osc 2 Octave",
-   "label": "Octave",
-   "x": 276,
-   "y": 160,
-   "size": 48,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Osc 2 Semi",
-   "label": "Semi",
-   "x": 340,
-   "y": 160,
-   "size": 48,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Osc 2 Detune",
-   "label": "Detune",
-   "x": 404,
-   "y": 160,
-   "size": 48,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Sub",
-   "label": "Sub",
-   "x": 468,
-   "y": 184,
-   "size": 40,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Noise",
-   "label": "Noise",
-   "x": 516,
-   "y": 184,
-   "size": 40,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "rectangle",
-   "x": 572,
-   "y": 84,
-   "w": 352,
-   "h": 196,
-   "radius": 10,
-   "color": "#FF0F1013",
-   "effects": {
-    "innerShadow": {
-     "opacity": 80,
-     "distance": 3,
-     "size": 8
+    {
+      "type": "image",
+      "image": "Sonify.png",
+      "x": 24,
+      "y": 20,
+      "w": 160,
+      "h": 24,
+      "mode": "fitLeft"
     },
-    "stroke": {
-     "size": 1,
-     "position": "inside",
-     "color": "#FF1E1F24",
-     "opacity": 100
-    }
-   }
-  },
-  {
-   "type": "line",
-   "from": [
-    582,
-    85
-   ],
-   "to": [
-    914,
-    85
-   ],
-   "lineWidth": 1,
-   "color": "#14FFFFFF"
-  },
-  {
-   "type": "label",
-   "text": "FILTER",
-   "x": 588,
-   "y": 94,
-   "w": 320,
-   "h": 14,
-   "size": 9.5,
-   "bold": true,
-   "color": "#FF9A9DA4"
-  },
-  {
-   "type": "selector",
-   "param": "Filter",
-   "options": [
-    "Off",
-    "Low Pass",
-    "High Pass",
-    "Band Pass"
-   ],
-   "x": 588,
-   "y": 104,
-   "w": 160,
-   "h": 56,
-   "color": "#FFF2F4F8",
-   "settings": {
-    "display": "vfd",
-    "background": "#FF07080A"
-   }
-  },
-  {
-   "type": "rectangle",
-   "x": 760,
-   "y": 100,
-   "w": 148,
-   "h": 64,
-   "radius": 8,
-   "color": "#FF060709",
-   "effects": {
-    "innerShadow": {
-     "opacity": 90,
-     "distance": 3,
-     "size": 10
+    {
+      "type": "label",
+      "text": "Cayman",
+      "x": 280,
+      "y": 12,
+      "w": 400,
+      "h": 28,
+      "size": 20,
+      "bold": true,
+      "font": "Montserrat",
+      "color": "#FFF2F4F8",
+      "settings": {
+        "align": "centre"
+      }
     },
-    "stroke": {
-     "size": 1,
-     "position": "inside",
-     "color": "#FF26272C",
-     "opacity": 100
-    }
-   }
-  },
-  {
-   "type": "filter",
-   "params": {
-    "cutoff": "Cutoff",
-    "resonance": "Resonance"
-   },
-   "mode": "lowpass",
-   "x": 764,
-   "y": 102,
-   "w": 140,
-   "h": 60,
-   "color": "#FFF2F4F8"
-  },
-  {
-   "type": "rectangle",
-   "x": 760,
-   "y": 100,
-   "w": 148,
-   "h": 32,
-   "radius": 8,
-   "color": "#0CFFFFFF"
-  },
-  {
-   "type": "knob",
-   "param": "Cutoff",
-   "label": "Cutoff",
-   "x": 588,
-   "y": 156,
-   "size": 72,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Resonance",
-   "label": "Resonance",
-   "x": 676,
-   "y": 164,
-   "size": 56,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Env Amount",
-   "label": "Env",
-   "x": 752,
-   "y": 176,
-   "size": 44,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Key Track",
-   "label": "Key",
-   "x": 816,
-   "y": 176,
-   "size": 44,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "rectangle",
-   "x": 36,
-   "y": 292,
-   "w": 300,
-   "h": 160,
-   "radius": 10,
-   "color": "#FF0F1013",
-   "effects": {
-    "innerShadow": {
-     "opacity": 80,
-     "distance": 3,
-     "size": 8
+    {
+      "type": "label",
+      "text": "VIRTUAL ANALOG SYNTH",
+      "x": 280,
+      "y": 40,
+      "w": 400,
+      "h": 14,
+      "size": 9.5,
+      "font": "Montserrat",
+      "color": "#FFE4ECE8",
+      "settings": {
+        "align": "centre"
+      }
     },
-    "stroke": {
-     "size": 1,
-     "position": "inside",
-     "color": "#FF1E1F24",
-     "opacity": 100
-    }
-   }
-  },
-  {
-   "type": "line",
-   "from": [
-    46,
-    293
-   ],
-   "to": [
-    326,
-    293
-   ],
-   "lineWidth": 1,
-   "color": "#14FFFFFF"
-  },
-  {
-   "type": "label",
-   "text": "FILTER ENVELOPE",
-   "x": 52,
-   "y": 302,
-   "w": 268,
-   "h": 14,
-   "size": 9.5,
-   "bold": true,
-   "color": "#FF9A9DA4"
-  },
-  {
-   "type": "knob",
-   "param": "F Attack",
-   "label": "A",
-   "x": 52,
-   "y": 320,
-   "size": 56,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "F Decay",
-   "label": "D",
-   "x": 120,
-   "y": 320,
-   "size": 56,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "F Sustain",
-   "label": "S",
-   "x": 188,
-   "y": 320,
-   "size": 56,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "F Release",
-   "label": "R",
-   "x": 256,
-   "y": 320,
-   "size": 56,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "rectangle",
-   "x": 348,
-   "y": 292,
-   "w": 300,
-   "h": 160,
-   "radius": 10,
-   "color": "#FF0F1013",
-   "effects": {
-    "innerShadow": {
-     "opacity": 80,
-     "distance": 3,
-     "size": 8
+    {
+      "type": "preset",
+      "label": "Presets",
+      "x": 634,
+      "y": 19,
+      "w": 230,
+      "h": 26,
+      "rounding": 1,
+      "color": "#FF8FDDB4"
     },
-    "stroke": {
-     "size": 1,
-     "position": "inside",
-     "color": "#FF1E1F24",
-     "opacity": 100
-    }
-   }
-  },
-  {
-   "type": "line",
-   "from": [
-    358,
-    293
-   ],
-   "to": [
-    638,
-    293
-   ],
-   "lineWidth": 1,
-   "color": "#14FFFFFF"
-  },
-  {
-   "type": "label",
-   "text": "AMP ENVELOPE",
-   "x": 364,
-   "y": 302,
-   "w": 268,
-   "h": 14,
-   "size": 9.5,
-   "bold": true,
-   "color": "#FF9A9DA4"
-  },
-  {
-   "type": "knob",
-   "param": "Attack",
-   "label": "A",
-   "x": 360,
-   "y": 320,
-   "size": 52,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Decay",
-   "label": "D",
-   "x": 418,
-   "y": 320,
-   "size": 52,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Sustain",
-   "label": "S",
-   "x": 476,
-   "y": 320,
-   "size": 52,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Release",
-   "label": "R",
-   "x": 534,
-   "y": 320,
-   "size": 52,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Velocity",
-   "label": "Vel",
-   "x": 596,
-   "y": 324,
-   "size": 44,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "rectangle",
-   "x": 660,
-   "y": 292,
-   "w": 264,
-   "h": 160,
-   "radius": 10,
-   "color": "#FF0F1013",
-   "effects": {
-    "innerShadow": {
-     "opacity": 80,
-     "distance": 3,
-     "size": 8
+    {
+      "type": "label",
+      "text": "OUT",
+      "x": 874,
+      "y": 25,
+      "w": 30,
+      "h": 14,
+      "size": 9.5,
+      "font": "Montserrat",
+      "color": "#FF8E9A94"
     },
-    "stroke": {
-     "size": 1,
-     "position": "inside",
-     "color": "#FF1E1F24",
-     "opacity": 100
-    }
-   }
-  },
-  {
-   "type": "line",
-   "from": [
-    670,
-    293
-   ],
-   "to": [
-    914,
-    293
-   ],
-   "lineWidth": 1,
-   "color": "#14FFFFFF"
-  },
-  {
-   "type": "label",
-   "text": "LFO",
-   "x": 676,
-   "y": 302,
-   "w": 232,
-   "h": 14,
-   "size": 9.5,
-   "bold": true,
-   "color": "#FF9A9DA4"
-  },
-  {
-   "type": "selector",
-   "param": "LFO Wave",
-   "options": [
-    "Sine",
-    "Triangle",
-    "Square",
-    "Random"
-   ],
-   "x": 676,
-   "y": 318,
-   "w": 120,
-   "h": 56,
-   "color": "#FFF2F4F8",
-   "settings": {
-    "display": "vfd",
-    "background": "#FF07080A"
-   }
-  },
-  {
-   "type": "knob",
-   "param": "LFO Rate",
-   "label": "Rate",
-   "x": 820,
-   "y": 314,
-   "size": 48,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Vibrato",
-   "label": "Vibrato",
-   "x": 676,
-   "y": 388,
-   "size": 44,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "LFO Filter",
-   "label": "Filter",
-   "x": 740,
-   "y": 388,
-   "size": 44,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Tremolo",
-   "label": "Tremolo",
-   "x": 804,
-   "y": 388,
-   "size": 44,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Chorus",
-   "label": "Chorus",
-   "x": 868,
-   "y": 388,
-   "size": 44,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "rectangle",
-   "x": 36,
-   "y": 464,
-   "w": 888,
-   "h": 148,
-   "radius": 10,
-   "color": "#FF0F1013",
-   "effects": {
-    "innerShadow": {
-     "opacity": 80,
-     "distance": 3,
-     "size": 8
+    {
+      "type": "meter",
+      "source": "out L",
+      "x": 908,
+      "y": 14,
+      "w": 10,
+      "h": 36,
+      "settings": {
+        "display": "segments",
+        "segments": 9,
+        "colorLow": "#FFB9C4BE",
+        "colorMid": "#FFF2F4F8",
+        "colorHigh": "#FFFF4A4A",
+        "background": "#FF0A0B0A"
+      }
     },
-    "stroke": {
-     "size": 1,
-     "position": "inside",
-     "color": "#FF1E1F24",
-     "opacity": 100
-    }
-   }
-  },
-  {
-   "type": "line",
-   "from": [
-    46,
-    465
-   ],
-   "to": [
-    914,
-    465
-   ],
-   "lineWidth": 1,
-   "color": "#14FFFFFF"
-  },
-  {
-   "type": "selector",
-   "param": "Mode",
-   "options": [
-    "Poly",
-    "Mono",
-    "Legato"
-   ],
-   "x": 52,
-   "y": 472,
-   "w": 176,
-   "h": 56,
-   "color": "#FFF2F4F8",
-   "settings": {
-    "display": "pill"
-   }
-  },
-  {
-   "type": "knob",
-   "param": "Glide",
-   "label": "Glide",
-   "x": 240,
-   "y": 472,
-   "size": 44,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Bend Range",
-   "label": "Bend",
-   "x": 300,
-   "y": 472,
-   "size": 44,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "knob",
-   "param": "Drive",
-   "label": "Drive",
-   "x": 360,
-   "y": 472,
-   "size": 44,
-   "style": "Sonify knob red"
-  },
-  {
-   "type": "knob",
-   "param": "Output",
-   "label": "Output",
-   "x": 420,
-   "y": 472,
-   "size": 44,
-   "style": "Sonify knob"
-  },
-  {
-   "type": "rectangle",
-   "x": 500,
-   "y": 476,
-   "w": 168,
-   "h": 52,
-   "radius": 8,
-   "color": "#FF060709",
-   "effects": {
-    "innerShadow": {
-     "opacity": 90,
-     "distance": 3,
-     "size": 10
+    {
+      "type": "meter",
+      "source": "out R",
+      "x": 922,
+      "y": 14,
+      "w": 10,
+      "h": 36,
+      "settings": {
+        "display": "segments",
+        "segments": 9,
+        "colorLow": "#FFB9C4BE",
+        "colorMid": "#FFF2F4F8",
+        "colorHigh": "#FFFF4A4A",
+        "background": "#FF0A0B0A"
+      }
     },
-    "stroke": {
-     "size": 1,
-     "position": "inside",
-     "color": "#FF26272C",
-     "opacity": 100
+    {
+      "type": "rectangle",
+      "x": 0,
+      "y": 66,
+      "w": 22,
+      "h": 558,
+      "material": "greywood",
+      "finish": "polished",
+      "effects": {
+        "bevel": {
+          "size": 3,
+          "depth": 120
+        },
+        "dropShadow": {
+          "opacity": 60,
+          "distance": 3,
+          "size": 6
+        }
+      }
+    },
+    {
+      "type": "rectangle",
+      "x": 938,
+      "y": 66,
+      "w": 22,
+      "h": 558,
+      "material": "greywood",
+      "finish": "polished",
+      "effects": {
+        "bevel": {
+          "size": 3,
+          "depth": 120
+        },
+        "dropShadow": {
+          "opacity": 60,
+          "distance": 3,
+          "size": 6
+        }
+      }
+    },
+    {
+      "type": "rectangle",
+      "x": 36,
+      "y": 84,
+      "w": 236,
+      "h": 196,
+      "radius": 10,
+      "color": "#FF0F1211",
+      "effects": {
+        "innerShadow": {
+          "opacity": 80,
+          "distance": 3,
+          "size": 8
+        },
+        "stroke": {
+          "size": 1,
+          "position": "inside",
+          "color": "#FF1E2421",
+          "opacity": 100
+        }
+      }
+    },
+    {
+      "type": "line",
+      "from": [
+        46,
+        85
+      ],
+      "to": [
+        262,
+        85
+      ],
+      "lineWidth": 1,
+      "color": "#14FFFFFF"
+    },
+    {
+      "type": "label",
+      "text": "OSC 1",
+      "x": 52,
+      "y": 92,
+      "w": 140,
+      "h": 14,
+      "size": 9.5,
+      "bold": true,
+      "font": "Montserrat",
+      "color": "#FF8E9A94"
+    },
+    {
+      "type": "selector",
+      "param": "Osc 1 Wave",
+      "options": [
+        "Classic",
+        "Sine",
+        "Triangle",
+        "Saw",
+        "Square",
+        "Pulse"
+      ],
+      "x": 50,
+      "y": 108,
+      "w": 48,
+      "h": 182,
+      "color": "#FF8FDDB4",
+      "settings": {
+        "display": "keys",
+        "icons": true
+      }
+    },
+    {
+      "type": "knob",
+      "param": "Osc 1 Octave",
+      "label": "Octave",
+      "x": 126,
+      "y": 104,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Pulse Width",
+      "label": "PW",
+      "x": 194,
+      "y": 104,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Osc 1 Level",
+      "label": "Level",
+      "x": 126,
+      "y": 186,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "rectangle",
+      "x": 284,
+      "y": 84,
+      "w": 296,
+      "h": 196,
+      "radius": 10,
+      "color": "#FF0F1211",
+      "effects": {
+        "innerShadow": {
+          "opacity": 80,
+          "distance": 3,
+          "size": 8
+        },
+        "stroke": {
+          "size": 1,
+          "position": "inside",
+          "color": "#FF1E2421",
+          "opacity": 100
+        }
+      }
+    },
+    {
+      "type": "line",
+      "from": [
+        294,
+        85
+      ],
+      "to": [
+        570,
+        85
+      ],
+      "lineWidth": 1,
+      "color": "#14FFFFFF"
+    },
+    {
+      "type": "label",
+      "text": "OSC 2",
+      "x": 300,
+      "y": 92,
+      "w": 140,
+      "h": 14,
+      "size": 9.5,
+      "bold": true,
+      "font": "Montserrat",
+      "color": "#FF8E9A94"
+    },
+    {
+      "type": "selector",
+      "param": "Osc 2 Wave",
+      "options": [
+        "Classic",
+        "Sine",
+        "Triangle",
+        "Saw",
+        "Square",
+        "Pulse"
+      ],
+      "x": 298,
+      "y": 108,
+      "w": 48,
+      "h": 182,
+      "color": "#FF8FDDB4",
+      "settings": {
+        "display": "keys",
+        "icons": true
+      }
+    },
+    {
+      "type": "knob",
+      "param": "Osc 2 Octave",
+      "label": "Octave",
+      "x": 376,
+      "y": 104,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Osc 2 Semi",
+      "label": "Semi",
+      "x": 444,
+      "y": 104,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Osc 2 Detune",
+      "label": "Detune",
+      "x": 512,
+      "y": 104,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Osc 2 Level",
+      "label": "Level",
+      "x": 376,
+      "y": 186,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Sub",
+      "label": "Sub",
+      "x": 444,
+      "y": 186,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Noise",
+      "label": "Noise",
+      "x": 512,
+      "y": 186,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "rectangle",
+      "x": 592,
+      "y": 84,
+      "w": 332,
+      "h": 196,
+      "radius": 10,
+      "color": "#FF0F1211",
+      "effects": {
+        "innerShadow": {
+          "opacity": 80,
+          "distance": 3,
+          "size": 8
+        },
+        "stroke": {
+          "size": 1,
+          "position": "inside",
+          "color": "#FF1E2421",
+          "opacity": 100
+        }
+      }
+    },
+    {
+      "type": "line",
+      "from": [
+        602,
+        85
+      ],
+      "to": [
+        914,
+        85
+      ],
+      "lineWidth": 1,
+      "color": "#14FFFFFF"
+    },
+    {
+      "type": "label",
+      "text": "FILTER",
+      "x": 608,
+      "y": 92,
+      "w": 140,
+      "h": 14,
+      "size": 9.5,
+      "bold": true,
+      "font": "Montserrat",
+      "color": "#FF8E9A94"
+    },
+    {
+      "type": "selector",
+      "param": "Filter",
+      "options": [
+        "Off",
+        "Low Pass",
+        "High Pass",
+        "Band Pass"
+      ],
+      "x": 606,
+      "y": 108,
+      "w": 48,
+      "h": 182,
+      "color": "#FF8FDDB4",
+      "settings": {
+        "display": "keys",
+        "icons": true
+      }
+    },
+    {
+      "type": "knob",
+      "param": "Cutoff",
+      "label": "Cutoff",
+      "x": 674,
+      "y": 104,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Resonance",
+      "label": "Reso",
+      "x": 738,
+      "y": 104,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Env Amount",
+      "label": "Env",
+      "x": 674,
+      "y": 186,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Key Track",
+      "label": "Key",
+      "x": 738,
+      "y": 186,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "rectangle",
+      "x": 806,
+      "y": 108,
+      "w": 106,
+      "h": 158,
+      "radius": 8,
+      "color": "#FF070808",
+      "effects": {
+        "innerShadow": {
+          "opacity": 90,
+          "distance": 3,
+          "size": 10
+        },
+        "stroke": {
+          "size": 1,
+          "position": "inside",
+          "color": "#FF262B28",
+          "opacity": 100
+        }
+      }
+    },
+    {
+      "type": "filter",
+      "params": {
+        "cutoff": "Cutoff",
+        "resonance": "Resonance"
+      },
+      "mode": "lowpass",
+      "x": 810,
+      "y": 112,
+      "w": 98,
+      "h": 150,
+      "color": "#FF8FDDB4"
+    },
+    {
+      "type": "rectangle",
+      "x": 806,
+      "y": 108,
+      "w": 106,
+      "h": 60,
+      "radius": 8,
+      "color": "#0CFFFFFF"
+    },
+    {
+      "type": "rectangle",
+      "x": 36,
+      "y": 292,
+      "w": 164,
+      "h": 160,
+      "radius": 10,
+      "color": "#FF0F1211",
+      "effects": {
+        "innerShadow": {
+          "opacity": 80,
+          "distance": 3,
+          "size": 8
+        },
+        "stroke": {
+          "size": 1,
+          "position": "inside",
+          "color": "#FF1E2421",
+          "opacity": 100
+        }
+      }
+    },
+    {
+      "type": "line",
+      "from": [
+        46,
+        293
+      ],
+      "to": [
+        190,
+        293
+      ],
+      "lineWidth": 1,
+      "color": "#14FFFFFF"
+    },
+    {
+      "type": "label",
+      "text": "FILTER ENV",
+      "x": 52,
+      "y": 300,
+      "w": 140,
+      "h": 14,
+      "size": 9.5,
+      "bold": true,
+      "font": "Montserrat",
+      "color": "#FF8E9A94"
+    },
+    {
+      "type": "knob",
+      "param": "F Attack",
+      "label": "A",
+      "x": 60,
+      "y": 312,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "F Decay",
+      "label": "D",
+      "x": 124,
+      "y": 312,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "F Sustain",
+      "label": "S",
+      "x": 60,
+      "y": 380,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "F Release",
+      "label": "R",
+      "x": 124,
+      "y": 380,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "rectangle",
+      "x": 212,
+      "y": 292,
+      "w": 220,
+      "h": 160,
+      "radius": 10,
+      "color": "#FF0F1211",
+      "effects": {
+        "innerShadow": {
+          "opacity": 80,
+          "distance": 3,
+          "size": 8
+        },
+        "stroke": {
+          "size": 1,
+          "position": "inside",
+          "color": "#FF1E2421",
+          "opacity": 100
+        }
+      }
+    },
+    {
+      "type": "line",
+      "from": [
+        222,
+        293
+      ],
+      "to": [
+        422,
+        293
+      ],
+      "lineWidth": 1,
+      "color": "#14FFFFFF"
+    },
+    {
+      "type": "label",
+      "text": "AMP ENV",
+      "x": 228,
+      "y": 300,
+      "w": 140,
+      "h": 14,
+      "size": 9.5,
+      "bold": true,
+      "font": "Montserrat",
+      "color": "#FF8E9A94"
+    },
+    {
+      "type": "knob",
+      "param": "Attack",
+      "label": "A",
+      "x": 232,
+      "y": 312,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Decay",
+      "label": "D",
+      "x": 296,
+      "y": 312,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Sustain",
+      "label": "S",
+      "x": 232,
+      "y": 380,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Release",
+      "label": "R",
+      "x": 296,
+      "y": 380,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Velocity",
+      "label": "Vel",
+      "x": 364,
+      "y": 346,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "rectangle",
+      "x": 444,
+      "y": 292,
+      "w": 236,
+      "h": 160,
+      "radius": 10,
+      "color": "#FF0F1211",
+      "effects": {
+        "innerShadow": {
+          "opacity": 80,
+          "distance": 3,
+          "size": 8
+        },
+        "stroke": {
+          "size": 1,
+          "position": "inside",
+          "color": "#FF1E2421",
+          "opacity": 100
+        }
+      }
+    },
+    {
+      "type": "line",
+      "from": [
+        454,
+        293
+      ],
+      "to": [
+        670,
+        293
+      ],
+      "lineWidth": 1,
+      "color": "#14FFFFFF"
+    },
+    {
+      "type": "label",
+      "text": "LFO",
+      "x": 460,
+      "y": 300,
+      "w": 140,
+      "h": 14,
+      "size": 9.5,
+      "bold": true,
+      "font": "Montserrat",
+      "color": "#FF8E9A94"
+    },
+    {
+      "type": "selector",
+      "param": "LFO Wave",
+      "options": [
+        "Sine",
+        "Triangle",
+        "Square",
+        "Random"
+      ],
+      "x": 458,
+      "y": 316,
+      "w": 48,
+      "h": 144,
+      "color": "#FF8FDDB4",
+      "settings": {
+        "display": "keys",
+        "icons": true
+      }
+    },
+    {
+      "type": "knob",
+      "param": "LFO Rate",
+      "label": "Rate",
+      "x": 534,
+      "y": 312,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Vibrato",
+      "label": "Vibrato",
+      "x": 598,
+      "y": 312,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "LFO Filter",
+      "label": "Filter",
+      "x": 534,
+      "y": 380,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Tremolo",
+      "label": "Tremolo",
+      "x": 598,
+      "y": 380,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "rectangle",
+      "x": 692,
+      "y": 292,
+      "w": 232,
+      "h": 160,
+      "radius": 10,
+      "color": "#FF0F1211",
+      "effects": {
+        "innerShadow": {
+          "opacity": 80,
+          "distance": 3,
+          "size": 8
+        },
+        "stroke": {
+          "size": 1,
+          "position": "inside",
+          "color": "#FF1E2421",
+          "opacity": 100
+        }
+      }
+    },
+    {
+      "type": "line",
+      "from": [
+        702,
+        293
+      ],
+      "to": [
+        914,
+        293
+      ],
+      "lineWidth": 1,
+      "color": "#14FFFFFF"
+    },
+    {
+      "type": "label",
+      "text": "PLAY",
+      "x": 708,
+      "y": 300,
+      "w": 140,
+      "h": 14,
+      "size": 9.5,
+      "bold": true,
+      "font": "Montserrat",
+      "color": "#FF8E9A94"
+    },
+    {
+      "type": "selector",
+      "param": "Mode",
+      "options": [
+        "Poly",
+        "Mono",
+        "Legato"
+      ],
+      "x": 708,
+      "y": 320,
+      "w": 200,
+      "h": 44,
+      "color": "#FF8FDDB4",
+      "settings": {
+        "display": "pill"
+      }
+    },
+    {
+      "type": "knob",
+      "param": "Glide",
+      "label": "Glide",
+      "x": 714,
+      "y": 368,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Bend Range",
+      "label": "Bend",
+      "x": 782,
+      "y": 368,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "knob",
+      "param": "Chorus",
+      "label": "Chorus",
+      "x": 850,
+      "y": 368,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "rectangle",
+      "x": 36,
+      "y": 464,
+      "w": 888,
+      "h": 148,
+      "radius": 10,
+      "color": "#FF0F1211",
+      "effects": {
+        "innerShadow": {
+          "opacity": 80,
+          "distance": 3,
+          "size": 8
+        },
+        "stroke": {
+          "size": 1,
+          "position": "inside",
+          "color": "#FF1E2421",
+          "opacity": 100
+        }
+      }
+    },
+    {
+      "type": "line",
+      "from": [
+        46,
+        465
+      ],
+      "to": [
+        914,
+        465
+      ],
+      "lineWidth": 1,
+      "color": "#14FFFFFF"
+    },
+    {
+      "type": "knob",
+      "param": "Drive",
+      "label": "Drive",
+      "x": 60,
+      "y": 502,
+      "size": 52,
+      "style": "Sonify knob red"
+    },
+    {
+      "type": "knob",
+      "param": "Output",
+      "label": "Master Vol",
+      "x": 128,
+      "y": 502,
+      "size": 52,
+      "style": "Sonify knob"
+    },
+    {
+      "type": "rectangle",
+      "x": 204,
+      "y": 487,
+      "w": 132,
+      "h": 102,
+      "radius": 8,
+      "color": "#FF070808",
+      "effects": {
+        "innerShadow": {
+          "opacity": 90,
+          "distance": 3,
+          "size": 10
+        },
+        "stroke": {
+          "size": 1,
+          "position": "inside",
+          "color": "#FF262B28",
+          "opacity": 100
+        }
+      }
+    },
+    {
+      "type": "scope",
+      "source": "synth.wave",
+      "x": 210,
+      "y": 491,
+      "w": 120,
+      "h": 94,
+      "color": "#FF8FDDB4"
+    },
+    {
+      "type": "rectangle",
+      "x": 204,
+      "y": 487,
+      "w": 132,
+      "h": 40,
+      "radius": 8,
+      "color": "#0CFFFFFF"
+    },
+    {
+      "type": "keyboard",
+      "display": "graphite",
+      "low": "C2",
+      "high": "C7",
+      "x": 352,
+      "y": 529,
+      "w": 556,
+      "h": 60,
+      "color": "#FF8FDDB4"
     }
-   }
-  },
-  {
-   "type": "scope",
-   "source": "synth.wave",
-   "x": 506,
-   "y": 480,
-   "w": 156,
-   "h": 44,
-   "color": "#FFF2F4F8"
-  },
-  {
-   "type": "rectangle",
-   "x": 500,
-   "y": 476,
-   "w": 168,
-   "h": 26,
-   "radius": 8,
-   "color": "#0CFFFFFF"
-  },
-  {
-   "type": "keyboard",
-   "display": "modern",
-   "low": "C2",
-   "high": "C7",
-   "x": 52,
-   "y": 536,
-   "w": 856,
-   "h": 68,
-   "color": "#FFF2F4F8"
-  }
- ]
+  ]
 }

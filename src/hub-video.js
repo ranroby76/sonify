@@ -140,7 +140,7 @@
       context.restore();
 
       // Its frame, and its name at its start (or the view's left edge).
-      context.strokeStyle = drag ? Hub.theme.accent || "#2fb36b" : video.missing ? "#d14b4b" : "rgba(255, 255, 255, 0.55)";
+      context.strokeStyle = drag ? Hub.accentLine() : video.missing ? "#d14b4b" : "rgba(255, 255, 255, 0.55)";
       context.lineWidth = 1;
       context.strokeRect(x0 + 0.5, STRIP_TOP + 0.5, x1 - x0 - 1, STRIP_HEIGHT - 1);
 

@@ -12,6 +12,7 @@ namespace
     constexpr const char* listingExtension = ".json";
     constexpr const char* pictureExtension = ".png";
     constexpr int pictureLongest = 1600;       // the store's picture, at most (pixels)
+    constexpr size_t maxPngBytes = 4500000;    // ...and bytes: what Fanan AI looks at when the store checks it
     constexpr int storyPictureLongest = 1568;  // what Fanan AI is shown
     constexpr int maxFactsLength = 60000;
 
@@ -28,6 +29,16 @@ namespace
     void set (juce::var& target, const juce::Identifier& name, const juce::var& value)
     {
         target.getDynamicObject()->setProperty (name, value);
+    }
+
+    juce::var textList (const juce::StringArray& texts)
+    {
+        juce::Array<juce::var> list;
+
+        for (const auto& text : texts)
+            list.add (text);
+
+        return list;
     }
 
     juce::String kindName (const juce::String& kind)
@@ -444,7 +455,6 @@ void StorePublisher::post (Item item, Progress progress, Posted done)
     }
 
     posting = true;
-    say (juce::String::fromUTF8 ("Asking the store\xe2\x80\xa6"));
 
     const auto& l = item.listing;
     auto fields = object();
@@ -456,7 +466,41 @@ void StorePublisher::post (Item item, Progress progress, Posted done)
     if (l.ad.isNotEmpty())
         set (fields, "ad", l.ad);
 
-    server.store ("begin", fields, [this, stillAlive = alive, item, work, say, done] (const juce::Result& begun, const juce::var& answer) mutable
+    // First, Fanan AI reads what the ad says against the Store's rules (on the store's side, so
+    // nothing harmful is sent at all): a post that breaks them stops here, with what broke which
+    // rule. Its pictures are checked the same way when it's published, before it's on the board.
+    auto words = object();
+    set (words, "kind", l.kind);
+    set (words, "section", l.section);
+    set (words, "title", l.title);
+    set (words, "tagline", l.tagline);
+    set (words, "story", l.story);
+    set (words, "features", textList (l.features));
+    set (words, "website", l.website.trim());
+    set (words, "priceText", l.priceText.trim());
+    set (words, "maker", (item.maker.trim().isNotEmpty() ? item.maker.trim()
+                                                         : (item.isMidiFx ? item.device.vendor : item.package.vendor).trim()).substring (0, 60));
+
+    if (l.ad.isNotEmpty())
+        set (words, "ad", l.ad);
+
+    say (juce::String::fromUTF8 ("Fanan AI is checking the ad against the Store's rules\xe2\x80\xa6"));
+
+    server.store ("check", words, [this, stillAlive = alive, item, work, say, done, fields] (const juce::Result& checked, const juce::var&) mutable
+    {
+        if (! stillAlive->load())
+            return;
+
+        if (checked.failed())
+        {
+            work.deleteRecursively();
+            finishPost (done, checked, item.listing);
+            return;
+        }
+
+        say (juce::String::fromUTF8 ("Asking the store\xe2\x80\xa6"));
+
+    server.store ("begin", fields, [this, stillAlive, item, work, say, done] (const juce::Result& begun, const juce::var& answer) mutable
     {
         if (! stillAlive->load())
             return;
@@ -552,6 +596,44 @@ void StorePublisher::post (Item item, Progress progress, Posted done)
                 }
             });
         });
+    });
+    });
+}
+
+//==============================================================================
+void StorePublisher::rules (std::function<void (const juce::Result&, const Rules&)> done)
+{
+    server.store ("rules", object(), [stillAlive = alive, done] (const juce::Result& result, const juce::var& answer)
+    {
+        if (! stillAlive->load() || done == nullptr)
+            return;
+
+        Rules rules;
+        rules.accepted = (bool) answer.getProperty ("accepted", false);
+        rules.banned = (bool) answer.getProperty ("banned", false);
+        rules.version = juce::jmax (1, (int) answer.getProperty ("version", 1));
+        rules.strikes = juce::jmax (0, (int) answer.getProperty ("strikes", 0));
+        rules.text = answer.getProperty ("rules", {}).toString().trim().substring (0, 6000);
+
+        if (result.wasOk() && ! rules.accepted && ! rules.banned && rules.text.isEmpty())
+        {
+            done (juce::Result::fail ("The store didn't send its rules. Please try again later."), rules);
+            return;
+        }
+
+        done (result, rules);
+    });
+}
+
+void StorePublisher::acceptRules (int version, std::function<void (const juce::Result&)> done)
+{
+    auto fields = object();
+    set (fields, "version", version);
+
+    server.store ("acceptRules", fields, [stillAlive = alive, done] (const juce::Result& result, const juce::var&)
+    {
+        if (stillAlive->load() && done != nullptr)
+            done (result);
     });
 }
 
@@ -743,7 +825,7 @@ StorePublisher::Prepared StorePublisher::prepare (const Item& item, const juce::
 
     const auto folder = work.getChildFile ("package");
     const auto name = package.name.trim().isNotEmpty() ? package.name.trim() : juce::String ("My Plugin");
-    const auto target = folder.getChildFile (juce::File::createLegalFileName (name) + MadePlugins::extension);
+    const auto target = folder.getChildFile (juce::File::createLegalFileName (name) + MadePlugins::folderExtension);
 
     if (! folder.createDirectory())
         result.error = "Couldn't make a folder for the files to send.";
@@ -794,9 +876,20 @@ juce::MemoryBlock StorePublisher::pngOf (const juce::Image& image, int longest)
                                     juce::jmax (1, juce::roundToInt ((float) picture.getHeight() * scale)),
                                     juce::Graphics::highResamplingQuality);
 
-    juce::MemoryOutputStream encoded;
-    juce::PNGImageFormat().writeImageToStream (picture, encoded);
-    return encoded.getMemoryBlock();
+    // Small enough for Fanan AI to look at when the store checks it (at most maxPngBytes):
+    // made smaller until it is.
+    for (int tries = 0;; ++tries)
+    {
+        juce::MemoryOutputStream encoded;
+        juce::PNGImageFormat().writeImageToStream (picture, encoded);
+
+        if (encoded.getDataSize() <= maxPngBytes || tries >= 6 || juce::jmax (picture.getWidth(), picture.getHeight()) < 200)
+            return encoded.getMemoryBlock();
+
+        picture = picture.rescaled (juce::jmax (1, juce::roundToInt ((float) picture.getWidth() * 0.8f)),
+                                    juce::jmax (1, juce::roundToInt ((float) picture.getHeight() * 0.8f)),
+                                    juce::Graphics::highResamplingQuality);
+    }
 }
 
 //==============================================================================

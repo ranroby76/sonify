@@ -18,7 +18,11 @@
 //   Sampling Studio          an instrument track, a synth or the user playing, sampled note by
 //                            note into an SFZ for the Sonify Sampler; and its Builder, an
 //                            instrument from audio files and clips put on keys (hub-sampling.js)
-//   Web Browser              the internet in tabs of its own, with + Open new tab (hub-web.js)
+//   Web Browser              the internet in tabs of its own, with + Open new tab (hub-web.js).
+//                            HIDDEN for now (hidden: true below): its tab and its View menu item
+//                            are taken out of the top bar, out of Ctrl+Tab and out of Ctrl+8, and
+//                            nothing can open it. Everything it does is still here: take the one
+//                            word away and it comes back where it was.
 //   Guide                    Sonify's user guide in tabs and chapters, and Fanan AI answering
 //                            anything about Sonify from it (hub-guide.js)
 // MIDI in is heard by the studio in front only, so nothing plays behind it.
@@ -34,7 +38,9 @@
   const { $ } = Hub;
 
   // Each studio: its id (the selector's data-studio), its page (none: the DAW, which is the page
-  // itself) and the body class while it shows.
+  // itself) and the body class while it shows. hidden: not offered for now - its tab, its menu
+  // item and its key are out, and activate() sends anyone asking for it back to the Studio. Its
+  // page stays where it is and still hears show(false), so nothing of it is lost.
   const STUDIOS = [
     { id: "studio",  page: null,            mode: "" },
     { id: "board",   page: "analog-board",  mode: "board-mode" },
@@ -43,10 +49,16 @@
     { id: "plugins", page: "creator-studio", mode: "creator-mode" },
     { id: "live",    page: "live-studio",   mode: "live-mode" },
     { id: "sampling", page: "sampling-studio", mode: "sampling-mode" },
-    { id: "web",     page: "web-browser",   mode: "web-mode" },
+    { id: "web",     page: "web-browser",   mode: "web-mode", hidden: true },
     { id: "guide",   page: "guide-studio",  mode: "guide-mode" }
   ];
   const IDS = STUDIOS.map((studio) => studio.id);
+
+  // The ones offered: Ctrl+Tab goes round these, and a hidden studio's key does nothing. The keys
+  // stay where they are - each studio keeps the number of its place in STUDIOS, so hiding one
+  // never moves another's (the Guide stays Ctrl+9).
+  const SHOWN = STUDIOS.filter((studio) => ! studio.hidden).map((studio) => studio.id);
+  const isShown = (id) => SHOWN.includes(id);
   let active = "studio";
 
   /** The Start page goes, as its × or Esc does: the song behind it is the project now. */
@@ -68,7 +80,13 @@
   /** Shows a studio; the others' pages go. From the Start page, the Start page goes too
       (not as the page first draws itself: the Start page greets you then). */
   function activate(id, leaveStart = true) {
-    const studio = STUDIOS.find((s) => s.id === id) || STUDIOS[0];
+    const asked = STUDIOS.find((s) => s.id === id);
+
+    // A studio that isn't offered for now stays shut: whoever asks (a command, a menu item a
+    // plugin's window relayed, the Start page) is left where they are rather than moved.
+    if (asked && asked.hidden) return;
+
+    const studio = asked || STUDIOS[0];
     const was = active;
     active = studio.id;
     if (leaveStart) closeStartPage();
@@ -109,9 +127,17 @@
   }
 
   function cycle(step) {
-    const at = IDS.indexOf(active);
-    activate(IDS[(at + step + IDS.length) % IDS.length]);
+    const at = SHOWN.indexOf(active);
+    activate(SHOWN[(at + step + SHOWN.length) % SHOWN.length]);
   }
+
+  // The menu item each studio has (index.html's data-command), so a hidden studio's item is
+  // taken out with its tab.
+  const COMMAND_OF = {
+    studio: "showStudio", board: "analogBoard", ai: "sonifyAi", blocks: "songBlocks",
+    plugins: "pluginsCreator", live: "liveShow", sampling: "samplingStudio",
+    web: "webBrowser", guide: "guide"
+  };
 
   // ---------------------------------------------------------------- commands
   Hub.commands.showStudio = () => activate("studio");
@@ -126,7 +152,7 @@
   Hub.commands.nextStudio = () => cycle(1);
   Hub.commands.previousStudio = () => cycle(-1);
 
-  Hub.studios = { activate, active: () => active, ids: () => IDS.slice() };
+  Hub.studios = { activate, active: () => active, ids: () => IDS.slice(), shown: () => SHOWN.slice() };
 
   // ---------------------------------------------------------------- block internet
   let internetBlocked = false;
@@ -150,6 +176,14 @@
 
   // ---------------------------------------------------------------- the selector and its keys
   Hub.on("ready", () => {
+    // The studios not offered for now: their tab goes from the top bar and their item from the
+    // View menu, so nothing on the page leads anywhere empty.
+    for (const studio of STUDIOS) {
+      if (! studio.hidden) continue;
+      for (const tab of document.querySelectorAll(`.studio-tab[data-studio="${studio.id}"]`)) tab.hidden = true;
+      for (const item of document.querySelectorAll(`[data-command="${COMMAND_OF[studio.id] || ""}"]`)) item.hidden = true;
+    }
+
     renderNetToggle();
     $("net-toggle").addEventListener("click", () => Hub.send("setInternetBlocked", { blocked: !internetBlocked }));
 
@@ -188,7 +222,8 @@
 
       let handled = true;
       if (event.code === "Tab") cycle(event.shiftKey ? -1 : 1);
-      else if (!event.shiftKey && /^Digit[1-9]$/.test(event.code)) activate(IDS[Number(event.code.slice(5)) - 1]);
+      else if (!event.shiftKey && /^Digit[1-9]$/.test(event.code) && isShown(IDS[Number(event.code.slice(5)) - 1]))
+        activate(IDS[Number(event.code.slice(5)) - 1]);
       else handled = false;
 
       if (handled) {

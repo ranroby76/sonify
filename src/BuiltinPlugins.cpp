@@ -3,8 +3,10 @@
 #include "BuiltinPlugins.h"
 #include "BuiltinEffects.h"
 #include "Container.h"
+#include "InternalPlugin.h"
 #include "PlaylistPlayer.h"
 #include "SonifySampler.h"
+#include "TomahawkSampler.h"
 
 #include <complex>
 #include <cstring>
@@ -330,8 +332,12 @@ const std::vector<Plugin::Descriptor>& Builtins::describe()
         for (const auto& more : BuiltinEffects::describe())
             list.push_back (more);
 
-        for (const auto& tool : { Containers::describe (false), Containers::describe (true), Playlists::describe(), Samplers::describe() })
+        for (const auto& tool : { Containers::describe (false), Containers::describe (true), Playlists::describe(), Samplers::describe(), Tomahawks::describe() })
             list.push_back (tool);
+
+        // Sonify's own plugins, made in Sonify rather than loaded from a file (InternalPlugin.h).
+        for (const auto& own : Internals::describe())
+            list.push_back (own);
 
         return list;
     }();
@@ -345,8 +351,11 @@ juce::String Builtins::categoryOf (const juce::String& pluginId)
     if (pluginId == masteringId)   return "Mastering";
     if (const auto category = BuiltinEffects::categoryOf (pluginId); category.isNotEmpty())
         return category;
-    if (Containers::isContainerId (pluginId) || pluginId == Playlists::playerId || pluginId == Samplers::playerId)
+    if (Containers::isContainerId (pluginId) || pluginId == Playlists::playerId || pluginId == Samplers::playerId
+        || pluginId == Tomahawks::playerId)
         return "System Tool";
+    if (const auto* own = Internals::find (pluginId); own != nullptr && own->category.isNotEmpty())
+        return own->category;
     return "Dynamics";
 }
 
@@ -361,6 +370,10 @@ std::unique_ptr<Plugin> Builtins::create (const juce::String& pluginId, juce::St
     if (pluginId == Containers::effectId)      return std::make_unique<ContainerPlugin> (true);
     if (pluginId == Playlists::playerId)       return std::make_unique<PlaylistPlayer>();
     if (pluginId == Samplers::playerId)        return std::make_unique<SonifySampler>();
+    if (pluginId == Tomahawks::playerId)       return std::make_unique<TomahawkSampler>();
+
+    // Sonify's own plugins: made here, and hosted as a VST3 is (InternalPlugin.h).
+    if (Internals::find (pluginId) != nullptr)  return Internals::create (pluginId, file(), error);
 
     error = "This version of Sonify has no system tool called " + pluginId.fromFirstOccurrenceOf (idPrefix, false, false) + ".";
     return nullptr;
@@ -574,7 +587,7 @@ juce::String BuiltinPlugin::getParameterText (int index, double value)
     if (unit == "Hz" && value >= 1000.0)
         return juce::String (value / 1000.0, value >= 10000.0 ? 1 : 2) + " kHz";
 
-    auto text = juce::String (quantised (spec, value), decimalsOf (spec));
+    auto text = juce::String (quantised (spec, value), decimalsFor (spec, value));
 
     // Gains read with their sign, as on a console.
     if (unit.startsWith ("dB") && value > 0.0 && spec.minValue < 0.0)
@@ -600,12 +613,33 @@ int BuiltinPlugin::decimalsOf (const Spec& spec) noexcept
     return decimals;
 }
 
+bool BuiltinPlugin::isLogRange (const Spec& spec) noexcept
+{
+    const bool timeOrFrequency = std::strcmp (spec.unit, "Hz") == 0 || std::strcmp (spec.unit, "ms") == 0;
+    return timeOrFrequency && ! spec.stepped && spec.minValue > 0.0 && spec.maxValue / spec.minValue >= 8.0;
+}
+
+int BuiltinPlugin::decimalsFor (const Spec& spec, double value) noexcept
+{
+    if (! isLogRange (spec))
+        return decimalsOf (spec);
+
+    const auto size = std::abs (value);
+    return size < 10.0 ? 2 : (size < 100.0 ? 1 : 0);
+}
+
 double BuiltinPlugin::quantised (const Spec& spec, double value) noexcept
 {
     if (! std::isfinite (value))
         value = spec.defaultValue;
 
     value = juce::jlimit (spec.minValue, spec.maxValue, value);
+
+    // A log knob keeps its value exact: rounded to whole milliseconds, 1 ms to 2 ms is a
+    // quarter of its turn, and the knob jumps there from the bottom
+    if (isLogRange (spec))
+        return value;
+
     const auto scale = std::pow (10.0, decimalsOf (spec));
     return juce::jlimit (spec.minValue, spec.maxValue, std::round (value * scale) / scale);
 }

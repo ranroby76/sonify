@@ -5,7 +5,9 @@
 // right as the song has them, and the master section on the right.
 //   A strip, top to bottom: the preamp (Trim, Drive, phase), the high-pass filter and EQ In, the
 //   EQ (HF, HMF, LMF, LF: gain and frequency), the compressor (threshold, ratio, release, make-up,
-//   Comp In, Fast, and its reduction lights), the sends to the Plate and the Tape Echo, pan, Mute
+//   Comp In, Fast, and its reduction lights), the dynamic EQ (two bells, each Freq, Q, threshold
+//   and range, switched in by 1 and 2; Release, its dip lights, and Key: what it listens to, its
+//   own sound or another strip), the sends to the Plate and the Tape Echo, pan, Mute
 //   and Solo, the fader with its meter, and the track's name on a strip of tape.
 //   The master: two VU meters, the Plate, the Tape Echo, the Bus Compressor, the Tape Machine and
 //   the master fader.
@@ -14,16 +16,20 @@
 // left out. The first time, the strips start where the Console's faders are.
 // Knobs: drag up or down (Shift for fine), the mouse wheel, the arrow keys; double-click puts one
 // back where it starts. MIDI Link's chips link to any knob, fader or button here.
+// The Mastering section (the last thing on Main, after its fader, whichever mixer mixes): a window
+// of its own over any studio (Mastering… on the board, Main's strip in the Console, Song >
+// Mastering Section), its knobs the board's ("board" events, strip "mastering"), its meters in the
+// status while it shows. File > Master a File… opens a file in a new song, mastered.
 
 (() => {
   "use strict";
 
   const { $, element } = Hub;
-  let board = { mixing: false, specs: { strip: [], master: [] }, strips: [], master: {} };
+  let board = { mixing: false, specs: { strip: [], master: [], mastering: [] }, strips: [], master: {}, mastering: {}, masteringMode: "mixAndMaster" };
   let shown = false;
   let renderDue = true;
   let dragging = 0;                     // controls being dragged: no redraw under them
-  const specs = { strip: new Map(), master: new Map() };
+  const specs = { strip: new Map(), master: new Map(), mastering: new Map() };
   const meters = new Map();             // strip id ("master" too) -> { columns, clip, clipUntil, lights }
   let vus = [];                         // the master's two needles
   const pending = new Map();            // "strip|id" -> value, sent at the next frame
@@ -34,6 +40,13 @@
     trim: "steel", drive: "steel", hpf: "stone",
     hf: "red", hfFreq: "red", hmf: "green", hmfFreq: "green", lmf: "blue", lmfFreq: "blue", lf: "brown", lfFreq: "brown",
     threshold: "amber", ratio: "amber", release: "amber", makeup: "amber",
+    deqFreq: "teal", deqQ: "teal", deqThreshold: "teal", deqRange: "teal", deqRelease: "teal",
+    deq2Freq: "plum", deq2Q: "plum", deq2Threshold: "plum", deq2Range: "plum",
+    lowCut: "stone", eqLow: "brown", eqLowFreq: "brown", eqMid: "green", eqMidFreq: "green", eqHigh: "red", eqHighFreq: "red",
+    xoverLow: "grey", xoverHigh: "grey", mbAttack: "amber", mbRelease: "amber",
+    lowThreshold: "amber", lowRatio: "amber", midThreshold: "amber", midRatio: "amber", highThreshold: "amber", highRatio: "amber",
+    lowGain: "steel", midGain: "steel", highGain: "steel", lowWidth: "ivory", midWidth: "ivory", highWidth: "ivory",
+    limitGain: "steel", ceiling: "steel", limitRelease: "steel",
     sendPlate: "ivory", sendEcho: "ivory", pan: "grey",
     plateDecay: "ivory", plateTone: "ivory", platePredelay: "ivory", plateReturn: "ivory",
     echoNote: "sand", echoTime: "sand", echoFeedback: "sand", echoTone: "sand", echoWow: "sand", echoReturn: "sand",
@@ -44,7 +57,13 @@
   // What a strip's knob is called on it (its legend), where the setting's own name is long.
   const SHORT = { lfFreq: "Freq", lmfFreq: "Freq", hmfFreq: "Freq", hfFreq: "Freq", threshold: "Thresh", release: "Release",
                   makeup: "Gain", sendPlate: "Plate", sendEcho: "Echo", hpf: "HPF", busThreshold: "Thresh", busMakeup: "Gain",
-                  platePredelay: "Pre-delay", tapeWow: "Wow", echoTime: "Time" };
+                  platePredelay: "Pre-delay", tapeWow: "Wow", echoTime: "Time",
+                  deqFreq: "Freq", deqQ: "Q", deqThreshold: "Thresh", deqRange: "Range", deqRelease: "Release",
+                  deq2Freq: "Freq", deq2Q: "Q", deq2Threshold: "Thresh", deq2Range: "Range",
+                  lowCut: "Low Cut", eqLowFreq: "Freq", eqMidFreq: "Freq", eqHighFreq: "Freq", xoverLow: "Lo/Mid", xoverHigh: "Mid/Hi",
+                  mbAttack: "Attack", mbRelease: "Release", lowThreshold: "Thresh", midThreshold: "Thresh", highThreshold: "Thresh",
+                  lowRatio: "Ratio", midRatio: "Ratio", highRatio: "Ratio", lowGain: "Gain", midGain: "Gain", highGain: "Gain",
+                  lowWidth: "Width", midWidth: "Width", highWidth: "Width", limitGain: "Gain", limitRelease: "Release" };
 
   // The LED meters: VU, 0 at -18 dBFS (RMS), from -20 to +3; the lights' steps.
   const VU_ZERO_DBFS = -18;
@@ -53,7 +72,8 @@
 
   // ---------------------------------------------------------------- values
   const clamp01 = (v) => Math.max(0, Math.min(1, v));
-  const isLog = (spec) => spec.unit === "Hz" || spec.id === "release" || spec.id === "echoTime";
+  const LOG_IDS = new Set(["release", "echoTime", "deqRelease", "mbAttack", "mbRelease", "limitRelease"]);
+  const isLog = (spec) => spec.unit === "Hz" || LOG_IDS.has(spec.id);
   const isSendLevel = (spec) => spec.unit === "dB" && (spec.id.startsWith("send") || spec.id.endsWith("Return"));
   const isBipolar = (spec) => spec.min < 0 && spec.max > 0 && spec.kind !== "fader" && !isSendLevel(spec);
 
@@ -95,7 +115,7 @@
       return (shown > 0 && ["lf", "lmf", "hmf", "hf", "trim"].includes(spec.id) ? "+" : "") + shown.toFixed(1) + " dB";
     }
     if (spec.unit === "Hz") {
-      if (spec.id === "hpf" && value <= spec.min + 0.5) return "Off";
+      if ((spec.id === "hpf" || spec.id === "lowCut") && value <= spec.min + 0.5) return "Off";
       return value >= 1000 ? trimZeros((value / 1000).toFixed(value >= 10000 ? 1 : 2)) + " kHz" : Math.round(value) + " Hz";
     }
     if (spec.unit === "ms") return (value < 10 ? trimZeros(value.toFixed(1)) : String(Math.round(value))) + " ms";
@@ -107,6 +127,7 @@
   /** A strip's values ("master" for the master's). */
   function valuesOf(stripId) {
     if (stripId === "master") return board.master;
+    if (stripId === "mastering") return board.mastering;
     const strip = board.strips.find((s) => s.id === stripId);
     return strip ? strip.values : null;
   }
@@ -150,13 +171,14 @@
 
   /** Where a strip is for MIDI Link: the track's number, or "master". */
   const linkStrip = (stripId) => {
-    if (stripId === "master") return "master";
+    if (stripId === "master" || stripId === "mastering") return stripId;
     const track = Hub.trackById(stripId);
     return track ? String(track.number) : "";
   };
 
   const stripName = (stripId) => {
     if (stripId === "master") return "Master";
+    if (stripId === "mastering") return "Mastering";
     const track = Hub.trackById(stripId);
     return track ? `Track ${track.number} (${track.name})` : "Track";
   };
@@ -223,6 +245,7 @@
       dragging = Math.max(0, dragging - 1);
       reading(holder.matches(":hover"));
       if (renderDue && !dragging) render();
+      if (masteringDue && !dragging) renderMastering();
     };
     holder.addEventListener("pointerup", end);
     holder.addEventListener("pointercancel", end);
@@ -374,6 +397,57 @@
     return holder;
   }
 
+  /** The dynamic EQ's two bells' switches, one over the other: 1 (teal) and 2 (plum). */
+  function bellButtons(stripId, first, second) {
+    const holder = element("div", "bb-stack");
+    holder.append(button(stripId, first, "1", "small teal"), button(stripId, second, "2", "small plum"));
+    return holder;
+  }
+
+  /** The dynamic EQ's lights: how far its bells dip (the deeper's: 1, 3, 6, 10 and 15 dB). */
+  function dipLights(stripId) {
+    const holder = element("div", "bg teal");
+    holder.setAttribute("aria-hidden", "true");
+    holder.title = "Dynamic EQ dip: 1, 3, 6, 10 and 15 dB";
+    const lights = GR_STEPS.map(() => element("span", "bg-led"));
+    holder.append(...lights);
+    const meter = meters.get(stripId) || { lit: [-1, -1] };
+    meter.dipLights = lights;
+    meter.dipLit = -1;
+    meters.set(stripId, meter);
+    return holder;
+  }
+
+  /** The dynamic EQ's Key: what it listens to, the strip's own sound or another instrument or
+      audio track's strip (after that strip's compressor). Not a control MIDI Link moves. */
+  function keySelect(stripId, spec) {
+    const holder = element("select", "bkey");
+    holder.setAttribute("aria-label", `${stripName(stripId)} dynamic EQ key`);
+    const current = Math.round(valueOf(stripId, spec));
+    const others = (Hub.state.tracks || []).filter((t) => (t.kind === "instrument" || t.kind === "audio") && t.id !== stripId);
+    const option = (value, label) => {
+      const item = element("option", "", label);
+      item.value = String(value);
+      return item;
+    };
+    holder.appendChild(option(0, "Own sound"));
+    for (const track of others) holder.appendChild(option(track.id, `${track.number} ${track.name}`));
+    if (current !== 0 && !others.some((t) => t.id === current)) holder.appendChild(option(current, "(track gone)"));
+    holder.value = String(current);
+    const show = () => {
+      const chosen = holder.selectedOptions[0];
+      holder.title = `Dynamic EQ key: ${Number(holder.value) === 0 || !chosen ? "this strip's own sound" : "track " + chosen.textContent}`;
+      holder.classList.toggle("keyed", Number(holder.value) !== 0);
+    };
+    holder.addEventListener("change", () => {
+      setValue(stripId, spec, Number(holder.value));
+      show();
+    });
+    holder.addEventListener("keydown", (event) => event.stopPropagation());   // its arrows pick, not the DAW's shortcuts
+    show();
+    return holder;
+  }
+
   // ---------------------------------------------------------------- a strip
   const cell = (cls, ...children) => {
     const holder = element("div", `bs-cell ${cls}`);
@@ -399,6 +473,12 @@
       cell("r-dyn1", knob(id, s("threshold")), knob(id, s("ratio"))),
       cell("r-dyn2", knob(id, s("release")), knob(id, s("makeup"))),
       cell("r-dyn3", button(id, s("compOn"), "Comp", "small amber"), button(id, s("fastAttack"), "Fast", "small amber"), reductionLights(id)),
+      cell("r-deq1", knob(id, s("deqFreq")), knob(id, s("deqQ"))),
+      cell("r-deq2", knob(id, s("deqThreshold")), knob(id, s("deqRange"))),
+      cell("r-deq3", knob(id, s("deq2Freq")), knob(id, s("deq2Q"))),
+      cell("r-deq4", knob(id, s("deq2Threshold")), knob(id, s("deq2Range"))),
+      cell("r-deq5", bellButtons(id, s("deqOn"), s("deq2On")), knob(id, s("deqRelease"), "small"), dipLights(id)),
+      cell("r-deq6", keySelect(id, s("deqKey"))),
       cell("r-sends", knob(id, s("sendPlate")), knob(id, s("sendEcho"))),
       cell("r-pan", knob(id, s("pan"))),
       cell("r-buttons", button(id, s("mute"), "Mute", "mute"), button(id, s("solo"), "Solo", "solo")),
@@ -539,7 +619,7 @@
   function renderLegend() {
     const legend = $("board-legend");
     if (legend.childElementCount) return;
-    const rows = [["Preamp", "r-preamp"], ["Filter", "r-filter"], ["EQ", "r-eq"], ["Dynamics", "r-dyn"], ["Sends", "r-sends"], ["Pan", "r-pan"], ["", "r-buttons"], ["Fader", "r-fader"]];
+    const rows = [["Preamp", "r-preamp"], ["Filter", "r-filter"], ["EQ", "r-eq"], ["Dynamics", "r-dyn"], ["Dyn EQ", "r-deq"], ["Sends", "r-sends"], ["Pan", "r-pan"], ["", "r-buttons"], ["Fader", "r-fader"]];
     for (const [name, cls] of rows) legend.appendChild(element("span", `bl ${cls}`, name));
   }
 
@@ -553,7 +633,7 @@
 
     const apply = (meter, reading) => {
       if (!meter || !reading) return;
-      const [vuL, vuR, peakL, peakR, reduction] = off ? [-100, -100, -100, -100, 0] : reading;
+      const [vuL, vuR, peakL, peakR, reduction, dip = 0] = off ? [-100, -100, -100, -100, 0, 0] : reading;
       if (meter.columns) {
         [vuL, vuR].forEach((dbfs, side) => {
           const lit = litCount(dbfs - VU_ZERO_DBFS);
@@ -571,6 +651,13 @@
         if (lit !== meter.reductionLit) {
           meter.reductionLit = lit;
           meter.lights.forEach((light, i) => light.classList.toggle("lit", i < lit));
+        }
+      }
+      if (meter.dipLights) {
+        const lit = GR_STEPS.filter((step) => dip >= step).length;
+        if (lit !== meter.dipLit) {
+          meter.dipLit = lit;
+          meter.dipLights.forEach((light, i) => light.classList.toggle("lit", i < lit));
         }
       }
     };
@@ -592,7 +679,8 @@
 
   // ---------------------------------------------------------------- from Sonify
   Hub.on("board", (data) => {
-    board = { mixing: Boolean(data.mixing), specs: data.specs || board.specs, strips: data.strips || [], master: data.master || {} };
+    board = { mixing: Boolean(data.mixing), specs: data.specs || board.specs, strips: data.strips || [], master: data.master || {},
+              mastering: data.mastering || {}, masteringMode: data.masteringMode || "mixAndMaster" };
     // A value still on its way to Sonify stays as the page has it.
     for (const change of pending.values()) {
       const values = valuesOf(change.strip);
@@ -600,11 +688,162 @@
     }
     specs.strip = new Map((board.specs.strip || []).map((spec) => [spec.id, spec]));
     specs.master = new Map((board.specs.master || []).map((spec) => [spec.id, spec]));
+    specs.mastering = new Map((board.specs.mastering || []).map((spec) => [spec.id, spec]));
     render();
+    renderMastering();
   });
 
-  Hub.on("tracks", () => { if (shown) render(); else renderDue = true; });
-  Hub.on("status", (status) => feedMeters(status.board));
+  Hub.on("tracks", (data) => {
+    if (shown) render(); else renderDue = true;
+    showMasteringOn(Boolean(data && data.masteringOn));
+  });
+  Hub.on("status", (status) => {
+    feedMeters(status.board);
+    feedMastering(status.mastering);
+  });
+
+  // ---------------------------------------------------------------- the Mastering section
+  let masteringShown = false;
+  let masteringDue = true;
+  let masteringOn = false;
+  const mp = { readouts: {}, bandLights: [], limiterLights: [] };
+  const mspec = (id) => specs.mastering.get(id);
+
+  /** A module of the window: its title and rows of controls. */
+  function module(title, cls, ...rows) {
+    const box = element("section", `bmod ${cls}`);
+    box.appendChild(element("h3", "bmod-title", title));
+    for (const row of rows) {
+      const line = element("div", "bmod-row");
+      line.append(...row.filter(Boolean));
+      box.appendChild(line);
+    }
+    return box;
+  }
+
+  /** Five lights in a row: how far a compressor or the limiter pulls down (1, 3, 6, 10, 15 dB). */
+  function lightRow(title) {
+    const holder = element("div", "bg mp-lights");
+    holder.setAttribute("aria-hidden", "true");
+    holder.title = `${title}: 1, 3, 6, 10 and 15 dB`;
+    const lights = GR_STEPS.map(() => element("span", "bg-led"));
+    holder.append(...lights);
+    return { holder, lights, lit: -1 };
+  }
+
+  function bandColumn(band, name) {
+    const id = "mastering";
+    const box = element("section", "bmod mp-band");
+    const head = element("div", "mp-band-head");
+    const lights = lightRow(`${name} band's reduction`);
+    mp.bandLights[band] = lights;
+    head.append(element("h3", "bmod-title", name), lights.holder);
+    const grid = element("div", "mp-band-grid");
+    const prefix = ["low", "mid", "high"][band];
+    grid.append(knob(id, mspec(`${prefix}Threshold`)), knob(id, mspec(`${prefix}Ratio`)), knob(id, mspec(`${prefix}Gain`)), knob(id, mspec(`${prefix}Width`)));
+    box.append(head, grid);
+    return box;
+  }
+
+  function renderMastering() {
+    if (!masteringShown) { masteringDue = true; return; }
+    if (dragging) { masteringDue = true; return; }
+    masteringDue = false;
+    const body = $("mastering-body");
+    if (!specs.mastering.size) return;
+
+    const id = "mastering";
+    mp.bandLights = [];
+    const limiterLights = lightRow("The limiter's reduction");
+    mp.limiterLights = limiterLights;
+
+    const bands = element("div", "mp-bands");
+    bands.append(bandColumn(0, "Low"), bandColumn(1, "Mid"), bandColumn(2, "High"));
+
+    body.replaceChildren(
+      module("EQ", "mp-eq", [knob(id, mspec("lowCut")), knob(id, mspec("eqLow")), knob(id, mspec("eqLowFreq"), "freq"),
+                            knob(id, mspec("eqMid")), knob(id, mspec("eqMidFreq"), "freq"), knob(id, mspec("eqHigh")), knob(id, mspec("eqHighFreq"), "freq")]),
+      module("Multiband", "mp-mb", [button(id, mspec("mbOn"), "Comp", "small amber"), knob(id, mspec("xoverLow")), knob(id, mspec("xoverHigh")),
+                                     knob(id, mspec("mbAttack")), knob(id, mspec("mbRelease"))]),
+      bands,
+      (() => {
+        const row = element("div", "mp-end");
+        row.append(module("Tape", "mp-tape", [button(id, mspec("tapeOn"), "In", "small amber"), knob(id, mspec("tapeDrive"))]),
+                   module("Limiter", "mp-limiter", [knob(id, mspec("limitGain")), knob(id, mspec("ceiling")), knob(id, mspec("limitRelease")), limiterLights.holder]));
+        return row;
+      })()
+    );
+
+    // Mode: Auto says what it found.
+    const select = $("mastering-mode");
+    const modeSpec = mspec("mode");
+    const chosen = Math.round(valueOf(id, modeSpec));
+    const found = board.masteringMode === "masterOnly" ? "Master only" : "Mix + Master";
+    select.replaceChildren(...(modeSpec.choices || []).map((name, index) => {
+      const option = element("option", "", index === 0 ? `Auto (${found})` : name);
+      option.value = String(index);
+      return option;
+    }));
+    select.value = String(chosen);
+    showMasteringOn(valueOf(id, mspec("on")) >= 0.5);
+  }
+
+  /** In or out: the window's switch, the board's Mastering button and Main's strip in the Console. */
+  function showMasteringOn(on) {
+    masteringOn = on;
+    Hub.state.masteringOn = on;
+    const toggle = $("mastering-on");
+    if (toggle) toggle.setAttribute("aria-checked", String(on));
+    for (const lamp of document.querySelectorAll("[data-mastering-button]")) lamp.setAttribute("aria-pressed", String(on));
+    const panel = $("mastering-panel");
+    if (panel) panel.classList.toggle("on", on);
+  }
+
+  const lufs = (value) => (value <= -99 ? "\u2212\u221e" : value.toFixed(1));
+
+  function feedMastering(m) {
+    if (!masteringShown || !m) return;
+    const set = (key, text, hot) => {
+      const out = mp.readouts[key];
+      if (!out) return;
+      if (out.textContent !== text) out.textContent = text;
+      out.classList.toggle("hot", Boolean(hot));
+    };
+    const ceiling = valueOf("mastering", mspec("ceiling") || { id: "ceiling", default: -1 });
+    set("momentary", lufs(m.momentary));
+    set("shortTerm", lufs(m.shortTerm));
+    set("integrated", lufs(m.integrated));
+    set("truePeak", lufs(m.truePeak), m.truePeak > (m.active ? ceiling + 0.05 : -0.1));
+    const light = (row, reduction) => {
+      if (!row || !row.lights) return;
+      const lit = m.active ? GR_STEPS.filter((step) => reduction >= step).length : 0;
+      if (lit !== row.lit) { row.lit = lit; row.lights.forEach((l, i) => l.classList.toggle("lit", i < lit)); }
+    };
+    (m.bands || []).forEach((reduction, band) => light(mp.bandLights[band], reduction));
+    light(mp.limiterLights, m.limiter);
+  }
+
+  function openMastering(on) {
+    const panel = $("mastering-panel");
+    if (!panel || on === masteringShown) { if (on && panel) panel.focus(); return; }
+    masteringShown = on;
+    if (!on) dragging = 0;
+    panel.hidden = !on;
+    Hub.send("board", { action: "masteringShown", shown: on });
+    if (on) {
+      if (!panel.dataset.placed) {
+        panel.dataset.placed = "1";
+        panel.style.left = `${Math.max(16, Math.round((window.innerWidth - panel.offsetWidth) / 2))}px`;
+        panel.style.top = `${Math.max(56, Math.round((window.innerHeight - panel.offsetHeight) / 3))}px`;
+      }
+      renderMastering();
+    }
+  }
+
+  Hub.on("masteringOpen", () => openMastering(true));
+  Hub.commands.masteringSection = () => openMastering(true);
+  Hub.commands.masterFile = () => Hub.send("board", { action: "masterFile" });
+  Hub.mastering = { open: () => openMastering(true), close: () => openMastering(false), isOn: () => masteringOn };
 
   // ---------------------------------------------------------------- the tab
   function show(on) {
@@ -627,12 +866,16 @@
     /** For MIDI Link: whether a board key ("board.<n>.<setting>") is a knob or fader (not a button). */
     isContinuous(key) {
       const parts = String(key).split(".");
-      const spec = parts[1] === "master" ? specs.master.get(parts[2]) : specs.strip.get(parts[2]);
-      return Boolean(spec) && spec.kind !== "toggle";
+      const spec = parts[1] === "master" ? specs.master.get(parts[2]) : parts[1] === "mastering" ? specs.mastering.get(parts[2]) : specs.strip.get(parts[2]);
+      return Boolean(spec) && spec.kind !== "toggle" && spec.kind !== "track";
     },
     /** "Board · Track 2 (Piano) · HMF", "Board · Master · Return". */
     targetText(key) {
       const parts = String(key).split(".");
+      if (parts[1] === "mastering") {
+        const spec = specs.mastering.get(parts[2]);
+        return `Mastering · ${spec ? `${spec.section === "Mastering" ? "" : spec.section + " "}${spec.name}` : parts[2]}`;
+      }
       const spec = parts[1] === "master" ? specs.master.get(parts[2]) : specs.strip.get(parts[2]);
       const track = parts[1] === "master" ? null : (Hub.state.tracks || []).find((t) => t.number === Number(parts[1]));
       const where = parts[1] === "master" ? "Master" : `Track ${parts[1]}${track ? ` (${track.name})` : ""}`;
@@ -651,5 +894,50 @@
         { label: "Keep it", value: false }
       ], (yes) => { if (yes) Hub.send("board", { action: "resetAll" }); });
     });
+    $("board-mastering").addEventListener("click", () => openMastering(true));
+
+    // The Mastering window: its switch, mode, meters' reset, Reset… and close; dragged by its top.
+    const panel = $("mastering-panel");
+    for (const key of ["momentary", "shortTerm", "integrated", "truePeak"]) mp.readouts[key] = panel.querySelector(`[data-reading="${key}"]`);
+    $("mastering-on").addEventListener("click", () => {
+      const spec = mspec("on");
+      if (spec) setValue("mastering", spec, masteringOn ? 0 : 1);
+      showMasteringOn(!masteringOn);
+    });
+    $("mastering-mode").addEventListener("change", (event) => {
+      const spec = mspec("mode");
+      if (spec) setValue("mastering", spec, Number(event.target.value));
+    });
+    $("mastering-mode").addEventListener("keydown", (event) => event.stopPropagation());
+    $("mastering-meter-reset").addEventListener("click", () => Hub.send("board", { action: "masteringReset" }));
+    $("mastering-reset").addEventListener("click", (event) => {
+      Hub.popupMenu(event.currentTarget, [
+        { group: "Put the Mastering section's controls back where they start?" },
+        { label: "Reset the controls", value: true },
+        { label: "Keep them", value: false }
+      ], (yes) => { if (yes) Hub.send("board", { action: "reset", strip: "mastering" }); });
+    });
+    $("mastering-close").addEventListener("click", () => openMastering(false));
+    panel.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); openMastering(false); }
+    });
+
+    const head = $("mastering-head");
+    let move = null;
+    head.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || event.target.closest("button, select")) return;
+      move = { x: event.clientX - panel.offsetLeft, y: event.clientY - panel.offsetTop };
+      head.setPointerCapture(event.pointerId);
+    });
+    head.addEventListener("pointermove", (event) => {
+      if (!move) return;
+      const left = Math.min(window.innerWidth - 120, Math.max(0, event.clientX - move.x));
+      const top = Math.min(window.innerHeight - 40, Math.max(0, event.clientY - move.y));
+      panel.style.left = `${left}px`;
+      panel.style.top = `${top}px`;
+    });
+    const stop = () => { move = null; };
+    head.addEventListener("pointerup", stop);
+    head.addEventListener("pointercancel", stop);
   });
 })();

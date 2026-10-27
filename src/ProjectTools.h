@@ -96,6 +96,8 @@ private:
     void analyzeSound (const juce::var& input, Done done);
     void paintPicture (const juce::var& input, Done done);
     void makeLook (const juce::var& input, Done done);   // make_look: a look in a material
+    void findGalleryLooks (const juce::var& input, Done done);   // find_gallery_looks: the gallery's commercial-safe items
+    void useGalleryLook (const juce::var& input, Done done);     // use_gallery_look: one of them as the plugin's own look
 
     Project& project;
     LivePreview& preview;

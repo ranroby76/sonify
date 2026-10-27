@@ -10,7 +10,7 @@ Update this app. **Sonify**, Fanan's music studio (a DAW), now signs in to the s
 
 **1. New backend function `sonifyChat`**, exactly the code below. Make the same two small platform changes you made to `stellaChat` (the opening import line, and reading the AI service key from the app's secrets). It must work without a signed-in user (Sonify calls it).
 
-The model is one setting, an optional secret named `SONIFY_AI_MODEL`, read the same way as the key. Don't create it and don't ask me for it: when it isn't set, the function uses `claude-opus-5-5`.
+The model comes from the mode Sonify sends with the request, through the `MODES` table below, the way `stellaChat` does it. An unknown or missing mode is `agent`. The optional secret `SONIFY_AI_MODEL`, read the same way as the key, overrides every mode's model when it's set (one model for everything, for trying a new one out); don't create it and don't ask me for it.
 
 ```ts
 import { createClientFromRequest } from 'npm:@base44/sdk';
@@ -23,9 +23,20 @@ import { createClientFromRequest } from 'npm:@base44/sdk';
 // Sonify sends its own instructions and tool definitions. The tool calls run in Sonify, which
 // sends their results back in the next request, until the answer is done.
 //
-// The model is one setting: the SONIFY_AI_MODEL secret when it's set, the default below when
-// it isn't. When a new model comes out, try it for about a week, then set the secret to it.
-const DEFAULT_MODEL = 'claude-opus-5-5';
+// The model comes from the request's mode. Every mode thinks hard (effort 'high'): the models
+// differ, the care doesn't. The SONIFY_AI_MODEL secret, when it's set, overrides them all (for
+// trying a new model out for a week or so).
+//   agent   Sonify's everyday requests, and the phone remote: fast, and a credit's worth a credit
+//   deep    the big jobs (the AI panel's Deep, or a request that has taken many steps): the strongest
+//   guide   the Guide's "Ask anything about Sonify": it answers from the guide, so the quickest model
+//   device  the Device Studio's: it writes a device's code, so the strongest
+const MODES = {
+  agent:  { model: 'claude-sonnet-5-5', effort: 'high', priceWeight: 1 },
+  deep:   { model: 'claude-opus-5-5',   effort: 'high', priceWeight: 2 },
+  guide:  { model: 'claude-haiku-5-5',  effort: 'high', priceWeight: 0.5 },
+  device: { model: 'claude-opus-5-5',   effort: 'high', priceWeight: 2 },
+};
+const DEFAULT_MODE = 'agent';
 const MAX_TOKENS = 12000;          // one step's answer at most (thinking included): keeps a step well under the time limit
 const MAX_MESSAGES = 200;
 const MAX_SYSTEM_CHARS = 60000;
@@ -151,12 +162,16 @@ Deno.serve(async (req) => {
     if (!wallet || balance <= 0)
       return Response.json({ ok: false, error: 'no_credits', message: "You're out of credits.", credits: 0 }, { status: 402 });
 
-    const model = String(Deno.env.get('SONIFY_AI_MODEL') || DEFAULT_MODEL).trim();
-    const priceWeight = model.includes('opus') ? 2 : 1;   // the strongest models cost twice the credits, as in Stella AI
+    const mode = MODES[String(body.mode || '').trim()] ? String(body.mode).trim() : DEFAULT_MODE;
+    const settings = MODES[mode];
+    const override = String(Deno.env.get('SONIFY_AI_MODEL') || '').trim();
+    const model = override || settings.model;
+    const priceWeight = override ? (model.includes('opus') ? 2 : 1) : settings.priceWeight;
 
     const request: Record<string, unknown> = {
       model,
       max_tokens: Math.max(1024, Math.min(MAX_TOKENS, Number(body.max_tokens) || MAX_TOKENS)),
+      effort: settings.effort,
       system: systemBlocks(body.system),
       messages: cleanMessages(body.messages),
       cache_control: CACHE,   // the conversation so far is cached as well: each step pays a fraction for what came before

@@ -64,7 +64,7 @@
     '#track-rows .track [data-control="volume"]', '#track-rows .track [data-control="pan"]', "#track-rows .track [data-action]",
     "#console-strips .strip .fader", '#console-strips .strip [data-control="pan"]', "#console-strips .strip [data-action]",
     "#console-strips .panel-send", "#console-main .fader", '#console-main [data-action="mute"]',
-    "#play", "#stop", "#record", "#loop", "#metronome", "#to-start", "#link-touched", "#analog-board [data-board-param]",
+    "#play", "#stop", "#record", "#loop", "#metronome", "#to-start", "#link-touched", "#analog-board [data-board-param]", "#mastering-panel [data-board-param]",
     "#live-studio [data-live-link]", "#song-blocks [data-launch-link]", "#link-window [data-focus-link]"
   ].join(", ");
 
@@ -164,8 +164,9 @@
                continuous: true, element: touched };
     }
 
-    // The Analog Board's knobs, faders and buttons: "board.<n>.<setting>", "board.master.<setting>".
-    const board = el.closest("#analog-board [data-board-param]");
+    // The Analog Board's knobs, faders and buttons: "board.<n>.<setting>", "board.master.<setting>";
+    // the Mastering window's: "board.mastering.<setting>".
+    const board = el.closest("#analog-board [data-board-param], #mastering-panel [data-board-param]");
     if (board) {
       if (!board.dataset.boardStrip) return null;
       const key = `board.${board.dataset.boardStrip}.${board.dataset.boardParam}`;

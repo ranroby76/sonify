@@ -13,7 +13,7 @@
 //   Intensity     from calm to busy
 //   Start at Bar  the playhead's bar at first; Play n times
 //   Players       each on or off, with its instrument: Automatic (the best fit installed), the
-//                 Test Synth, or any installed instrument
+//                 Cayman, or any installed instrument
 // The choices stay for the next time, until Sonify closes.
 
 (() => {
@@ -23,7 +23,7 @@
   const PLAYERS = ["drums", "bass", "keys"];
 
   let open = false, busy = false;
-  let best = {};        // the engine's best fit for each player: {file, id, name}, or null (the Test Synth)
+  let best = {};        // the engine's best fit for each player: {file, id, name}, or null (Cayman)
   let listening = 0;    // the recording being listened to
   let heard = null;     // what was heard in the recording chosen: {trackId, tempo, songTempo, follows, steadiness}
   const last = { chords: "", style: "pop", intensity: 50, times: 1,
@@ -146,7 +146,7 @@
       const chosen = select.options.length ? select.value : last.instruments[player];
       select.textContent = "";
       select.add(new Option(automaticLabel(player), "auto"));
-      select.add(new Option("Test Synth", "none"));
+      select.add(new Option("Cayman", "none"));
 
       if (entries.length) {
         const group = document.createElement("optgroup");
@@ -161,7 +161,7 @@
   }
 
   function automaticLabel(player) {
-    return `Automatic: ${best[player] ? best[player].name : "Test Synth"}`;
+    return `Automatic: ${best[player] ? best[player].name : "Cayman"}`;
   }
 
   // ---------------------------------------------------------------- the window

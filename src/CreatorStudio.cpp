@@ -2431,7 +2431,7 @@ void CreatorStudio::openProject()
 
     // A plugin project, or a MIDI FX (a Sonify device, from My Devices or anywhere).
     chooser = std::make_unique<juce::FileChooser> ("Open a plugin project or a MIDI FX", start.isDirectory() ? start : juce::File(),
-                                                   juce::String ("*.stella;*") + Devices::fileExtension);
+                                                   juce::String ("*.stella;*") + Devices::fileExtension + ";*" + Devices::oldFileExtension);
 
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [safeThis = juce::Component::SafePointer<CreatorStudio> (this)] (const juce::FileChooser& fc)
@@ -2448,7 +2448,7 @@ void CreatorStudio::openProjectFile (const juce::File& file)
     if (refuseWhileBusy())
         return;
 
-    if (file.hasFileExtension (Devices::fileExtension))
+    if (Devices::isDeviceFile (file))
     {
         if (const auto opened = openMidiFxFile (file); opened.failed())
             showError ("Couldn't open the MIDI FX", opened.getErrorMessage());

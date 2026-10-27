@@ -1182,7 +1182,7 @@ juce::Result SessionPlayers::create (AudioEngine& engine, Library& library, cons
                               seed + static_cast<juce::uint32> (player) * 7919u);
         const auto trackId = engine.addTrack (Track::Kind::instrument);
 
-        // Its instrument: the one chosen, or the best fit installed (the Test Synth when there's none).
+        // Its instrument: the one chosen, or the best fit installed (Cayman when there's none).
         juce::String file, pluginId, pluginName;
 
         if (const auto chosen = request.instruments.find (player); chosen != request.instruments.end())
@@ -1201,7 +1201,7 @@ juce::Result SessionPlayers::create (AudioEngine& engine, Library& library, cons
                 }
 
                 if (file.isEmpty())
-                    notes.add ("The instrument chosen for the " + nameOf (player) + " isn't available now, so it plays the Test Synth.");
+                    notes.add ("The instrument chosen for the " + nameOf (player) + " isn't available now, so it plays Cayman.");
             }
         }
         else if (const auto* best = bestInstrument (library, player))
@@ -1217,7 +1217,7 @@ juce::Result SessionPlayers::create (AudioEngine& engine, Library& library, cons
             const auto loaded = engine.loadPlugin (trackId, juce::File (file), pluginId, -1, 0, slot);
 
             if (loaded.failed())
-                notes.add (pluginName + " didn't load for the " + nameOf (player) + ", so it plays the Test Synth: " + loaded.getErrorMessage());
+                notes.add (pluginName + " didn't load for the " + nameOf (player) + ", so it plays Cayman: " + loaded.getErrorMessage());
             else
                 library.markUsed (file, pluginId);
         }

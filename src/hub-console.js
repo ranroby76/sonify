@@ -920,6 +920,8 @@
         <div class="strip-buttons">
           <button class="tbtn" data-action="mute" aria-pressed="false" title="Mute Main (the metronome keeps playing)">M</button>
           <button class="tbtn master-button" data-action="master" title="Mastering Assistant" aria-label="Mastering Assistant">${ICON_MASTER}</button>
+          <button class="tbtn mastering-button" data-action="mastering" data-mastering-button aria-pressed="false"
+            title="Mastering section: the last thing on Main, after its fader (lit while it's in)" aria-label="Mastering section">MS</button>
         </div>
         <output class="strip-db"></output>
         <div class="strip-body">
@@ -959,6 +961,8 @@
     });
 
     strip.root.querySelector('[data-action="master"]').addEventListener("click", () => Hub.run("masteringAssistant"));
+    strip.root.querySelector('[data-action="mastering"]').addEventListener("click", () => Hub.run("masteringSection"));
+    strip.root.querySelector('[data-action="mastering"]').setAttribute("aria-pressed", String(Boolean(Hub.state.masteringOn)));
 
     strip.root.querySelector(".main-peaks").addEventListener("click", (event) => {
       event.stopPropagation();

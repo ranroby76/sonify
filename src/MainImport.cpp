@@ -230,6 +230,84 @@ void MainComponent::showArrangeDropZone (const juce::var& event)
 }
 
 //==============================================================================
+//==============================================================================
+// File > Master a File...: an audio file chosen, then a new song (as File > New Song makes one,
+// named after it) with the file on an audio track of its own, the Mastering section in and its
+// mode Master only, and its window open on the page.
+
+void MainComponent::masterFile()
+{
+    if (choosingFile)
+        return;
+
+    whenSongIsSafe ([this]
+    {
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        auto wildcards = formats.getWildcardForAllFormats();
+
+        if (VideoSound::available())
+            for (const auto& kind : juce::StringArray::fromTokens (convertedKinds, ";", {}))
+                if (! wildcards.containsIgnoreCase ("*." + kind + ";") && ! wildcards.endsWithIgnoreCase ("*." + kind))
+                    wildcards << ";*." << kind;
+
+        auto folder = lastMediaFolder;
+
+        if (! folder.isDirectory())
+            folder = juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+
+        choosingFile = true;
+        masterFileChooser = std::make_unique<juce::FileChooser> ("Master a File", folder, wildcards);
+
+        masterFileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                        [safeThis = juce::Component::SafePointer<MainComponent> (this)] (const juce::FileChooser& chooser)
+        {
+            if (safeThis == nullptr)
+                return;
+
+            auto& self = *safeThis;
+            self.choosingFile = false;
+            const auto file = chooser.getResult();
+
+            if (! file.existsAsFile())
+                return;
+
+            self.lastMediaFolder = file.getParentDirectory();
+
+            // A new song, named after the file (New Song's way: a folder of its own).
+            const auto before = self.songFile;
+            juce::DynamicObject::Ptr song (new juce::DynamicObject());
+            song->setProperty ("name", file.getFileNameWithoutExtension() + " Master");
+            self.newSong (juce::var (song.get()));
+
+            if (self.songFile == before || self.songFile == juce::File())
+                return;   // it couldn't be made (New Song said why)
+
+            // The file alone: the instrument track a new song starts with goes.
+            std::vector<int> ids;
+
+            for (const auto& track : self.engine.getTracks())
+                ids.push_back (track->id);
+
+            for (const auto id : ids)
+                self.engine.removeTrack (id);
+
+            auto& mastering = self.engine.getMastering().settings;
+            mastering.reset();
+            mastering.set (MasterSection::on, 1.0f);
+            mastering.set (MasterSection::mode, 2.0f);   // Master only
+
+            self.importMedia ({ file }, MediaPlace {});
+            self.undoManager.clearUndoHistory();
+            self.markChanged();
+            self.pushTracks();
+
+            if (self.webView != nullptr)
+                self.webView->emitEventIfBrowserIsVisible ("masteringOpen", juce::var());
+        });
+    });
+}
+
 void MainComponent::chooseMedia (MediaPlace place)
 {
     if (choosingFile)

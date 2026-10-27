@@ -25,18 +25,21 @@
 // "over". Sonify answers with beeps; what was said shows here, and requests for Fanan AI in
 // the conversation, marked with a mic.
 //
-// Phone remote (the row under it, when Sonify offers it): Fanan AI from a phone, on the page
-// /sonify of Fanan's site, signed in to the same account. Its requests show in the conversation
-// like typed ones.
+// Phone remote (the row under it, when Sonify offers it): Fanan AI from a phone, by text. In the
+// studio, the phone scans the QR code (same Wi-Fi: Sonify serves the page itself); away, it opens
+// the page /sonify of Fanan's site, signed in to the same account. Its requests show in the
+// conversation like typed ones.
 
 (() => {
   "use strict";
 
   const { $, element } = Hub;
   let state = { busy: false, stopping: false, entries: [], configured: true, blocked: false, status: "checking",
-                signedIn: false, credits: -1, siteAvailable: false };
+                signedIn: false, credits: -1, siteAvailable: false, deep: false, deepNow: false };
   let voice = { offered: false, enabled: false, why: "", stage: "off", heard: "", message: "", input: -1, inputs: [] };
-  let remote = { offered: false, enabled: false, why: "", connected: false, problem: "", url: null, email: "" };   // url: null until Sonify says
+  let remote = { offered: false, enabled: false, why: "", connected: false, problem: "", url: null, email: "",   // url: null until Sonify says
+                 localUrl: "", localProblem: "", localSeen: false };
+  let qrShown = "";   // the address the QR code was drawn for
 
   const EXAMPLES = [
     "Add a synth on a new track and write an 8-bar chord progression in A minor",
@@ -194,6 +197,7 @@
     $("ai-stop").hidden = !state.busy;
     $("ai-stop").disabled = state.stopping;
     $("ai-clear").disabled = state.busy || !state.entries.length;
+    renderDeep();
 
     // The account's credits, with a way to get more.
     const credits = $("ai-credits");
@@ -229,6 +233,23 @@
     const studio = $("ai-flag").value;
     Hub.send("aiSend", studio ? { text, studio } : { text });
     $("ai-input").value = "";
+  }
+
+  // ---------------------------------------------------------------- Deep
+  /** Deep: every request to Fanan AI's strongest model. Off, the quick one takes it, and a long
+      request (one that has taken many steps) finishes deep by itself: the button says so while
+      it does. */
+  function renderDeep() {
+    const button = $("ai-deep");
+    const stepped = Boolean(state.deepNow) && !state.deep;
+    button.classList.toggle("on", Boolean(state.deep));
+    button.classList.toggle("stepped", stepped);
+    button.setAttribute("aria-pressed", state.deep ? "true" : "false");
+    button.title = state.deep
+      ? "Deep is on: every request goes to Fanan AI's strongest model (it costs twice the credits). Press to turn it off."
+      : stepped
+        ? "This request got long, so Fanan AI went deep by itself to finish it. Press to keep every request deep."
+        : "Deep: every request to Fanan AI's strongest model, for big jobs (twice the credits). Off, the quick model takes it and a long request finishes deep by itself.";
   }
 
   // ---------------------------------------------------------------- the flag
@@ -312,15 +333,58 @@
   }
 
   // ---------------------------------------------------------------- phone remote
+  function drawQr(text) {
+    if (text === qrShown) return;
+    qrShown = text;
+
+    const box = $("remote-qr");
+    box.replaceChildren();
+    if (!text || typeof qrcode !== "function") return;
+
+    const code = qrcode(0, "M");
+    code.addData(text);
+    code.make();
+
+    // As an SVG of squares (the library's own markup isn't used: it's built here, safely).
+    const count = code.getModuleCount();
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", `0 0 ${count} ${count}`);
+    svg.setAttribute("shape-rendering", "crispEdges");
+    let d = "";
+    for (let row = 0; row < count; row++)
+      for (let col = 0; col < count; col++)
+        if (code.isDark(row, col)) d += `M${col} ${row}h1v1h-1z`;
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", d);
+    path.setAttribute("fill", "#000");
+    svg.append(path);
+    box.append(svg);
+  }
+
   function renderRemote() {
     $("ai-remote").hidden = !remote.offered;
 
     const toggle = $("remote-toggle");
     toggle.setAttribute("aria-checked", remote.enabled ? "true" : "false");
     toggle.classList.toggle("on", remote.enabled);
-    toggle.classList.toggle("live", remote.enabled && remote.connected);
+    toggle.classList.toggle("live", remote.enabled && (remote.connected || remote.localSeen));
 
-    // The page's address, to open on the phone.
+    // In the studio: the QR code, while Sonify serves the page on this network.
+    const localShown = remote.enabled && (Boolean(remote.localUrl) || Boolean(remote.localProblem));
+    $("remote-local").hidden = !localShown;
+    $("remote-away-title").hidden = !remote.enabled;
+    drawQr(remote.enabled ? remote.localUrl : "");
+    $("remote-qr").hidden = !remote.localUrl;
+    $("remote-new-key").hidden = !remote.localUrl;
+
+    const local = $("remote-local-status");
+    local.textContent = remote.localProblem ? remote.localProblem
+                      : remote.localSeen ? "A phone is connected."
+                      : "Scan this with the phone's camera (the phone on this computer's Wi-Fi).";
+    local.className = "voice-status" + (remote.localProblem ? " warn" : remote.localSeen ? " command" : "");
+
+    // Away: the page's address on Fanan's site.
     const url = element("span", "remote-url", remote.url);
     const status = $("remote-status");
     let kind = "";
@@ -328,15 +392,16 @@
 
     if (remote.url === null) {
       // Not heard from Sonify yet.
-    } else if (!remote.url) {
-      status.append("Sonify Remote isn't set up in this build yet.");
     } else if (!remote.enabled) {
-      status.append("Talk to Fanan AI from your phone, anywhere in the studio. Turn this on, then open ", url, " on the phone and sign in with your Fanan account.");
+      status.append("Talk to Fanan AI from your phone by text: in the studio by scanning a QR code, away on ",
+                    remote.url ? url : "Fanan's site", ". Turn this on to start.");
+    } else if (!remote.url) {
+      status.append("Away from the studio, Sonify Remote isn't set up in this build yet.");
     } else if (remote.why) {
       status.append(remote.why);
       kind = " warn";
     } else if (remote.connected) {
-      status.append("On. On your phone, open ", url, remote.email ? ` signed in as ${remote.email}.` : ".");
+      status.append("On your phone, open ", url, remote.email ? ` signed in as ${remote.email}.` : ".");
       kind = " command";
     } else if (remote.problem) {
       status.append(remote.problem);
@@ -351,6 +416,17 @@
   Hub.on("aiState", (data) => {
     state = { ...state, ...data };
     render();
+  });
+
+  // Fanan AI drives Sonify as its screen does: a command (a menu's or key's action), or an event
+  // sent exactly as the page sends it.
+  Hub.on("aiRun", (data) => {
+    if (data.command) {
+      const run = Hub.commands[data.command];
+      if (typeof run === "function") run();
+    } else if (data.event) {
+      Hub.send(data.event, data.payload || {});
+    }
   });
 
   Hub.on("remoteState", (data) => {
@@ -489,6 +565,7 @@
     $("ai-send").addEventListener("click", send);
     $("ai-stop").addEventListener("click", () => Hub.send("aiStop"));
     $("ai-clear").addEventListener("click", () => Hub.send("aiClear"));
+    $("ai-deep").addEventListener("click", () => Hub.send("aiSettings", { deep: !state.deep }));
     $("ai-input").addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
@@ -509,6 +586,13 @@
       renderRemote();
       Hub.send("remoteSettings", { enabled: remote.enabled });
     });
+    $("remote-new-key").addEventListener("click", () => {
+      if (window.confirm("Make a new pairing code? Phones paired before will have to scan the QR code again."))
+        Hub.send("remoteSettings", { newKey: true });
+    });
+
+    // The page's commands, for Fanan AI, once every part of the page has added its own.
+    setTimeout(() => Hub.send("aiCommandList", { names: Object.keys(Hub.commands).sort() }), 0);
 
     loadGeometry();
     $("ai-window-button").addEventListener("click", toggleWindow);

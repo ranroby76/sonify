@@ -50,7 +50,7 @@
       <span class="studio-name">Plugins Creator Studio</span><span class="studio-short">Creator</span>
     </button>
     <button class="studio-tab" type="button" role="tab" data-studio="live" aria-selected="false" style="--studio: #ff8a7a"
-            title="Live Show Studio: decks, the singers and players, on air (Ctrl+6)">
+            title="Live Show Studio: the playlist and its player, the singers and players, podcasts and live streams (Ctrl+6)">
       <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5M5.5 14.5h5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
       <span class="studio-name">Live Show Studio</span><span class="studio-short">Live Show</span>
     </button>
@@ -94,6 +94,10 @@
     </button>
     <p id="board-note" class="board-note"></p>
     <div class="board-actions">
+      <button id="board-aimix" class="plain-button small aimix-open" type="button"
+              title="Fanan AI mixes the song on the board and masters it, as a suggestion you compare and keep or not">AI Mix…</button>
+      <button id="board-mastering" class="plain-button small mastering-lamp" type="button" data-mastering-button aria-pressed="false"
+              title="The Mastering section: the last thing on Main, after the Master fader (lit while it's in)">Mastering…</button>
       <button id="board-copy" class="plain-button small" type="button" title="Each strip takes its track's Console fader, pan, mute and solo; the master takes Main's fader">Copy Console levels</button>
       <button id="board-reset" class="plain-button small" type="button" title="Every strip and the master back where they start">Reset board…</button>
     </div>
@@ -105,6 +109,41 @@
     <div id="board-master" class="board-master" role="group" aria-label="Master section"></div>
   </div>
 </section>
+
+<!-- The Mastering section (hub-board.js): a window over any studio, dragged by its top. -->
+<div id="mastering-panel" class="mastering-panel" role="dialog" aria-labelledby="mastering-title" tabindex="-1" hidden>
+  <header id="mastering-head" class="mp-head">
+    <h2 id="mastering-title" class="mp-title">Mastering</h2>
+    <button id="mastering-on" class="board-switch" type="button" role="switch" aria-checked="false"
+            title="Switch the Mastering section in or out (Main's last stage, after its fader)">
+      <span class="board-lamp" aria-hidden="true"></span><span>In</span>
+    </button>
+    <label class="mp-mode"><span>Mode</span><select id="mastering-mode" aria-label="Mastering mode"></select></label>
+    <span class="mp-spacer"></span>
+    <button id="mastering-aimaster" class="plain-button small aimix-open" type="button"
+            title="Fanan AI masters the song (the mix stays as it is), as a suggestion you compare and keep or not">AI Master…</button>
+    <button id="mastering-reset" class="plain-button small" type="button" title="Its controls back where they start">Reset…</button>
+    <button id="mastering-close" class="mp-close" type="button" title="Close (Esc)" aria-label="Close">&times;</button>
+  </header>
+  <div class="mp-meters" role="group" aria-label="Loudness">
+    <div class="mp-meter"><span>Momentary</span><output data-reading="momentary">&minus;&infin;</output><small>LUFS</small></div>
+    <div class="mp-meter"><span>Short-term</span><output data-reading="shortTerm">&minus;&infin;</output><small>LUFS</small></div>
+    <div class="mp-meter"><span>Integrated</span><output data-reading="integrated">&minus;&infin;</output><small>LUFS</small></div>
+    <div class="mp-meter"><span>True peak</span><output data-reading="truePeak">&minus;&infin;</output><small>dBTP</small></div>
+    <button id="mastering-meter-reset" class="plain-button small" type="button" title="Integrated loudness and true peak start again (they do as the song starts playing)">Reset meters</button>
+  </div>
+  <div id="mastering-body" class="mp-body"></div>
+</div>
+
+<!-- AI Mix and AI Master (hub-aimix.js): Fanan AI's suggestion, in a window over any studio. -->
+<div id="aimix-panel" class="mastering-panel aimix-panel" role="dialog" aria-labelledby="aimix-title" tabindex="-1" hidden>
+  <header id="aimix-head" class="mp-head">
+    <h2 id="aimix-title" class="mp-title">Fanan AI · Mix &amp; Master</h2>
+    <span class="mp-spacer"></span>
+    <button id="aimix-close" class="mp-close" type="button" title="Close (Esc): the work goes on" aria-label="Close">&times;</button>
+  </header>
+  <div id="aimix-body" class="aimix-body"></div>
+</div>
 
 <!-- Plugins Creator Studio: Sonify's own studio window lies over this page (MainCreator.cpp). Everything it makes,
      MIDI FX (Sonify's MIDI devices) included, is built in its Build with AI tab. -->
@@ -427,20 +466,22 @@
   </div>
 </section>
 
-<!-- Live Show Studio: its tabs (DJ show, Live & podcasts, Live streaming) with the show's switches in the middle of their line, its rail, the decks, the mixer, the live channels, the library and the playlist (hub-live.js) -->
-<section id="live-studio" class="studio-page live-page mode-dj" aria-label="Live Show Studio" hidden>
+<!-- Live Show Studio: its tabs (DJ show, Live & podcasts, Live streaming) in the middle of their line, the show's switches at its right, its rail, the decks, the mixer, the live channels, the library and the playlist (hub-live.js) -->
+<section id="live-studio" class="studio-page live-page mode-live" aria-label="Live Show Studio" hidden>
   <header class="live-head">
     <div class="live-head-left">
       <h2 class="live-title">Live Show</h2>
-      <div class="live-tabs" role="tablist" aria-label="How the show is used">
-        <button class="live-tab" type="button" role="tab" data-mode="dj" aria-selected="true" style="--use: #3fa9f5"
-                title="DJ show: two or four decks, the mixer, the library and the pads (tracks dragged straight onto the decks)">DJ show</button>
-        <button class="live-tab" type="button" role="tab" data-mode="live" aria-selected="false" style="--use: #46c27a"
-                title="Live &amp; podcasts: singers, players and voices on live channels, the music making room for them (FX: its Dynamic EQ), a playlist with its player, and the show's screen">Live &amp; podcasts</button>
-        <button class="live-tab" type="button" role="tab" data-mode="stream" aria-selected="false" style="--use: #ff5a63"
-                title="Live streaming: the same, streamed with up to four cameras and the screen to YouTube, Facebook, Twitch or your own server (Enable streaming lets it out)">Live streaming</button>
-      </div>
     </div>
+    <div class="live-tabs" role="tablist" aria-label="How the show is used">
+      <!-- DJ show: kept in the code, not offered (hidden: Live & podcasts and Live streaming only) -->
+      <button class="live-tab" type="button" role="tab" data-mode="dj" aria-selected="false" style="--use: #3fa9f5" hidden
+              title="DJ show: two or four decks, the mixer, the library and the pads (tracks dragged straight onto the decks)">DJ show</button>
+      <button class="live-tab" type="button" role="tab" data-mode="live" aria-selected="true" style="--use: #46c27a"
+              title="Live &amp; podcasts: singers, players and voices on live channels, the music making room for them (FX: its Dynamic EQ), a playlist with its player, and the show's screen">Live &amp; podcasts</button>
+      <button class="live-tab" type="button" role="tab" data-mode="stream" aria-selected="false" style="--use: #ff5a63"
+              title="Live streaming: the same, streamed with up to four cameras and the screen to YouTube, Facebook, Twitch or your own server (Enable streaming lets it out)">Live streaming</button>
+    </div>
+    <div class="live-head-end">
     <div class="live-switches" role="group" aria-label="The show's switches">
       <button id="live-onair" class="live-pill pill-stream" type="button" role="switch" aria-checked="false" data-modes="stream"
               title="Enable streaming: the picture and the sound go out to the stream. Off, the stream shows the show's name (and that it's coming back), in silence; you still hear the show">
@@ -463,14 +504,15 @@
               title="Mute mics: the live channels go silent (the room, the recording and the stream; they still show on their meters)">
         <span class="live-pill-dot" aria-hidden="true"></span><span>Mute mics</span>
       </button>
-      <button id="live-mute-playback" class="live-pill pill-mute on" type="button" role="switch" aria-checked="true" data-modes="live stream"
-              title="Mute playback: the player (its tracks and videos' sound) and the pads go silent">
+      <button id="live-mute-playback" class="live-pill pill-mute" type="button" role="switch" aria-checked="false" data-modes="live stream"
+              title="Mute playback: the player (its tracks and videos' sound) and the pads go silent. Off as Sonify starts, so pressing Play is heard">
         <span class="live-pill-dot" aria-hidden="true"></span><span>Mute playback</span>
       </button>
     </div>
     <div class="live-head-right">
       <span id="live-stream-clock" class="live-clock" hidden></span>
       <p id="live-note" class="live-note" aria-live="polite"></p>
+    </div>
     </div>
   </header>
   <div class="live-main">
@@ -497,7 +539,7 @@
         </button>
         <span id="live-rec-time" class="live-rec-time"></span>
         <button id="live-stems" class="live-stems" type="button" role="switch" aria-checked="true"
-                title="Stems: each deck and each channel on a file of its own too, to mix again in the Studio">Stems</button>
+                title="Stems: the player and each channel on a file of its own too, to mix again in the Studio">Stems</button>
       </div>
       <div class="rail-group" role="group" aria-label="Podcast" data-modes="live">
         <button id="live-podcast" class="live-podcast" type="button"
@@ -561,13 +603,13 @@
   </div>
 </section>
 
-<!-- Sampling Studio: Sampler Arena's Sampling Module (VSTi Sampling, Chord Sampling, Sample Builder; Presets; the Loop Editor), with Sonify's own: what's sampled, round robins, trim, normalize, stop and resume, Try It (hub-sampling.js); the nodes (hub-sampling-nodes.js) with their keyboard and the MIDI monitor (hub-sampling-midi.js); SFZ to Blob (hub-sampling-blob.js) -->
+<!-- Sampling Studio: Sampler Arena's Sampling Module (VSTi Sampling, Chord Sampling, Sample Builder, with Save Preset, Load Preset and Set Folder in the middle of their line; the Loop Editor), with Sonify's own: what's sampled, round robins, trim, normalize, stop and resume, Try It (hub-sampling.js); the nodes (hub-sampling-nodes.js) with their keyboard and the MIDI monitor (hub-sampling-midi.js); SFZ to Blob
+     (hub-sampling-blob.js) -->
 <section id="sampling-studio" class="studio-page sampling-page" aria-label="Sampling Studio" hidden>
   <header class="smp-head">
     <h2 class="smp-title">Sampling Module</h2>
     <div class="smp-tabs" role="tablist" aria-label="Sampling Module">
       <button class="smp-tab" type="button" role="tab" data-tab="sampling" aria-selected="true">Sampling</button>
-      <button class="smp-tab" type="button" role="tab" data-tab="presets" aria-selected="false">Presets</button>
       <button class="smp-tab" type="button" role="tab" data-tab="loop" aria-selected="false">Loop Editor</button>
       <button class="smp-tab" type="button" role="tab" data-tab="blob" aria-selected="false">SFZ to Blob</button>
     </div>
@@ -586,14 +628,22 @@
 
   <div id="smp-tab-sampling" class="smp-pane" role="tabpanel" aria-label="Sampling">
     <div class="smp-mode-row">
-      <button class="smp-mode" type="button" data-mode="vsti">VSTi Sampling</button>
-      <button class="smp-mode" type="button" data-mode="chord">Chord Sampling</button>
-      <button class="smp-mode" type="button" data-mode="builder">Sample Builder</button>
-      <button id="smp-chord-types" class="smp-button smp-chord-types" type="button">Chord Types...</button>
-      <span class="spacer"></span>
-      <button id="smp-no-ranges" class="smp-button smp-no-ranges" type="button" title="Sample each key as its own region: no zones, no yellow locators">Don't Use Key Ranges</button>
-      <button id="smp-adhoc" class="smp-button smp-adhoc" type="button" title="For now, the samples go to another folder (Set Folder, in Presets, stays as it is)">Ad Hoc Folder</button>
-      <button id="smp-settings" class="smp-button smp-settings-button" type="button">Settings</button>
+      <div class="smp-mode-group smp-mode-left">
+        <button class="smp-mode" type="button" data-mode="vsti">VSTi Sampling</button>
+        <button class="smp-mode" type="button" data-mode="chord">Chord Sampling</button>
+        <button class="smp-mode" type="button" data-mode="builder">Sample Builder</button>
+        <button id="smp-chord-types" class="smp-button smp-chord-types" type="button">Chord Types...</button>
+      </div>
+      <div class="smp-mode-group smp-mode-presets" role="group" aria-label="Presets and the samples' folder">
+        <button id="smp-preset-save" class="smp-row-button smp-preset-save" type="button" title="Save Preset: these settings as a Sampler Arena preset (.smppreset)">Save Preset</button>
+        <button id="smp-preset-load" class="smp-row-button smp-preset-load" type="button" title="Load Preset: a Sampler Arena preset (.smppreset)">Load Preset</button>
+        <button id="smp-set-folder" class="smp-row-button smp-set-folder" type="button">Set Folder</button>
+      </div>
+      <div class="smp-mode-group smp-mode-right">
+        <button id="smp-no-ranges" class="smp-button smp-no-ranges" type="button" title="Sample each key as its own region: no zones, no yellow locators">Don't Use Key Ranges</button>
+        <button id="smp-adhoc" class="smp-button smp-adhoc" type="button" title="For now, the samples go to another folder (Set Folder stays as it is)">Ad Hoc Folder</button>
+        <button id="smp-settings" class="smp-button smp-settings-button" type="button">Settings</button>
+      </div>
     </div>
     <div class="smp-source-row" id="smp-source-row">
       <span class="smp-source-label">Source</span>
@@ -639,13 +689,6 @@
         </div>
       </div>
     </div>
-  </div>
-
-  <div id="smp-tab-presets" class="smp-pane smp-presets" role="tabpanel" aria-label="Presets" hidden>
-    <button id="smp-preset-save" class="smp-big-button smp-preset-save" type="button">Save Preset</button>
-    <button id="smp-preset-load" class="smp-big-button smp-preset-load" type="button">Load Preset</button>
-    <button id="smp-set-folder" class="smp-big-button smp-set-folder" type="button">Set Folder</button>
-    <p id="smp-folder-text" class="smp-folder-text"></p>
   </div>
 
   <div id="smp-tab-loop" class="smp-pane smp-loop" role="tabpanel" aria-label="Loop Editor" hidden>
@@ -732,6 +775,14 @@
   <div class="guide-body">
     <div class="guide-reader">
       <div id="guide-chapters" class="guide-chapters" role="tablist" aria-label="Chapters"></div>
+      <div class="guide-translate">
+        <label for="guide-lang">Translate this page to</label>
+        <select id="guide-lang" class="guide-lang" aria-label="Language to translate this page to"></select>
+        <button id="guide-translate-go" class="plain-button small primary" type="button" title="Have Fanan AI translate this page">Translate</button>
+        <button id="guide-translate-original" class="plain-button small" type="button" hidden>Show original</button>
+        <button id="guide-translate-pdf" class="plain-button small" type="button" title="Save the translated page as a PDF document" hidden>Save to PDF</button>
+        <span id="guide-translate-note" class="guide-translate-note"></span>
+      </div>
       <article id="guide-text" class="guide-text" tabindex="0"></article>
     </div>
     <aside class="guide-ask" aria-label="Ask anything about Sonify">
@@ -768,6 +819,7 @@
       <hr>
       <button role="menuitem" data-command="importAudioFiles">Import Media Files…</button>
       <button role="menuitem" data-command="importVideo">Import Video…</button>
+      <button role="menuitem" data-command="masterFile">Master a File…</button>
       <hr>
       <button role="menuitem" data-command="importDawProject">Import DAWproject…</button>
       <button role="menuitem" data-command="exportDawProject">Export DAWproject…</button>
@@ -804,6 +856,8 @@
       <button role="menuitem" data-command="exportStems">Export Stems…</button>
       <button role="menuitem" data-command="exportVideo">Export Video…</button>
       <button role="menuitem" data-command="masteringAssistant">Mastering Assistant…</button>
+      <button role="menuitem" data-command="masteringSection">Mastering Section…</button>
+      <button role="menuitem" data-command="aiMixMaster">AI Mix &amp; Master…</button>
       <hr>
       <button role="menuitem" data-command="importVideo">Import Video…</button>
       <button role="menuitem" data-command="toggleVideoWindow">Video Window</button>
@@ -850,6 +904,8 @@
     <div class="menu-list" role="menu">
       <button role="menuitem" data-command="togglePlay">Start / Stop<span class="shortcut">Space</span></button>
       <button role="menuitem" data-command="returnToZero">Return to Zero<span class="shortcut">Home</span></button>
+      <button role="menuitem" data-command="barBack">Back One Bar<span class="shortcut">Num -</span></button>
+      <button role="menuitem" data-command="barForward">Forward One Bar<span class="shortcut">Num +</span></button>
       <button role="menuitem" data-command="toggleRecord">Record<span class="shortcut">Num *</span></button>
       <button role="menuitem" data-command="toggleLoop">Loop Active<span class="shortcut">Num /</span></button>
       <button role="menuitem" data-command="toggleMetronome">Metronome<span class="shortcut">C</span></button>
@@ -880,6 +936,10 @@
       <button role="menuitem" data-command="zoomReset">Default Zoom<span class="shortcut">Ctrl + 0</span></button>
       <button role="menuitem" data-command="zoomFull">Zoom to the Whole Song<span class="shortcut">Alt + Z</span></button>
       <button role="menuitem" data-command="zoomToLoop">Zoom to Loop</button>
+      <hr>
+      <button role="menuitem" data-command="zoomInVertical">Zoom In Vertically<span class="shortcut">Shift + E</span></button>
+      <button role="menuitem" data-command="zoomOutVertical">Zoom Out Vertically<span class="shortcut">Shift + W</span></button>
+      <button role="menuitem" data-command="zoomResetVertical">Default Track Heights</button>
     </div>
   </div>
   <!-- Not a menu: it opens the Plug-In Manager at once. -->
@@ -1050,9 +1110,16 @@
     <div id="playhead" hidden></div>
     <div id="arrange-footer" class="area-footer">
       <span class="spacer"></span>
+      <!-- The height zoom: every track taller or shorter (hub-arrange.js). -->
+      <span class="zoom-axis" title="Height zoom (tracks)"><svg viewBox="0 0 16 16"><path d="M8 1l3.5 3.5H9v7h2.5L8 15l-3.5-3.5H7v-7H4.5z"/></svg></span>
+      <button id="vzoom-out" class="icon-button" data-key="zoomOutVertical" data-tip="Shorter tracks{key}" title="Shorter tracks (Shift + W)" aria-label="Height zoom out">−</button>
+      <input id="vzoom" type="range" min="0" max="1000" aria-label="Height zoom" title="Height zoom: 100% (Ctrl + Shift + mouse wheel; double-click for 100%)">
+      <button id="vzoom-in" class="icon-button" data-key="zoomInVertical" data-tip="Taller tracks{key}" title="Taller tracks (Shift + E)" aria-label="Height zoom in">+</button>
+      <span class="zoom-gap"></span>
       <button id="zoom-loop" class="icon-button" title="Zoom to the loop range" aria-label="Zoom to loop">
         <svg viewBox="0 0 16 16"><path d="M1 5h2v6H1zM13 5h2v6h-2zM4 7.2h8v1.6H4z"/><path d="M5.5 5 3.5 8l2 3zM10.5 5l2 3-2 3z"/></svg>
       </button>
+      <span class="zoom-axis" title="Length zoom (time)"><svg viewBox="0 0 16 16"><path d="M1 8l3.5-3.5v2.5h7V4.5L15 8l-3.5 3.5V9h-7v2.5z"/></svg></span>
       <button id="zoom-out" class="icon-button" data-key="zoomOut" data-tip="Zoom out{key}" title="Zoom out (Ctrl + -)" aria-label="Zoom out">−</button>
       <input id="zoom" type="range" min="0" max="1000" aria-label="Zoom" title="Zoom (Ctrl + mouse wheel)">
       <button id="zoom-in" class="icon-button" data-key="zoomIn" data-tip="Zoom in{key}" title="Zoom in (Ctrl + =)" aria-label="Zoom in">+</button>
@@ -1093,7 +1160,7 @@
       <button id="browser-rescan" class="icon-button" title="Rescan: read the Plugin Folders again" aria-label="Rescan plugins">
         <svg viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M13.6 1.8v4h-4z"/></svg>
       </button>
-      <button id="browser-add" class="icon-button" title="Add WCLAP files to the Browser" aria-label="Add WCLAP plugins">
+      <button id="browser-add" class="icon-button" title="Add plugin files to the Browser" aria-label="Add plugins">
         <svg viewBox="0 0 16 16"><path d="M7 2h2v5h5v2H9v5H7V9H2V7h5z"/></svg>
       </button>
     </div>
@@ -1124,6 +1191,7 @@
         <button id="files-up" class="icon-button" type="button" title="Up one folder" aria-label="Up one folder">
           <svg viewBox="0 0 16 16"><path d="M8 3l5 5h-3.2v5H6.2V8H3z"/></svg>
         </button>
+        <button id="files-open" class="plain-button small" type="button" title="Choose your files folder: the song keeps it, and new songs open it too">Open</button>
       </div>
       <div id="files-path" class="muted small"></div>
       <div id="files-list" role="listbox" aria-label="Folders and audio files"></div>
@@ -1377,6 +1445,12 @@
     <button id="to-start" class="t-button" data-key="returnToZero" data-tip="Return to zero{key}" title="Return to zero (Home)" aria-label="Return to zero">
       <svg viewBox="0 0 16 16"><path d="M3 3h2v10H3zM13 3v10L6 8z"/></svg>
     </button>
+    <button id="bar-back" class="t-button" data-key="barBack" data-tip="Back one bar{key}" title="Back one bar" aria-label="Back one bar">
+      <svg viewBox="0 0 16 16"><path d="M8 3.5v9L2 8zM14.5 3.5v9L8.5 8z"/></svg>
+    </button>
+    <button id="bar-forward" class="t-button" data-key="barForward" data-tip="Forward one bar{key}" title="Forward one bar" aria-label="Forward one bar">
+      <svg viewBox="0 0 16 16"><path d="M1.5 3.5v9L7.5 8zM8 3.5v9L14 8z"/></svg>
+    </button>
     <button id="stop" class="t-button" data-key="togglePlay" data-tip="Stop{key}" title="Stop (Space)" aria-label="Stop">
       <svg viewBox="0 0 16 16"><path d="M3.5 3.5h9v9h-9z"/></svg>
     </button>
@@ -1484,6 +1558,16 @@
           <span>Phone remote</span>
         </button>
       </div>
+      <div id="remote-local" class="remote-local" hidden>
+        <div id="remote-qr" class="remote-qr" aria-label="QR code: scan it with the phone's camera"></div>
+        <div class="remote-local-text">
+          <div class="remote-title">In the studio</div>
+          <div id="remote-local-status" class="voice-status"></div>
+          <button id="remote-new-key" class="plain-button remote-new-key" type="button"
+                  title="Phones paired before have to scan the QR code again">New pairing code</button>
+        </div>
+      </div>
+      <div class="remote-title" id="remote-away-title" hidden>Away</div>
       <div id="remote-status" class="voice-status"></div>
     </div>
     <div class="ai-composer">
@@ -1503,6 +1587,7 @@
             <option value="Web Browser" data-colour="#4cc3bd">Web Browser</option>
           </select>
         </label>
+        <button id="ai-deep" class="ai-deep" type="button" aria-pressed="false">Deep</button>
         <button id="ai-clear" class="plain-button small" type="button" title="Start a new conversation">New chat</button>
         <button id="ai-stop" class="plain-button small" type="button" hidden>Stop</button>
         <button id="ai-send" class="plain-button small primary" type="button">Send</button>
@@ -1520,7 +1605,7 @@
   <div id="plugin-choice" class="scan-box" role="group" aria-labelledby="choice-title" aria-describedby="choice-text">
     <div class="scan-brand">Sonify</div>
     <h1 id="choice-title">Load your third-party plugins?</h1>
-    <p id="choice-text" class="scan-sub">Your VST3 and WCLAP plugins are checked before you use them. Choose No to skip that and use only Sonify's internal plugins this time.</p>
+    <p id="choice-text" class="scan-sub">Your VST3, CLAP and WCLAP plugins are checked before you use them. Choose No to skip that and use only Sonify's internal plugins this time.</p>
     <div class="choice-buttons">
       <button id="choice-yes" class="choice-button primary" type="button">Yes, load my third-party plugins</button>
       <button id="choice-no" class="choice-button" type="button">No, I'll use only Sonify's internal plugins</button>
@@ -1555,22 +1640,25 @@
           <svg viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v11H3z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span>Open…</span>
         </button>
       </div>
+      <!-- The colour that leads the palette (hub-song.js; Hub.setAppearance keeps its shades). -->
+      <div id="start-colours" class="start-colours" role="radiogroup" aria-label="Leading colour">
+        <span class="start-colours-label">Colour</span>
+      </div>
       <button id="start-close" class="icon-button" type="button" title="Go to the song (Esc)" aria-label="Close the Start page">×</button>
     </header>
-    <div class="start-columns">
-      <section class="start-box" aria-label="Recent files">
+    <div class="start-stack">
+      <section class="start-box start-recent" aria-label="Recent files">
         <div class="start-tab">Recent Files</div>
         <input id="start-search" type="search" placeholder="Search" aria-label="Search recent files" spellcheck="false">
         <div id="recent-list"></div>
         <p id="recent-empty" class="muted small">Songs you save or open show up here.</p>
       </section>
-      <section class="start-box" aria-label="Setup">
-        <div class="start-tab">Setup</div>
-        <div class="setup-grid">
-          <div id="setup-device" class="setup-cell wide">No audio device</div>
-          <div id="setup-rate" class="setup-cell">–</div>
-          <div id="setup-buffer" class="setup-cell">–</div>
-        </div>
+      <!-- Audio setup under the recent files: one low row, as tall as it needs. -->
+      <section class="start-box start-setup" aria-label="Audio setup">
+        <div class="start-setup-title">Audio</div>
+        <div id="setup-device" class="setup-cell setup-name">No audio device</div>
+        <div id="setup-rate" class="setup-cell">–</div>
+        <div id="setup-buffer" class="setup-cell">–</div>
         <button id="setup-configure" class="link-button" type="button">Configure Audio Device…</button>
       </section>
     </div>
@@ -1928,6 +2016,12 @@
       <select id="export-kbps" aria-label="Bit rate" hidden><option value="128">128 kbps</option><option value="192">192 kbps</option><option value="256">256 kbps</option><option value="320" selected>320 kbps</option></select>
       <span id="export-quality-note" class="muted small"></span></div>
     <label class="modal-row"><span>Sample Rate</span><select id="export-rate"></select></label>
+    <label id="export-mastering-row" class="modal-row" hidden><span>Mastering</span>
+      <select id="export-mastering" aria-label="Mastering">
+        <option value="on">With the Mastering section</option>
+        <option value="off">Without it</option>
+        <option value="both">Both (two files)</option>
+      </select></label>
     <div class="modal-row" role="radiogroup" aria-label="Range"><span>Range</span>
       <label class="export-choice"><input type="radio" name="export-range" value="song" checked> <span id="export-song-range">Song</span></label>
       <label class="export-choice"><input type="radio" name="export-range" value="loop"> <span id="export-loop-range">Loop</span></label>
@@ -2376,6 +2470,7 @@
 <script src="hub-cloud.js"></script>
 <script src="hub-content.js"></script>
 <script src="hub-scan.js"></script>
+<script src="qrcode.js"></script>
 <script src="hub-ai.js"></script>
 <script src="hub-browser.js"></script>
 <script src="hub-settings.js"></script>
@@ -2383,6 +2478,7 @@
 <script src="hub-blocks.js"></script>
 <script src="hub-devices.js"></script>
 <script src="hub-board.js"></script>
+<script src="hub-aimix.js"></script>
 <script src="hub-live.js"></script>
 <script src="hub-sampling.js"></script>
 <script src="hub-sampling-nodes.js"></script>

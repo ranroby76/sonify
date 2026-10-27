@@ -195,7 +195,32 @@
     receivedAt = performance.now();
     renderTime();
     Hub.send("transport", { action: "start" });
+    if (Hub.arrange && Hub.arrange.reveal) Hub.arrange.reveal(0);   // the clips' view goes back with it
   };
+
+  /** Back or forward one bar, as in every major DAW: Back from inside a bar goes to its start,
+      from its start to the bar before (playing, a press just past a bar line counts as on it, so
+      pressing again keeps stepping back); Forward goes to the next bar. On the song's bars (its
+      time signatures), and the clips' view follows. */
+  function stepBar(direction) {
+    const map = Hub.tempoMap;
+    const now = Hub.songPosition();
+    const bar = map.barAt(now);
+    let target;
+
+    if (direction < 0) {
+      const slack = transport.playing ? bar.length * 0.12 : 1e-6;
+      target = now - bar.start > slack ? bar.start : map.ppqOfBar(Math.max(0, bar.index - 1));
+    } else {
+      target = bar.end;
+    }
+
+    Hub.locate(target);
+    if (Hub.arrange && Hub.arrange.reveal) Hub.arrange.reveal(target);
+  }
+
+  Hub.commands.barBack = () => stepBar(-1);
+  Hub.commands.barForward = () => stepBar(1);
 
   // ---------------------------------------------------------------- record options
   // Precount, Preroll, Autopunch and Postroll, as Studio One's transport has them; the menu
@@ -341,6 +366,8 @@
     $("play").addEventListener("click", () => Hub.run("play"));
     $("stop").addEventListener("click", () => Hub.run("stop"));
     $("to-start").addEventListener("click", () => Hub.run("returnToZero"));
+    $("bar-back").addEventListener("click", () => Hub.run("barBack"));
+    $("bar-forward").addEventListener("click", () => Hub.run("barForward"));
     $("loop").addEventListener("click", () => Hub.run("toggleLoop"));
     $("record").addEventListener("click", () => Hub.run("toggleRecord"));
     for (const button of document.querySelectorAll(".rec-opt")) {

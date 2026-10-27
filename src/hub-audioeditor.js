@@ -140,7 +140,7 @@
     // The clip's extent along the bottom.
     if (clip) {
       const track = Hub.trackById(ae.trackId);
-      context.fillStyle = (track && track.colour) || "#25984d";
+      context.fillStyle = (track && track.colour) || Hub.theme.accent;
       context.fillRect(xOf(clip.start), height - 3, clip.length * ae.zoom, 3);
     }
     context.fillStyle = Hub.theme.line;
@@ -172,7 +172,7 @@
     const x0 = xOf(clip.start), x1 = xOf(clip.start + clip.length);
     const track = Hub.trackById(ae.trackId);
     context.globalAlpha = 0.28;
-    context.fillStyle = (track && track.colour) || "#25984d";
+    context.fillStyle = (track && track.colour) || Hub.theme.accent;
     context.fillRect(x0, 0, x1 - x0, height);
     context.globalAlpha = 1;
 
@@ -248,7 +248,7 @@
 
     // Where it was stretched before: marks along the top.
     if (clip.warp && clip.warp.length > 2) {
-      context.fillStyle = "#3fd47a";
+      context.fillStyle = Hub.accentLine();
       for (const [t] of clip.warp.slice(1, -1)) {
         const s = t - (clip.audioOffset || 0);
         if (s <= 0 || s >= clip.audioLength) continue;
@@ -266,9 +266,9 @@
     if (!ae.stretcher || !ae.stretch) return;
     const { from, to } = ae.stretch;
     const a = xOfShown(clip, from), b = xOfShown(clip, to);
-    context.fillStyle = "rgba(37, 152, 77, 0.22)";
+    context.fillStyle = Hub.accentRgba(0.22);
     context.fillRect(a, 0, b - a, height);
-    context.fillStyle = "#3fd47a";
+    context.fillStyle = Hub.accentLine();
     context.fillRect(Math.round(a) - 1, 0, 2, height);
     context.fillRect(Math.round(b) - 1, 0, 2, height);
 

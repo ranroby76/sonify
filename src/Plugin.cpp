@@ -7,9 +7,96 @@
 #include "Vst3Plugin.h"
 #include "WclapPlugin.h"
 
+//==============================================================================
+namespace
+{
+    struct Trust
+    {
+        juce::CriticalSection lock;
+        bool on = false;                     // false until the Library first says where plugins are
+        juce::StringArray files, folders, approved;
+    };
+
+    Trust& trust()
+    {
+        static Trust instance;
+        return instance;
+    }
+
+    /** A Windows network path (\\server\share\...) or a file on a mounted disk image or share (macOS
+        /Volumes, Linux /media and /mnt): never trusted for being inside a folder, only by name. */
+    bool isFarAway (const juce::String& path)
+    {
+        return path.startsWith ("\\\\") || path.startsWith ("//")
+            || path.startsWithIgnoreCase ("/Volumes/") || path.startsWith ("/media/") || path.startsWith ("/mnt/");
+    }
+
+    bool isNativeCode (const juce::File& file)
+    {
+        const auto name = file.getFileName().toLowerCase();
+        return name.endsWith (".vst3") || name.endsWith (".clap") || name.endsWith (".dll") || name.endsWith (".vst")
+            || name.endsWith (".component") || name.endsWith (".so") || name.endsWith (".dylib") || name.endsWith (".lv2")
+            || name.endsWith (".bundle");
+    }
+}
+
+void Plugin::setTrustedPlaces (const juce::StringArray& files, const juce::StringArray& folders)
+{
+    auto& t = trust();
+    const juce::ScopedLock sl (t.lock);
+    t.on = true;
+    t.files = files;
+    t.folders = folders;
+}
+
+void Plugin::approve (const juce::File& file)
+{
+    auto& t = trust();
+    const juce::ScopedLock sl (t.lock);
+    t.approved.addIfNotAlreadyThere (file.getFullPathName());
+}
+
+bool Plugin::isTrusted (const juce::File& file)
+{
+    if (! isNativeCode (file))
+        return true;
+
+    auto& t = trust();
+    const juce::ScopedLock sl (t.lock);
+
+    if (! t.on)
+        return true;
+
+    const auto path = file.getFullPathName();
+
+    if (t.files.contains (path, true) || t.approved.contains (path, true))
+        return true;
+
+    if (isFarAway (path))
+        return false;
+
+    for (const auto& folder : t.folders)
+        if (folder.isNotEmpty() && ! isFarAway (folder) && file.isAChildOf (juce::File (folder)))
+            return true;
+
+    return false;
+}
+
+juce::String Plugin::untrustedMessage (const juce::File& file)
+{
+    return file.getFileNameWithoutExtension() + " wasn't loaded: " + file.getFullPathName()
+         + " isn't among your plugins. If you trust it, add it in the Plug-In Manager (or put it in one of your Plugin Folders and rescan), then open this again.";
+}
+
 bool Plugin::isVst3 (const juce::File& file)
 {
     return file.getFileName().endsWithIgnoreCase (".vst3");
+}
+
+bool Plugin::isClap (const juce::File& file)
+{
+    // ".wclap" doesn't end in ".clap", so a WCLAP never looks like a native one.
+    return file.getFileName().endsWithIgnoreCase (".clap");
 }
 
 std::unique_ptr<Plugin> Plugin::load (const juce::File& file, const juce::String& pluginId, juce::String& error)
@@ -18,12 +105,22 @@ std::unique_ptr<Plugin> Plugin::load (const juce::File& file, const juce::String
     if (Builtins::isBuiltinId (pluginId))
         return Builtins::create (pluginId, error);
 
-    // Made in the Plugins Creator Studio: a folder of its own.
+    // Made in the Plugins Creator Studio: a .sip (an old folder of its own is found again by its id).
     if (MadePlugins::isMadeFile (file.getFullPathName()))
-        return CreatorPlugin::load (file, error);
+        return CreatorPlugin::load (MadePlugins::resolve (file, pluginId), error);
+
+    if (! isTrusted (file))
+    {
+        error = untrustedMessage (file);
+        return nullptr;
+    }
 
     if (isVst3 (file))
         return Vst3Plugin::load (file, pluginId, error);
+
+    // A native CLAP: the same host as a WCLAP, from the plugin's own library rather than WebAssembly.
+    if (isClap (file))
+        return WclapPlugin::loadNative (file, pluginId, error);
 
     return WclapPlugin::load (file, pluginId, error);
 }
@@ -46,8 +143,9 @@ std::vector<Plugin::Descriptor> Plugin::describe (const juce::File& file, juce::
     if (isVst3 (file))
         return Vst3Plugin::describe (file, error);
 
-    // A WCLAP lists its plugins as it loads.
-    const auto plugin = WclapPlugin::load (file, {}, error);
+    // A WCLAP and a native CLAP both list their plugins as they load.
+    const auto plugin = isClap (file) ? WclapPlugin::loadNative (file, {}, error)
+                                      : WclapPlugin::load (file, {}, error);
     return plugin != nullptr ? plugin->getPluginsInFile() : std::vector<Descriptor> {};
 }
 
@@ -76,6 +174,12 @@ std::unique_ptr<Plugin> Plugin::loadFormat (const juce::File& file, const juce::
     if (! file.exists())
     {
         error = file.getFullPathName() + " isn't there.";
+        return nullptr;
+    }
+
+    if (! isTrusted (file))
+    {
+        error = untrustedMessage (file);
         return nullptr;
     }
 

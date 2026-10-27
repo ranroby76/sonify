@@ -14,7 +14,7 @@
 //==============================================================================
 /**
     A hosted plugin, whatever its format: a WCLAP (a CLAP plugin compiled to WebAssembly),
-    a native VST3, or one made in the Plugins Creator Studio (CreatorPlugin.h). Tracks, insert chains, songs, undo and the page all work with this;
+    a native VST3, a native CLAP, or one made in the Plugins Creator Studio (CreatorPlugin.h). Tracks, insert chains, songs, undo and the page all work with this;
     only loading needs to know the format, and Plugin::load picks it from the file.
 
     Threads: loading, activating, state and parameters on the message thread; process()
@@ -54,14 +54,18 @@ public:
     virtual ~Plugin() = default;
 
     //==============================================================================
-    /** Loads the plugin with this id from a file: a .vst3, or a WCLAP (.wasm, a .wclap
-        bundle folder or a .wclap.tar.gz). An empty id means the file's first plugin. */
+    /** Loads the plugin with this id from a file: a .vst3, a native .clap, or a WCLAP (.wasm, a
+        .wclap bundle folder or a .wclap.tar.gz). An empty id means the file's first plugin. */
     static std::unique_ptr<Plugin> load (const juce::File& file, const juce::String& pluginId, juce::String& error);
 
     /** Every plugin in a file, for the Browser's library. */
     static std::vector<Descriptor> describe (const juce::File& file, juce::String& error);
 
     static bool isVst3 (const juce::File& file);
+
+    /** A native CLAP plugin's file: a .clap library, or a .clap bundle folder on a Mac. A WCLAP
+        (.wclap) is not one: it's WebAssembly, and WclapPlugin loads it its own way. */
+    static bool isClap (const juce::File& file);
 
     //==============================================================================
     // Plugins loaded straight from their files, by format (the Sampling Studio's nodes):
@@ -85,6 +89,27 @@ public:
 
     /** Whether a file (or a bundle folder) is a plugin of that format, by its name. */
     static bool looksLikePlugin (const juce::File& file, const juce::String& format);
+
+    //==============================================================================
+    // Trust: a native plugin (VST3, native CLAP, VST2, AU, LV2) is real code with the user's own
+    // rights, so Sonify loads one only from a place the user chose: a file of the Library (scanned
+    // or added by hand), a file inside one of its Plugin Folders or the system's plugin folders,
+    // or a file the user picked this run. A song, a container, a sampling preset or an AI request
+    // naming any other file (a network share, a disk image) loads nothing. WCLAPs and plugins made
+    // in Sonify run in their sandbox and need no trust. Until setTrustedPlaces is first called (a
+    // scanning copy of Sonify, tests) every file is trusted. Any thread.
+
+    /** The Library's files and folders, every time they change. */
+    static void setTrustedPlaces (const juce::StringArray& files, const juce::StringArray& folders);
+
+    /** A file the user picked themselves (a file chooser, a click in a folder list): trusted this run. */
+    static void approve (const juce::File& file);
+
+    /** Whether a native plugin's file may load (any file that isn't native code: yes). */
+    static bool isTrusted (const juce::File& file);
+
+    /** Why an untrusted file didn't load, for the song's problems. */
+    static juce::String untrustedMessage (const juce::File& file);
 
     /** Whether the song is being rendered faster than real time (a mixdown) rather than played
         to the device: plugins that read files as they play wait for their reads then, instead

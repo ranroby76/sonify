@@ -123,7 +123,7 @@
 
     if (!plugin) {
       const head = element("div", "slot-head");
-      head.appendChild(element("div", "slot-name", "Test Synth"));
+      head.appendChild(element("div", "slot-name", "Cayman"));
       const open = element("button", "plain-button small", "Open");
       open.type = "button";
       open.title = "Its window: two oscillators, a filter, envelopes, an LFO and more";
@@ -142,7 +142,7 @@
     head.appendChild(instrumentName);
     head.appendChild(screenButton(track.id, 0, plugin));
     const remove = element("button", "slot-remove", "×");
-    remove.title = "Remove, back to the Test Synth";
+    remove.title = "Remove, back to Cayman";
     remove.setAttribute("aria-label", remove.title);
     remove.addEventListener("click", () => Hub.send("clearInstrument", { trackId: track.id }));
     head.appendChild(remove);

@@ -13,7 +13,9 @@
 /**
     Sonify devices on disk, and the compiler that makes them.
 
-    A device is one file, <name>.sonidev, in My Devices (<user data>\Devices): a zip holding
+    A device is one file, <name>.sip, with every other Sonify plugin in <user data>\Plugins
+    (SipFiles.h: its kind "midi"; before, a <name>.sonidev in <user data>\Devices): a zip holding
+        sip.json        what kind of Sonify plugin it is: a MIDI FX (Sip::Manifest)
         device.json     what it is: its id (the same for good), name, description, version
         source\*        its code (C++ against sonify_device.h)
         module.wasm     its last good build (any Sonify plays it without compiling)
@@ -33,7 +35,8 @@
 */
 namespace Devices
 {
-    constexpr const char* fileExtension = ".sonidev";
+    constexpr const char* fileExtension = ".sip";         // SipFiles.h: one format for every Sonify plugin
+    constexpr const char* oldFileExtension = ".sonidev";  // what it was before (read, never written)
 
     //==========================================================================
     struct DeviceFile
@@ -85,19 +88,26 @@ namespace Devices
     };
 
     //==========================================================================
-    /** My Devices: <user data>\Devices (made when first needed). Sonify sets where its user
-        data is; until it does, Documents\Sonify\Devices. */
+    /** The devices' own data: <user data>\Devices (made when first needed), holding what isn't in
+        their files: Protection and Reference code. Sonify sets where its user data is; until it
+        does, Documents\Sonify\Devices. */
     juce::File myDevicesFolder();
     void setMyDevicesFolder (const juce::File& folder);
 
-    /** The .sonidev files in My Devices, by name. */
+    /** Where the devices' files are: the Sonify plugins' folder, <user data>\Plugins (Sip::folder). */
+    juce::File devicesFolder();
+
+    /** Whether a file is a MIDI device: a .sip of kind midi, or an old .sonidev. */
+    bool isDeviceFile (const juce::File& file);
+
+    /** My Devices: the MIDI FX among the .sip files, by name. */
     juce::Array<juce::File> listMyDevices();
 
-    /** A free file in My Devices for a device of this name. */
+    /** A free file in the plugins' folder for a device of this name. */
     juce::File freeFileFor (const juce::String& name, const juce::File& except = {});
 
     /** Where a MIDI FX's protection (protection.json, Licences::loadProtection) is kept on its
-        maker's computer: My Devices\Protection\<its id>. */
+        maker's computer: <user data>\Devices\Protection\<its id>. */
     juce::File protectionFolderOf (const juce::String& deviceId);
 
     /** Whether this computer is the MIDI FX's maker's: it holds its protection. */

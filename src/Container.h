@@ -445,6 +445,12 @@ public:
     /** Mutes a node (Colosseum's M: the graph's bypass), letting its notes go. */
     void setNodeMuted (juce::AudioProcessorGraph::NodeID id, bool muted);
 
+    /** A plugin's node, in here or in a rack inside (its window's ON/OFF): getPluginMuted says 1
+        muted, 0 playing, -1 when it isn't in here; setPluginMuted mutes it or not, false when it
+        isn't in here. */
+    int getPluginMuted (const Plugin& plugin) const;
+    bool setPluginMuted (const Plugin& plugin, bool muted);
+
     /** Every PluginNode in this container and in the containers inside it. */
     void forEachPluginNode (const std::function<void (PluginNode&)>& fn) const;
 

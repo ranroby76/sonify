@@ -175,8 +175,10 @@ private:
         juce::TextButton pluginButton { "Export Plugin" };   // VST3, CLAP (and on a Mac, Audio Unit) files
         juce::TextButton panicButton { "Panic" };   // every note off: stuck notes stop
 
-        // The Edit tab's row: start over with an automatic panel.
+        // The Edit tab's row: start over with an automatic panel; the Gallery's knobs, sliders and
+        // switches, dragged onto the panel (or onto a control, to wear one).
         juce::TextButton autoButton { "Auto layout" };
+        juce::TextButton galleryButton { juce::String::fromUTF8 ("Gallery\xe2\x80\xa6") };
 
         // The Play tab's row: the preset manager.
         juce::ComboBox presetBox;

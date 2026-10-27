@@ -381,7 +381,7 @@
     const defaults = settings && settings.defaultPluginFolders ? settings.defaultPluginFolders : [];
     $("set-folders-note").textContent = ownOnly
       ? "Third-party plugins are off until Sonify starts again, so the folders can't change now."
-      : defaults.length ? `The usual folders: ${defaults.join(" and ")}. Sonify loads VST3 and WCLAP plugins.` : "";
+      : defaults.length ? `The usual folders: ${defaults.join(" and ")}. Sonify loads VST3, CLAP and WCLAP plugins.` : "";
   }
 
   // ---------------------------------------------------------------- audio / MIDI

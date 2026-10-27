@@ -83,6 +83,10 @@ public:
 
     static juce::Array<ElementSource> findElements (const juce::File& projectFolder);
 
+    /** The project's own code (modules/ and elements/) checked before any build: it may bring in
+        only files of the project and the compiler's own headers (SourceGuard). "" when fine. */
+    static juce::String checkSources (const juce::File& projectFolder);
+
     /** The toolbox's own elements made the same way: the drop-down list (stella_builtin_elements.cpp),
         the 3D displays (stella_builtin_3d.cpp) and the panel painter (stella_builtin_paint.cpp).
         Every build has them; a project's element of the same name replaces one. */

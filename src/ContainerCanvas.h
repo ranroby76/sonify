@@ -170,7 +170,7 @@ public:
     void itemDragExit (const SourceDetails& details) override;
     void itemDropped (const SourceDetails& details) override;
 
-    // Plugin files dragged in from the computer's folders (.vst3, .clap, .sonifyplugin).
+    // Plugin files dragged in from the computer's folders (.vst3, .clap, .sip).
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
     void fileDragEnter (const juce::StringArray& files, int x, int y) override;
     void fileDragMove (const juce::StringArray& files, int x, int y) override;

@@ -16,7 +16,8 @@
     Sonify AI: the AI driving the DAW with AiTools, acting and talking as Stella AI does.
 
     A request goes to Fanan's server (its sonifyChat function holds the AI service's key,
-    picks the model and charges the Fanan account's credits, as for Stella AI Studio). The
+    picks the model by the mode the request says and charges the Fanan account's credits, as
+    for Stella AI Studio; the modes are below, at setMode). The
     AI answers with text and tool calls; the tools run here and their results go back, until
     it's done, the user presses Stop, or the step limit is reached. Everything one request
     does is one undo step: Sonify takes the song before and after it.
@@ -98,6 +99,20 @@ public:
 
     bool isBusy() const noexcept                    { return busy; }
 
+    /** Which model Fanan's server asks: the mode it picks by. Sonify AI's is "agent" (Sonnet:
+        the everyday requests) and becomes "deep" (Opus: the strongest) when the user turns Deep
+        on, or by itself once a request has taken deepAfterSteps steps, since a request that long
+        is a big job. Another AI on the same account says its own once (the Device Studio's
+        "device": it writes code, so always the strongest). */
+    void setMode (const juce::String& newMode);
+
+    /** Deep: every request to the strongest model (Sonify AI's switch in the AI panel). */
+    void setDeep (bool shouldBeDeep);
+    bool isDeep() const noexcept                    { return deep; }
+
+    /** The mode the request under way goes in, Deep and the step-up counted. */
+    juce::String getMode() const;
+
     /** How the last request ended, for voice control's beeps: done, done with a question for
         the user, or stopped short (failed, declined, cut off, stopped). */
     enum class Outcome { none, done, question, problem };
@@ -117,6 +132,7 @@ public:
     void restoreConversation (const juce::var& saved);
 
     static constexpr int maxSteps = 40;             // AI steps in one request
+    static constexpr int deepAfterSteps = 8;        // a request this long finishes on the strongest model
     static constexpr int maxHistory = 80;           // messages kept in the conversation
     static constexpr int maxAnswerTokens = 12000;   // one step's answer, thinking included
 
@@ -155,6 +171,8 @@ private:
     juce::Array<juce::var> messages;   // the conversation, in the AI's own format
     juce::Array<juce::var> entries;    // what the page shows
     juce::String requestText;
+    juce::String mode { "agent" };     // what it asks for; "deep" while the request is a big one
+    bool deep = false;                 // the user's Deep switch: every request to the strongest
     bool busy = false, stopping = false, changed = false;
     Outcome lastOutcome = Outcome::none;
     int steps = 0;

@@ -48,6 +48,21 @@ Workspace::PluginView::PluginView()
     autoButton.setTooltip ("Replace the GUI with a plain automatic one: a group per module, a control per parameter");
     autoButton.onClick = [this] { if (onAutoLayout != nullptr) onAutoLayout(); };
 
+    // The Gallery beside the panel: drag a knob, slider or switch onto it (onto a control: it
+    // wears that look, keeping its size and settings), or double-click one to add it.
+    galleryButton.setTooltip ("Knobs, sliders and switches from the Gallery: drag one onto the panel, or onto a control "
+                              "to give it that look (it keeps its size and settings). Double-click one to add it");
+    galleryButton.onClick = [this]
+    {
+        KnobStudio::showGallery ("Gallery: drag one onto your plugin",
+                                 [safeThis = juce::Component::SafePointer<PluginView> (this)] (const juce::File& file)
+                                 {
+                                     if (safeThis != nullptr)
+                                         safeThis->canvas.addGalleryItem (file);
+                                 },
+                                 false, true, this);
+    };
+
     for (auto* c : std::initializer_list<juce::Component*> { &editTab, &playTab, &logButton, &exportButton, &pluginButton, &panicButton })
         addChildComponent (c);
 
@@ -88,6 +103,7 @@ Workspace::PluginView::PluginView()
     for (auto* c : std::initializer_list<juce::Component*> { &presetBox, &previousButton, &nextButton, &saveButton, &saveAsButton, &loadButton, &moreButton })
         addChildComponent (c);
     addChildComponent (autoButton);
+    addChildComponent (galleryButton);
     addChildComponent (canvas);
 
     // The toolbox: drag a primitive onto the window, or double-click it.
@@ -126,6 +142,7 @@ void Workspace::PluginView::setPlayMode (bool shouldPlay)
     const bool hasProject = projectName.isNotEmpty();
 
     autoButton.setVisible (hasProject && ! playMode);
+    galleryButton.setVisible (hasProject && ! playMode);
     toolbox.setVisible (hasProject && ! playMode);
 
     for (auto* c : std::initializer_list<juce::Component*> { &presetBox, &previousButton, &nextButton, &saveButton, &saveAsButton, &loadButton, &moreButton })
@@ -280,6 +297,8 @@ void Workspace::PluginView::resized()
     // Edit's row: Auto layout, then how editing works.
     auto tools = row;
     autoButton.setBounds (tools.removeFromLeft (104));
+    tools.removeFromLeft (8);
+    galleryButton.setBounds (tools.removeFromLeft (96));
     tools.removeFromLeft (18);
     hintArea = tools;
 

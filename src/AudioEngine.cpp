@@ -58,6 +58,13 @@ public:
         // out at its start, so every file starts with the song.
         mainSkip = engine.renderLatency (0, false, false);
 
+        // The Mastering section, when it's in this render, makes Main's mix later by its look-ahead
+        // (the unmastered file, taken before it, isn't).
+        unmasteredSkip = mainSkip;
+
+        if (settings.freezeTrackId == 0 && settings.mastered && engine.mastering.settings.isOn (MasterSection::on))
+            mainSkip += engine.mastering.getChainLatency();
+
         for (const auto& stem : settings.stems)
             stemSkips.push_back (engine.renderLatency (stem.trackId, false, false));
 
@@ -81,6 +88,9 @@ public:
 
         if (settings.freezeTrackId != 0)
             targets.push_back ({ settings.freezeFile, {}, freezeTarget, nullptr });
+
+        if (settings.unmasteredFile != juce::File() && settings.freezeTrackId == 0)
+            targets.push_back ({ settings.unmasteredFile, {}, unmasteredTarget, nullptr });
 
         for (auto& target : targets)
         {
@@ -125,6 +135,15 @@ public:
             engine.freezeTap = &freeze;
         }
 
+        // Main's mix before the Mastering section (its unmastered file), and the section left out
+        // of a render that's to be without it.
+        juce::AudioBuffer<float> unmastered (2, blockSize);
+
+        if (settings.unmasteredFile != juce::File() && settings.freezeTrackId == 0)
+            engine.unmasteredTap = &unmastered;
+
+        engine.masteringLeftOut.store (! settings.mastered);
+
         const auto renderShare = direct ? 1.0 : 0.6;
         juce::AudioBuffer<float> buffer (2, blockSize);
         juce::int64 done = 0;
@@ -134,7 +153,8 @@ public:
         // the latest needs, so each still has its whole length.
         const auto skipOf = [this] (const Target& target) -> juce::int64
         {
-            if (target.stem == freezeTarget)  return freezeSkip;
+            if (target.stem == freezeTarget)      return freezeSkip;
+            if (target.stem == unmasteredTarget)  return unmasteredSkip;
             if (target.stem < 0)              return mainSkip;
             return juce::isPositiveAndBelow (target.stem, static_cast<int> (stemSkips.size())) ? stemSkips[static_cast<size_t> (target.stem)] : 0;
         };
@@ -152,6 +172,8 @@ public:
             {
                 engine.stemTaps = nullptr;
                 engine.freezeTap = nullptr;
+                engine.unmasteredTap = nullptr;
+                engine.masteringLeftOut.store (false);
                 result = juce::Result::fail ("Cancelled");
                 removeAll();
                 return;
@@ -190,6 +212,10 @@ public:
                 {
                     target.writer->writeFromAudioSampleBuffer (freeze.buffer, offset, length);
                 }
+                else if (target.stem == unmasteredTarget)
+                {
+                    target.writer->writeFromAudioSampleBuffer (unmastered, offset, length);
+                }
                 else if (target.stem < 0)
                 {
                     target.writer->writeFromAudioSampleBuffer (buffer, offset, length);
@@ -208,6 +234,8 @@ public:
 
         engine.stemTaps = nullptr;
         engine.freezeTap = nullptr;
+        engine.unmasteredTap = nullptr;
+        engine.masteringLeftOut.store (false);
 
         for (auto& target : targets)
             target.writer.reset();   // each WAV finished
@@ -385,18 +413,19 @@ public:
     }
 
     static constexpr int freezeTarget = -2;
+    static constexpr int unmasteredTarget = -3;
 
     struct Target
     {
         juce::File file, render;
-        int stem = -1;   // -1: Main's mix; freezeTarget: a track's freeze
+        int stem = -1;   // -1: Main's mix; freezeTarget: a track's freeze; unmasteredTarget: Main's mix before the Mastering section
         std::unique_ptr<juce::AudioFormatWriter> writer;
         bool made = false;
     };
 
     AudioEngine& engine;
     MixdownSettings settings;
-    juce::int64 mainSkip = 0, freezeSkip = 0;   // samples each file leaves out at its start
+    juce::int64 mainSkip = 0, freezeSkip = 0, unmasteredSkip = 0;   // samples each file leaves out at its start
     std::vector<juce::int64> stemSkips;
     const juce::int64 rangeSamples, totalSamples;
     const double sampleRate;
@@ -1275,6 +1304,7 @@ void AudioEngine::clearSong (bool keepLiveShow)
     mainKept = juce::var();   // a DAWproject's placeholders on Main
     setBoardMixing (false);
     resetBoard();
+    mastering.settings.reset();
 
     transport.setTempoMap ({});   // 120 BPM, 4/4, C major
     setMainAutomation ({});
@@ -3189,6 +3219,10 @@ void AudioEngine::beginAudioRecording()
         recording.trackId = track->id;
         recording.file = file;
         recording.writer = std::make_unique<juce::AudioFormatWriter::ThreadedWriter> (writer.release(), writerThread, 1 << 17);
+
+        // Room for its waveform, three hours of it, made here so the audio thread never allocates.
+        recording.peaks = std::make_unique<Track::LivePeaks>();
+        recording.peaks->data.assign (2 * static_cast<size_t> (getPlaybackRate() * 3.0 * 3600.0 / Track::LivePeaks::peakBucket + 2.0), 0);
         audioRecordings.push_back (std::move (recording));
     }
 
@@ -3205,11 +3239,46 @@ void AudioEngine::beginAudioRecording()
         const juce::SpinLock::ScopedLockType lock (graphLock);
 
         for (auto& recording : audioRecordings)
+        {
             if (auto* track = findTrack (recording.trackId))
+            {
                 track->recorder = recording.writer.get();
+                track->livePeaks = recording.peaks.get();
+            }
+        }
     }
 
     audioTakeActive = true;
+}
+
+std::vector<AudioEngine::LiveWave> AudioEngine::getLiveWaves() const
+{
+    std::vector<LiveWave> waves;
+
+    if (! audioTakeActive || takePasses.empty())
+        return waves;
+
+    // The take shows from its latest pass, as late into the file as the plugins' delay
+    // compensation makes it (as its clip will).
+    const auto& pass = takePasses.back();
+    const auto firstBucket = (pass.fileSample + recordCompensation) / Track::LivePeaks::peakBucket;
+
+    for (const auto& recording : audioRecordings)
+    {
+        if (recording.peaks == nullptr)
+            continue;
+
+        LiveWave wave;
+        wave.trackId = recording.trackId;
+        wave.ppq = pass.ppq;
+        wave.firstBucket = firstBucket;
+        wave.buckets = recording.peaks->buckets.load (std::memory_order_acquire);
+        wave.data = recording.peaks->data.data();
+        wave.rate = getPlaybackRate();
+        waves.push_back (wave);
+    }
+
+    return waves;
 }
 
 void AudioEngine::finishAudioRecording()
@@ -3218,8 +3287,13 @@ void AudioEngine::finishAudioRecording()
         const juce::SpinLock::ScopedLockType lock (graphLock);
 
         for (auto& recording : audioRecordings)
+        {
             if (auto* track = findTrack (recording.trackId))
+            {
                 track->recorder = nullptr;
+                track->livePeaks = nullptr;
+            }
+        }
     }
 
     // Like replacing takes: with the loop on, the last time round is the take.
@@ -3273,8 +3347,13 @@ void AudioEngine::abandonAudioRecording()
         const juce::SpinLock::ScopedLockType lock (graphLock);
 
         for (auto& recording : audioRecordings)
+        {
             if (auto* track = findTrack (recording.trackId))
+            {
                 track->recorder = nullptr;
+                track->livePeaks = nullptr;
+            }
+        }
     }
 
     for (auto& recording : audioRecordings)
@@ -4985,6 +5064,8 @@ juce::Result AudioEngine::loadPlugin (int channel, const juce::File& file, const
             track->instrument = std::move (newPlugin);
         }
 
+        track->instrumentOff.store (false);   // a new instrument comes in on
+
         track->requestNotesOff();
 
         // Like Studio One: a track takes its instrument's name until you name it yourself.
@@ -5583,6 +5664,103 @@ bool AudioEngine::locatePlugin (const Plugin& plugin, int& channel, int& slot) c
     return inChain (mainInserts, mainChannel);
 }
 
+int AudioEngine::getPluginOn (const Plugin& plugin) const
+{
+    // In a rack (on any channel, however deep): its node's mute.
+    const auto inRack = [&plugin] (const Plugin* holder)
+    {
+        if (auto* container = dynamic_cast<const ContainerPlugin*> (holder))
+            return container->getPluginMuted (plugin);
+
+        return -1;
+    };
+
+    const auto inChain = [&] (const EffectChain& chain)
+    {
+        for (int i = 0; i < chain.size(); ++i)
+        {
+            const auto* insert = chain.at (i);
+
+            if (insert->plugin.get() == &plugin)
+                return insert->bypassed.load() ? 0 : 1;
+
+            if (const auto muted = inRack (insert->plugin.get()); muted >= 0)
+                return muted > 0 ? 0 : 1;
+        }
+
+        return -1;
+    };
+
+    for (const auto& track : tracks)
+    {
+        if (track->instrument.get() == &plugin)
+            return track->instrumentOff.load() ? 0 : 1;
+
+        if (const auto muted = inRack (track->instrument.get()); muted >= 0)
+            return muted > 0 ? 0 : 1;
+
+        if (const auto on = inChain (track->inserts); on >= 0)
+            return on;
+    }
+
+    return inChain (mainInserts);
+}
+
+bool AudioEngine::setPluginOn (const Plugin& plugin, bool on)
+{
+    const auto inRack = [&plugin, on] (Plugin* holder)
+    {
+        if (auto* container = dynamic_cast<ContainerPlugin*> (holder))
+            return container->setPluginMuted (plugin, ! on);
+
+        return false;
+    };
+
+    const auto inChain = [&] (EffectChain& chain, int channel)
+    {
+        for (int i = 0; i < chain.size(); ++i)
+        {
+            auto* insert = chain.at (i);
+
+            if (insert->plugin.get() == &plugin)
+            {
+                setInsertBypass (channel, insert->id, ! on);
+                return true;
+            }
+
+            if (inRack (insert->plugin.get()))
+            {
+                contentChanged (channel);
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    for (const auto& track : tracks)
+    {
+        if (track->instrument.get() == &plugin)
+        {
+            if (track->instrumentOff.exchange (! on) != ! on)
+                contentChanged (*track);
+
+            return true;
+        }
+
+        if (inRack (track->instrument.get()))
+        {
+            contentChanged (*track);
+            return true;
+        }
+
+        if (inChain (track->inserts, track->id))
+            return true;
+    }
+
+    return inChain (mainInserts, mainChannel);
+}
+
 double AudioEngine::setPluginParameter (int channel, int insertId, int index, double value)
 {
     auto* plugin = getPlugin (channel, insertId);
@@ -5963,6 +6141,7 @@ void AudioEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
         keyScratch.setSize (2, mix.getNumSamples(), false, true, true);
         mainInserts.prepare (currentBlockSize);
         board.prepare (currentSampleRate, currentBlockSize);
+        mastering.prepare (currentSampleRate, mix.getNumSamples());
         liveShow.prepare (currentSampleRate, mix.getNumSamples());
         consoleQuiet.setSize (2, mix.getNumSamples(), false, true, true);
         showMix.setSize (4, mix.getNumSamples(), false, true, true);
@@ -6695,29 +6874,16 @@ void AudioEngine::renderBlock (const float* const* inputChannelData, int numInpu
                         track->dropKeyBlock();
                     }
 
-                    // On the board: its dry sound through its strip, into the board's bus and sends.
+                    // On the board: its dry sound through its strip's chain (the preamp, filters, EQ and
+                    // compressor). Its dynamic EQ, fader and sends come once every strip's chain has run
+                    // (below), so it can listen to any other strip, whatever order they play in.
                     if (boardActive)
                     {
-                        auto& strip = track->board;
-                        const bool onBoard = ! strip.settings.isOn (AnalogBoard::mute) && ! inputUnheard
-                                             && (! anyBoardSolo || strip.settings.isOn (AnalogBoard::solo));
+                        track->board.processChain (track->getBlock (0), track->getBlock (1), juce::jmin (mixSamples, track->getBlockSamples()),
+                                                   blockCount, settle);
 
-                        strip.process (track->getBlock (0), track->getBlock (1), juce::jmin (mixSamples, track->getBlockSamples()),
-                                       board, onBoard, settle);
-
-                        if (const auto made = strip.getOutputSamples(); made > 0)
-                        {
-                            const auto peakOf = [made] (const float* data)
-                            {
-                                const auto range = juce::FloatVectorOperations::findMinAndMax (data, made);
-                                return juce::jmax (-range.getStart(), range.getEnd());
-                            };
-
-                            track->showLevels (peakOf (strip.getOutput (0)), peakOf (strip.getOutput (1)));
-                        }
-
-                        if (stemTaps != nullptr)
-                            stemTaps->takeBoard (*track, mixSamples);
+                        // (Heard on the board, for its finish: not muted, not left out by a solo, its input heard.)
+                        track->boardInputUnheard = inputUnheard;
 
                         if (quietingConsole)
                             track->quietInserts (songPosition);
@@ -6764,6 +6930,50 @@ void AudioEngine::renderBlock (const float* const* inputChannelData, int numInpu
 
                     if (stemTaps != nullptr)
                         stemTaps->take (*track, mixSamples);
+                }
+
+                // On the board: each strip's dynamic EQ (hearing its key: its own sound, or another
+                // strip's after that strip's compressor), then its pan and fader, into the board's bus
+                // and sends.
+                if (boardActive)
+                {
+                    for (const auto& track : tracks)
+                    {
+                        auto& strip = track->board;
+
+                        if (track->isMixChannel() || ! strip.isWaitingToFinish())
+                            continue;
+
+                        const auto keyId = strip.getKeyTrack();
+                        const Track* keyTrack = keyId == 0 || keyId == track->id ? track.get() : findTrack (keyId);
+                        const float* keyLeft = nullptr;
+                        const float* keyRight = nullptr;
+
+                        if (keyTrack != nullptr && ! keyTrack->isMixChannel() && keyTrack->board.getOutputSamples() >= strip.getOutputSamples())
+                        {
+                            keyLeft = keyTrack->board.getKey (0, blockCount);
+                            keyRight = keyTrack->board.getKey (1, blockCount);
+                        }
+
+                        const bool onBoard = ! strip.settings.isOn (AnalogBoard::mute) && ! track->boardInputUnheard
+                                             && (! anyBoardSolo || strip.settings.isOn (AnalogBoard::solo));
+
+                        strip.finish (keyLeft, keyRight, board, onBoard, settle);
+
+                        if (const auto made = strip.getOutputSamples(); made > 0)
+                        {
+                            const auto peakOf = [made] (const float* data)
+                            {
+                                const auto range = juce::FloatVectorOperations::findMinAndMax (data, made);
+                                return juce::jmax (-range.getStart(), range.getEnd());
+                            };
+
+                            track->showLevels (peakOf (strip.getOutput (0)), peakOf (strip.getOutput (1)));
+                        }
+
+                        if (stemTaps != nullptr)
+                            stemTaps->takeBoard (*track, mixSamples);
+                    }
                 }
 
                 // What went straight to Main and the Subs, as late as the buses and FX channels.
@@ -6877,6 +7087,38 @@ void AudioEngine::renderBlock (const float* const* inputChannelData, int numInpu
 
         mix.applyGainRamp (0, mixSamples, lastMasterGain, masterGain);
         lastMasterGain = masterGain;
+
+        // The Mastering section: the last thing on Main, after its fader (the Console's, or the
+        // board's Master), before the Subs take Main's mix. Not on the Live Show while it plays
+        // (it has its own effects), nor a render without it; a mixdown's unmastered file takes Main first.
+        {
+            if (unmasteredTap != nullptr && unmasteredTap->getNumSamples() >= mixSamples)
+            {
+                unmasteredTap->copyFrom (0, 0, mix, 0, 0, mixSamples);
+                unmasteredTap->copyFrom (1, 0, mix, 1, 0, mixSamples);
+            }
+
+            const bool playingSong = transport.getNumSegments() > 0;
+
+            if (playingSong && ! masteringWasPlaying)
+                mastering.meters.resetRequested.store (true);   // its integrated loudness: from this play on
+
+            masteringWasPlaying = playingSong;
+
+            const bool leftOut = (toDevice && liveActive) || freezeTap != nullptr || masteringLeftOut.load (std::memory_order_relaxed);
+            mastering.process (mix.getWritePointer (0), mix.getWritePointer (1), mixSamples, leftOut, playingSong, settle);
+
+            // AI Mix's A/B: the original heard at the suggestion's loudness (the device only).
+            if (toDevice)
+            {
+                const auto trim = juce::Decibels::decibelsToGain (listenTrimDb.load (std::memory_order_relaxed));
+
+                if (! juce::approximatelyEqual (trim, 1.0f) || ! juce::approximatelyEqual (lastListenTrim, 1.0f))
+                    mix.applyGainRamp (0, mixSamples, lastListenTrim, trim);
+
+                lastListenTrim = trim;
+            }
+        }
 
         // Sub outputs: the Main mix where asked (as it is after the Main fader), then each one's fader.
         for (int slot = 0; slot < plan.subCount; ++slot)

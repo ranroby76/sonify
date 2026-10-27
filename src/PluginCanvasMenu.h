@@ -148,6 +148,11 @@ private:
     // What it does, under the title.
     juce::TextButton copyButton { "Copy" }, pasteButton { "Paste" }, duplicateButton { "Duplicate" };
     juce::ComboBox layerBox;
+    // Knobs, sliders and switches: two long buttons under the row, one over the other.
+    juce::TextButton galleryButton { "Replace this item with gallery item" };
+    juce::TextButton knobStudioButton { "Edit in Knob Studio" };
+    juce::ToggleButton similarToggle { "Include similars" };   // beside it: every control like this one
+    int actionsSize() const;    // the actions' height: the row, and the two buttons when they show
     juce::Rectangle<int> actionsArea;
     TabStrip tabStrip;
 
@@ -155,12 +160,11 @@ private:
     juce::ComboBox type, source, mode, style, pictureMode, lowKey, highKey;
     juce::TextEditor param, roles[4];   // parameter ids, typed in
     juce::TextEditor label, options, textSize;
-    juce::ToggleButton boldToggle { "Bold" }, similarToggle { "Include similars" };
+    juce::ToggleButton boldToggle { "Bold" };
     juce::ComboBox fontBox;     // its text's font (FontLibrary's)
     FontSample fontSample;
     ColourSwatchButton colour { "Colour" };
-    juce::TextButton pictureButton, knobStudioButton { "Design it in the Knob Studio" }, removeButton { "Delete" },
-                     windowButton { "Window size and colours" };
+    juce::TextButton pictureButton, removeButton { "Delete" }, windowButton { "Window size and colours" };
     juce::StringArray roleNames;
     juce::StringArray lookNames;   // the Look list's entries, by item id - 1
     static constexpr int standardLookId = 9000;   // the Look list's "Standard look": none chosen

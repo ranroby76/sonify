@@ -6,6 +6,7 @@
 #include "CreatorStudio.h"
 #include "Edits.h"
 #include "Licences.h"
+#include "PluginHeader.h"
 #include "Song.h"
 
 #include "BinaryData.h"
@@ -24,13 +25,19 @@ namespace
         return SettingsFolder::file ("network.json", "FananWebHub-network.json");
     }
 
+    // The AI panel's own settings: Deep (every request to the strongest model), kept between runs.
+    juce::File aiSettingsFile()
+    {
+        return SettingsFolder::file ("fanan-ai.json");
+    }
+
     // Voice control turns speech into words through a paid service (Fanan's sonifyListen): it's
     // kept, but not offered for now. true brings it back (the AI panel shows its row again).
     constexpr bool voiceControlOffered = false;
 
-    // The phone remote (Sonify AI from the page /sonify on a phone): kept, but not offered for
-    // now. true brings it back (the AI panel shows its row again).
-    constexpr bool phoneRemoteOffered = false;
+    // The phone remote (Fanan AI from a phone, by text: in the studio on the local network, away
+    // through the page /sonify on Fanan's site). false hides its row in the AI panel.
+    constexpr bool phoneRemoteOffered = true;
 
     /** The input voice control listens to, by its name and channels (songs have their own inputs). */
     juce::File voiceInputFile()
@@ -71,10 +78,32 @@ namespace
         return SettingsFolder::file ("tabs.json", "FananWebHub-tabs.json");
     }
 
-    /** One browser profile for every tab: cookies and sign-ins last between sessions. */
+    /** The tabs share the page's own browser profile (and so its running browser): a first tab
+        opens in a moment. Cookies and sign-ins last between sessions. */
     juce::File browserProfileFolder()
     {
-        return SettingsFolder::folder ("Browser", "Browser");
+        return SettingsFolder::webViewProfile();
+    }
+}
+
+namespace
+{
+    /** Where the user keeps plugins, for Plugin::isTrusted: native plugins load only from there. */
+    void trustLibrary (const Library& library)
+    {
+        juce::StringArray files (library.getAddedFiles()), folders (library.getFolders());
+
+        for (const auto& entry : library.getEntries())
+            files.addIfNotAlreadyThere (entry.file);
+
+        for (const auto& folder : Library::getDefaultFolders())
+            folders.addIfNotAlreadyThere (folder.getFullPathName());
+
+        for (const auto& format : Plugin::formatsForThisComputer())
+            if (const auto folder = Plugin::defaultFolderFor (format); folder != juce::File())
+                folders.addIfNotAlreadyThere (folder.getFullPathName());
+
+        Plugin::setTrustedPlaces (files, folders);
     }
 }
 
@@ -110,6 +139,58 @@ public:
 private:
     MainComponent& owner;
     const int id;
+};
+
+/** Sonify's own page: it loads only from Sonify itself. Anything else (a link or a web page
+    dropped on the window, a page script sending it elsewhere) is stopped, because whatever
+    page this view shows can drive the engine, the AI and the credits. A web plugin's screen
+    (its frame) may load its own address; a new window opens as a web tab, which can't reach
+    the engine. */
+class MainComponent::HubPageView final : public juce::WebBrowserComponent
+{
+public:
+    HubPageView (MainComponent& ownerIn, const Options& options) : WebBrowserComponent (options), owner (ownerIn) {}
+
+    bool pageAboutToLoad (const juce::String& url) override
+    {
+        if (isOwn (url))
+            return true;
+
+        juce::Logger::writeToLog ("Sonify's page stayed put: it doesn't load " + url.substring (0, 200));
+        return false;
+    }
+
+    void newWindowAttemptingToLoad (const juce::String& url) override
+    {
+        if (url.startsWithIgnoreCase ("https://") || url.startsWithIgnoreCase ("http://"))
+            owner.openWebTab (url, true);
+    }
+
+    /** The scheme, host and port of an address ("https://example.com:8080"). */
+    static juce::String originOf (const juce::String& url)
+    {
+        const auto scheme = url.upToFirstOccurrenceOf ("://", true, false);
+        const auto rest = url.fromFirstOccurrenceOf ("://", false, false);
+        return (scheme + rest.upToFirstOccurrenceOf ("/", false, false).upToFirstOccurrenceOf ("?", false, false)
+                            .upToFirstOccurrenceOf ("#", false, false)).toLowerCase();
+    }
+
+private:
+    bool isOwn (const juce::String& url) const
+    {
+        const auto root = getResourceProviderRoot();
+
+        // Never data: (a link dropped on the window would load a stranger's page with the Hub's
+        // bridge); blob: only for the page's own.
+        if (url.startsWithIgnoreCase (root) || url.startsWithIgnoreCase ("about:")
+            || url.startsWithIgnoreCase ("blob:" + root))
+            return true;
+
+        // macOS asks for a plugin screen's frame too (Windows only for the page itself).
+        return url.contains ("://") && owner.screenOrigins.count (originOf (url)) > 0;
+    }
+
+    MainComponent& owner;
 };
 
 
@@ -153,6 +234,10 @@ namespace
         walked at most every few seconds (the library is pushed often; the walk reads the disk). */
     juce::Time newestChangeIn (const juce::File& folder)
     {
+        // A .sip is one file: its own time says.
+        if (! folder.isDirectory())
+            return folder.getLastModificationTime();
+
         struct Checked { double atMs = 0.0; juce::Time newest; };
         static std::map<juce::String, Checked> checked;
 
@@ -475,6 +560,37 @@ MainComponent::MainComponent()
         [this] (int trackId, int clipId, const juce::StringArray& stems, bool muteOriginal)
         {
             return splitStems (trackId, clipId, stems, muteOriginal);
+        },
+        [this] (const juce::String& title, const juce::String& message, const juce::String& yesText, std::function<void (bool)> answer)
+        {
+            // Asked by Sonify itself, not the AI: only the user's own click lets it go on.
+            juce::NativeMessageBox::showAsync (juce::MessageBoxOptions()
+                                                   .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                                                   .withTitle (title)
+                                                   .withMessage (message)
+                                                   .withButton (yesText)
+                                                   .withButton ("Keep it")
+                                                   .withAssociatedComponent (this),
+                                               [answer = std::move (answer)] (int button) { answer (button == 0); });
+        },
+        [this] { return pageCommands; },
+        [this] (const juce::String& command, const juce::String& event, const juce::var& payload)
+        {
+            // Done by the page itself, exactly as its menus and buttons do it.
+            if (webView == nullptr)
+                return;
+
+            juce::DynamicObject::Ptr item (new juce::DynamicObject());
+
+            if (command.isNotEmpty())
+                item->setProperty ("command", command);
+            else
+            {
+                item->setProperty ("event", event);
+                item->setProperty ("payload", payload);
+            }
+
+            webView->emitEventIfBrowserIsVisible ("aiRun", juce::var (item.get()));
         } });
 
     ai = std::make_unique<AiAgent> (*server, *aiTools, AiAgent::Hooks {
@@ -508,14 +624,27 @@ MainComponent::MainComponent()
         },
         [this] { pushTracks(); pushAi(); } });
 
+    // Deep, as it was left: every request to the strongest model.
+    ai->setDeep (static_cast<bool> (juce::JSON::parse (aiSettingsFile()).getProperty ("deep", false)));
+
+    // Native plugins load only from the user's own plugin places (Plugin::isTrusted), from the start.
+    trustLibrary (library);
+
     // The Guide's "Ask anything about Sonify" (MainGuide.cpp).
     setupGuide();
 
     // Sonify devices, and the Plugins Creator Studio's own Sonify AI.
     setupDevices();
 
+    // AI Mix and AI Master: Fanan AI on the Analog Board and the Mastering section (MainAiMix.cpp).
+    setupAiMix();
+
     // The Plugins Creator Studio: Stella AI Studio inside Sonify (MainCreator.cpp).
     setupCreator();
+
+    // Every plugin window's ON/OFF, for the plugins in the song.
+    pluginSwitcher = PluginHeader::addSwitcher ({ [this] (const Plugin& plugin) { return engine.getPluginOn (plugin); },
+                                                  [this] (const Plugin& plugin, bool on) { switchPlugin (plugin, on); } });
 
     // Voice control: always off at launch, listening to the input last chosen for it.
     loadVoiceInput();
@@ -530,14 +659,28 @@ MainComponent::MainComponent()
     phoneRemote->onAsk = [this] (const juce::String& text, bool spoken) { askFromPhone (text, spoken); };
     phoneRemote->onStop = [this] { ai->stop(); pushAi(); };
     phoneRemote->onChanged = [this] { pushRemote(); };
+    phoneRemote->getLocalPage = []
+    {
+        int size = 0;
+        const auto* data = pageFile ("phone-remote.html", size);
+        return data != nullptr ? juce::MemoryBlock (data, (size_t) size) : juce::MemoryBlock();
+    };
+    phoneRemote->getLocalLogo = []
+    {
+        int size = 0;
+        const auto* data = pageFile ("fanan logo.png", size);
+        return data != nullptr ? juce::MemoryBlock (data, (size_t) size) : juce::MemoryBlock();
+    };
 
     const auto options = createWebOptions();
 
     if (juce::WebBrowserComponent::areOptionsSupported (options))
     {
-        webView = std::make_unique<juce::WebBrowserComponent> (options);
+        webView = std::make_unique<HubPageView> (*this, options);
         addAndMakeVisible (*webView);
         webView->goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
+
+        SettingsFolder::removeOldWebViewProfiles();   // the tabs' and the store's own, from before they shared the page's
 
         // Until the page has drawn itself, the window shows Fanan's and Sonify's logos loading.
         splash = std::make_unique<Splash> (*this);
@@ -572,6 +715,9 @@ MainComponent::MainComponent()
 MainComponent::~MainComponent()
 {
     Containers::setHost (nullptr);      // containers going from here on ask nothing of this
+    PluginHeader::removeSwitcher (pluginSwitcher);   // nor do plugin windows' headers
+    aiMixCancelled->store (true);       // AI Mix's listening stops
+    aiMixWorker.removeAllJobs (true, 10000);
     splash = nullptr;                   // closed while the page loads: the splash's window goes first
     stopTimer();                        // no status (nor control surface feedback) while things go
     automationTimer.stopTimer();
@@ -690,9 +836,33 @@ juce::WebBrowserComponent::Options MainComponent::createWebOptions()
                            ai->send (event.getProperty ("text", {}).toString(), AiAgent::Origin::typed, studio);
                        }))
                        .withEventListener ("aiStop", afterEvent (this, [this] (const juce::var&) { ai->stop(); pushAi(); }))
+                       .withEventListener ("aiCommandList", afterEvent (this, [this] (const juce::var& event)
+                       {
+                           // The page's commands, for Fanan AI (AiTools::Hooks::pageCommands).
+                           pageCommands.clear();
+
+                           if (const auto* names = event.getProperty ("names", {}).getArray())
+                               for (const auto& name : *names)
+                                   pageCommands.addIfNotAlreadyThere (name.toString());
+                       }))
                        .withEventListener ("aiClear", afterEvent (this, [this] (const juce::var&) { ai->clear(); }))
+                       .withEventListener ("aiSettings", afterEvent (this, [this] (const juce::var& event)
+                       {
+                           // Deep: every request to the strongest model, kept for next time.
+                           if (event.hasProperty ("deep"))
+                           {
+                               ai->setDeep (static_cast<bool> (event.getProperty ("deep", false)));
+
+                               juce::DynamicObject::Ptr saved (new juce::DynamicObject());
+                               saved->setProperty ("deep", ai->isDeep());
+                               aiSettingsFile().replaceWithText (juce::JSON::toString (juce::var (saved.get())));
+                           }
+
+                           pushAi();
+                       }))
                        .withEventListener ("guide", afterEvent (this, [this] (const juce::var& event) { handleGuide (event); }))
                        .withEventListener ("board", afterEvent (this, [this] (const juce::var& event) { handleBoard (event); }))
+                       .withEventListener ("aiMix", afterEvent (this, [this] (const juce::var& event) { handleAiMix (event); }))
                        .withEventListener ("live", afterEvent (this, [this] (const juce::var& event) { handleLive (event); }))
                        .withEventListener ("deviceStudio", afterEvent (this, [this] (const juce::var& event) { handleDeviceStudio (event); }))
                        .withEventListener ("deviceMap", afterEvent (this, [this] (const juce::var& event) { handleDeviceMap (event); }))
@@ -734,7 +904,13 @@ juce::WebBrowserComponent::Options MainComponent::createWebOptions()
                        .withEventListener ("remoteSettings", afterEvent (this, [this] (const juce::var& event)
                        {
                            if constexpr (phoneRemoteOffered)
-                               phoneRemote->setEnabled (static_cast<bool> (event.getProperty ("enabled", false)));
+                           {
+                               if (event.hasProperty ("enabled"))
+                                   phoneRemote->setEnabled (static_cast<bool> (event.getProperty ("enabled", false)));
+
+                               if (static_cast<bool> (event.getProperty ("newKey", false)))
+                                   phoneRemote->newPairingKey();
+                           }
 
                            pushRemote();
                        }))
@@ -967,6 +1143,13 @@ juce::WebBrowserComponent::Options MainComponent::createWebOptions()
                                                    static_cast<bool> (event.getProperty ("bypass", false)));
                            pushTracks();
                        }))
+                       .withEventListener ("pluginOn", afterEvent (this, [this] (const juce::var& event)
+                       {
+                           // A page window's ON/OFF (hub-screens.js): the plugin in that slot.
+                           if (auto* plugin = engine.getPlugin (static_cast<int> (event.getProperty ("channel", 0)),
+                                                                static_cast<int> (event.getProperty ("slot", 0))))
+                               switchPlugin (*plugin, static_cast<bool> (event.getProperty ("on", true)));
+                       }))
                        .withEventListener ("setParam", afterEvent (this, [this] (const juce::var& event) { markChanged(); setPluginParameter (event); }))
                        .withEventListener ("setClipNotes", afterEvent (this, [this] (const juce::var& event)
                        {
@@ -1026,6 +1209,7 @@ juce::WebBrowserComponent::Options MainComponent::createWebOptions()
                            }
                        }))
                        .withEventListener ("listFolder", afterEvent (this, [this] (const juce::var& event) { listFolder (event.getProperty ("path", {}).toString()); }))
+                       .withEventListener ("chooseFilesFolder", afterEvent (this, [this] (const juce::var&) { chooseFilesFolder(); }))
                        // The Fanan account: signing in happens in the browser (the site links this computer).
                        .withEventListener ("accountSignIn", afterEvent (this, [this] (const juce::var& event)
                        {
@@ -1494,9 +1678,9 @@ juce::WebBrowserComponent::Options MainComponent::createWebOptions()
     options = withSamplingEvents (std::move (options));
 
    #if JUCE_WINDOWS
-    // WebView2 keeps its profile next to the executable, inside the build folder.
-    const auto userDataFolder = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
-                                    .getSiblingFile ("FananWebHub-WebView2");
+    // WebView2 keeps its profile next to the executable, inside the build folder: the one profile
+    // every web view in Sonify shares (SettingsFolder::webViewProfile).
+    const auto userDataFolder = SettingsFolder::webViewProfile();
 
     options = options.withBackend (juce::WebBrowserComponent::Options::Backend::webview2)
                      .withWinWebView2Options (juce::WebBrowserComponent::Options::WinWebView2 {}
@@ -1674,6 +1858,10 @@ void MainComponent::restoreSnapshot (const juce::String& song)
 {
     juce::StringArray problems;
     Song::restore (engine, juce::JSON::parse (song), problems, songFile);
+
+    if (aiTools != nullptr)
+        aiTools->forgetWhatItMade();   // undo and redo: the song comes back as it was
+
     pushTracks();
     pushSong();
 }
@@ -1751,6 +1939,9 @@ void MainComponent::pushRemote()
     item->setProperty ("problem", phoneRemote->getProblem());
     item->setProperty ("url", server->getRemotePageUrl());
     item->setProperty ("email", server->getEmail());
+    item->setProperty ("localUrl", phoneRemote->getLocalUrl());
+    item->setProperty ("localProblem", phoneRemote->isEnabled() ? phoneRemote->getLocalProblem() : juce::String());
+    item->setProperty ("localSeen", phoneRemote->isLocalPhoneSeen());
     webView->emitEventIfBrowserIsVisible ("remoteState", juce::var (item.get()));
 }
 
@@ -2636,6 +2827,17 @@ void MainComponent::exportMixdown (const juce::var& event)
     if (withMain)
         settings.file = freeFile (stems ? stemFolder : folder, name);
 
+    // The Mastering section, when it's in: the mix with it (as set), without it, or both, the
+    // one without beside the other as "<name> (unmastered)".
+    if (engine.getMastering().settings.isOn (MasterSection::on) && withMain)
+    {
+        const auto mastering = event.getProperty ("mastering", "on").toString();
+        settings.mastered = mastering != "off";
+
+        if (mastering == "both")
+            settings.unmasteredFile = freeFile (stems ? stemFolder : folder, name + " (unmastered)");
+    }
+
     if (stems)
     {
         for (const auto& id : *stemIds)
@@ -2693,6 +2895,12 @@ void MainComponent::exportMixdown (const juce::var& event)
         return;
     }
 
+    if (aiMixRender.running)
+    {
+        emitMixdown ("failed", shown, 0.0, "Not while Fanan AI is listening to the song (AI Mix): try again in a moment.");
+        return;
+    }
+
     if (freezingTrackId != 0)
     {
         emitMixdown ("failed", shown, 0.0, "Not while a track is freezing.");
@@ -2708,6 +2916,13 @@ void MainComponent::exportMixdown (const juce::var& event)
 
 void MainComponent::updateMixdown()
 {
+    // AI Mix's measuring renders the song as a mixdown too (MainAiMix.cpp).
+    if (aiMixRender.running)
+    {
+        updateAiMixRender();
+        return;
+    }
+
     // The Mastering Assistant renders the song as a mixdown too: its own way through.
     if (masteringStage != MasteringStage::idle)
     {
@@ -3094,6 +3309,16 @@ juce::String MainComponent::channelName (int channel) const
     return track != nullptr ? track->name : juce::String();
 }
 
+void MainComponent::switchPlugin (const Plugin& plugin, bool on)
+{
+    if (engine.getPluginOn (plugin) == (on ? 1 : 0))
+        return;
+
+    markChanged();
+    engine.setPluginOn (plugin, on);
+    pushTracks();
+}
+
 void MainComponent::openPluginScreen (int channel, int slot)
 {
     auto* plugin = engine.getPlugin (channel, slot);
@@ -3149,6 +3374,9 @@ void MainComponent::openPluginScreen (int channel, int slot)
 
             reply->setProperty ("kind", "web");
             reply->setProperty ("url", absolute ? uri : "plugin-screen/" + juce::String (channel) + "/" + juce::String (slot) + uri);
+
+            if (absolute && ! uri.startsWithIgnoreCase ("data:"))
+                screenOrigins.insert (HubPageView::originOf (uri));
             plugin->setScreenOpen (true);
             openScreens.insert ({ channel, slot });
             break;
@@ -3348,7 +3576,7 @@ void MainComponent::whenSongIsSafe (std::function<void()> next)
 
 bool MainComponent::writeSong (const juce::File& file)
 {
-    const auto text = juce::JSON::toString (Song::capture (engine, file.getFileNameWithoutExtension(), songView, file));
+    const auto text = juce::JSON::toString (withFilesFolder (Song::capture (engine, file.getFileNameWithoutExtension(), songView, file)));
 
     if (! file.getParentDirectory().createDirectory() || ! file.replaceWithText (text))
     {
@@ -3439,6 +3667,9 @@ void MainComponent::openSong (const juce::File& file)
 
         const auto result = Song::restore (safeThis->engine, song, problems, file);
 
+        if (safeThis->aiTools != nullptr)
+            safeThis->aiTools->forgetWhatItMade();
+
         if (result.wasOk())
         {
             safeThis->undoManager.clearUndoHistory();   // the old song's steps don't apply to this one
@@ -3461,12 +3692,14 @@ void MainComponent::openSong (const juce::File& file)
         safeThis->songChanged = false;
         safeThis->updateRecordingFolder();
         safeThis->songView = song.getProperty ("view", {});
+        safeThis->songFilesFolder = song.getProperty ("filesFolder", {}).toString();
         safeThis->loadingFiles.clear();
         safeThis->trackMessages.clear();
         safeThis->rememberRecent (file);
         safeThis->updateTitle();
         safeThis->pushTracks();
         safeThis->pushSong (true);
+        safeThis->showSongFilesFolder();   // its own files folder, else the one for new songs
 
         if (! problems.isEmpty())
         {
@@ -3512,6 +3745,10 @@ void MainComponent::newSong (const juce::var& event)
     undoManager.clearUndoHistory();
     engine.clearSong();
     engine.discardRenders();   // the old song's frozen tracks' renders, unless saved
+
+    if (aiTools != nullptr)
+        aiTools->forgetWhatItMade();
+
     engine.addTrack();
     forgetWhereItBegan();
     takeRunning = false;       // a take the old song was recording isn't this one's undo step
@@ -3528,12 +3765,14 @@ void MainComponent::newSong (const juce::var& event)
     loadingFiles.clear();
     trackMessages.clear();
     songView = juce::var();
+    songFilesFolder = {};      // it shows the folder for new songs until one is chosen for it
 
     // On disk straight away, as Studio One does.
     writeSong (songFolder.getChildFile (songFolder.getFileName() + Song::fileExtension));
     noProject = false;
     pushTracks();
     pushSong (true);
+    showSongFilesFolder();
 }
 
 void MainComponent::closeSong()
@@ -3543,6 +3782,10 @@ void MainComponent::closeSong()
         undoManager.clearUndoHistory();
         engine.clearSong();
         engine.discardRenders();   // its frozen tracks' renders, unless saved
+
+        if (aiTools != nullptr)
+            aiTools->forgetWhatItMade();
+
         forgetWhereItBegan();
         takeRunning = false;       // nor a take it was recording
         takeBefore.clear();
@@ -3551,6 +3794,7 @@ void MainComponent::closeSong()
         loadingFiles.clear();
         trackMessages.clear();
         songView = juce::var();
+        songFilesFolder = {};
         songChanged = false;
         noProject = true;
         updateRecordingFolder();
@@ -3669,6 +3913,7 @@ void MainComponent::startMastering (const juce::var& event)
     settings.startPpq = 0.0;
     settings.endPpq = end;
     settings.tailSeconds = 1.0;
+    settings.mastered = false;   // the assistant listens to the song before the Mastering section too
 
     const auto result = engine.startMixdown (settings);
 
@@ -4525,6 +4770,61 @@ void MainComponent::emitStems (const juce::String& state, double progress, const
 
 //==============================================================================
 // The Browser's Files tab, previews and importing audio
+juce::var MainComponent::withFilesFolder (juce::var song) const
+{
+    if (auto* object = song.getDynamicObject(); object != nullptr && songFilesFolder.isNotEmpty())
+        object->setProperty ("filesFolder", songFilesFolder);
+
+    return song;
+}
+
+void MainComponent::showSongFilesFolder()
+{
+    // The song's own; a song without one (or whose folder is gone), and a new song: the one for
+    // new songs; neither: the tab stays where it is.
+    for (const auto& candidate : { songFilesFolder, prefs.filesFolder })
+    {
+        if (candidate.isNotEmpty() && juce::File::isAbsolutePath (candidate) && juce::File (candidate).isDirectory())
+        {
+            listFolder (candidate);
+            return;
+        }
+    }
+}
+
+void MainComponent::chooseFilesFolder()
+{
+    juce::File start (songFilesFolder.isNotEmpty() ? songFilesFolder : prefs.filesFolder.isNotEmpty() ? prefs.filesFolder : prefs.browserFolder);
+
+    if (! juce::File::isAbsolutePath (start.getFullPathName()) || ! start.isDirectory())
+        start = juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+
+    filesFolderChooser = std::make_unique<juce::FileChooser> ("Choose your files folder", start);
+    filesFolderChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                                     [safeThis = juce::Component::SafePointer<MainComponent> (this)] (const juce::FileChooser& chooser)
+    {
+        const auto chosen = chooser.getResult();
+
+        if (safeThis == nullptr || ! chosen.isDirectory())
+            return;
+
+        const auto path = chosen.getFullPathName();
+
+        // The folder for new songs from now on...
+        safeThis->prefs.filesFolder = path;
+        safeThis->savePreferences();
+
+        // ...and this song's own, kept with it (a song is open: it's a change to save).
+        if (! safeThis->noProject && safeThis->songFilesFolder != path)
+        {
+            safeThis->songFilesFolder = path;
+            safeThis->markChanged();
+        }
+
+        safeThis->listFolder (path);
+    });
+}
+
 void MainComponent::listFolder (const juce::String& path)
 {
     // The Files tab: where it was last (also from the last time Sonify ran) when it asks for none.
@@ -4930,7 +5230,7 @@ void MainComponent::updateSnapshots()
     snapshotQueue.remove (0);
 
     // Tried once for each time it changes: one that can't be drawn isn't tried again and again.
-    if (folder.isDirectory() && snapshotTried.insert (snapshotKey (folder)).second)
+    if (folder.exists() && snapshotTried.insert (snapshotKey (folder)).second)
         MadePlugins::makeSnapshot (folder);
 
     // All drawn: the Browser shows them (pushLibrary queues only what's due and not tried yet).
@@ -5059,6 +5359,8 @@ void MainComponent::timerCallback()
         takeClipsPushedMs = nowMs;
     }
 
+    pushTakeWaves (nowMs);
+
     followTransport();
     followForeground();
     watchAudioDevice();
@@ -5173,6 +5475,10 @@ void MainComponent::pushStatus()
     if (boardShown)
         object->setProperty ("board", boardMeters());
 
+    // The Mastering section's meters, while its window shows.
+    if (masteringShown)
+        object->setProperty ("mastering", masteringMeters());
+
     // The Live Show's meters and its decks' positions, while its tab shows.
     if (liveShown)
         object->setProperty ("live", liveMeters());
@@ -5220,6 +5526,7 @@ juce::var MainComponent::pluginToVar (Plugin& plugin)
     state->setProperty ("file", plugin.getSourceFile().getFullPathName());
     state->setProperty ("fileName", plugin.getSourceFile().getFileName());
     state->setProperty ("role", roleName (plugin.getRole()));
+    state->setProperty ("format", plugin.getFormatName());
     state->setProperty ("sidechain", plugin.hasSidechain());
     state->setProperty ("midiOut", plugin.producesMidi());
     state->setProperty ("screen", plugin.getScreenKind() == Plugin::ScreenKind::web ? "web"
@@ -5828,7 +6135,7 @@ void MainComponent::pushTracks (const juce::String& notice)
 
     // The board and the show draw a strip or a channel for each track: when they're shown (the
     // board is sent whole as it's shown; the show, as it's shown next when tracks changed).
-    if (boardShown) pushBoard();
+    if (boardShown || masteringShown) pushBoard();
     if (liveShown)  pushLive();  else liveStale = true;
 
     loadSongDecks();     // a song just opened: the tracks its decks had
@@ -5896,7 +6203,17 @@ void MainComponent::pushTracks (const juce::String& notice)
         item->setProperty ("clips", clipsToVar (*track));
         item->setProperty ("loading", loading != loadingFiles.end() ? loading->second : juce::String());
         item->setProperty ("message", message != trackMessages.end() ? message->second : juce::String());
-        item->setProperty ("instrument", track->instrument != nullptr ? pluginToVar (*track->instrument) : juce::var());
+        if (track->instrument != nullptr)
+        {
+            auto instrument = pluginToVar (*track->instrument);
+            instrument.getDynamicObject()->setProperty ("bypass", track->instrumentOff.load());   // its ON/OFF
+            item->setProperty ("instrument", instrument);
+        }
+        else
+        {
+            item->setProperty ("instrument", juce::var());
+        }
+
         item->setProperty ("inserts", insertsToVar (track->inserts));
 
         if (track->kept.isArray())
@@ -5963,6 +6280,7 @@ void MainComponent::pushTracks (const juce::String& notice)
     state->setProperty ("recordBits", engine.getRecordBits());
     state->setProperty ("master", juce::var (master.get()));
     state->setProperty ("boardMixing", engine.isBoardMixing());
+    state->setProperty ("masteringOn", engine.getMastering().settings.isOn (MasterSection::on));   // the Mastering section is in
     state->setProperty ("notice", notice);
 
     // The parameter lists: the new ones go first; the page keeps those this state names.
@@ -6033,8 +6351,69 @@ void MainComponent::pushTakeClips()
     webView->emitEventIfBrowserIsVisible ("takeClips", juce::var (state.get()));
 }
 
+void MainComponent::pushTakeWaves (double nowMs)
+{
+    const auto waves = engine.getLiveWaves();
+
+    if (waves.empty())
+    {
+        takeWaveSent.clear();
+        return;
+    }
+
+    if (webView == nullptr || nowMs - takeWavesPushedMs < 100.0)
+        return;
+
+    takeWavesPushedMs = nowMs;
+    juce::Array<juce::var> list;
+
+    for (const auto& wave : waves)
+    {
+        // A new pass (the loop came round): its waveform starts again.
+        auto& sent = takeWaveSent[wave.trackId];
+        const bool reset = sent.first != wave.firstBucket || sent.second < wave.firstBucket;
+
+        if (reset)
+            sent = { wave.firstBucket, wave.firstBucket };
+
+        const auto upTo = juce::jmin<juce::int64> (wave.buckets, sent.second + 20000);   // no more than about 3.5 minutes at once
+
+        if (upTo <= sent.second && ! reset)
+            continue;
+
+        juce::Array<juce::var> peaks;
+        peaks.ensureStorageAllocated (static_cast<int> (2 * juce::jmax<juce::int64> (0, upTo - sent.second)));
+
+        for (auto b = sent.second; b < upTo; ++b)
+        {
+            peaks.add (static_cast<int> (wave.data[2 * b]));
+            peaks.add (static_cast<int> (wave.data[2 * b + 1]));
+        }
+
+        sent.second = juce::jmax (sent.second, upTo);
+
+        juce::DynamicObject::Ptr item (new juce::DynamicObject());
+        item->setProperty ("id", wave.trackId);
+        item->setProperty ("ppq", wave.ppq);
+        item->setProperty ("rate", wave.rate);
+        item->setProperty ("bucket", Track::LivePeaks::peakBucket);
+        item->setProperty ("reset", reset);
+        item->setProperty ("peaks", peaks);
+        list.add (juce::var (item.get()));
+    }
+
+    if (list.isEmpty())
+        return;
+
+    juce::DynamicObject::Ptr state (new juce::DynamicObject());
+    state->setProperty ("tracks", list);
+    webView->emitEventIfBrowserIsVisible ("takeWave", juce::var (state.get()));
+}
+
 void MainComponent::pushLibrary (const juce::String& notice)
 {
+    trustLibrary (library);
+
     if (webView == nullptr)
         return;
 
@@ -6515,6 +6894,11 @@ void MainComponent::loadPluginInto (int channel, const juce::File& file, const j
         }
 
         safeThis->pushTracks();
+
+        // A plugin the user just put on a channel opens its window at once (from then on it opens
+        // when they open it).
+        if (result.wasOk())
+            safeThis->openPluginScreen (channel, insertId);
     });
 }
 
@@ -6763,7 +7147,8 @@ void MainComponent::chooseLibraryFiles()
     }
 
     choosingFile = true;
-    fileChooser = std::make_unique<juce::FileChooser> ("Add plugins to the Browser: VST3, or WCLAP (.wasm, .wclap.tar.gz)", startFolder, "*.wasm;*.gz;*.tgz;*.vst3");
+    fileChooser = std::make_unique<juce::FileChooser> ("Add plugins to the Browser: VST3, CLAP, or WCLAP (.wasm, .wclap.tar.gz)",
+                                                       startFolder, "*.wasm;*.gz;*.tgz;*.vst3;*.clap");
 
     const auto chooserFlags = juce::FileBrowserComponent::openMode
                             | juce::FileBrowserComponent::canSelectFiles

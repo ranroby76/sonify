@@ -60,7 +60,7 @@ namespace
 <body><iframe src="https://www.youtube-nocookie.com/embed/)" + videoId + R"(?autoplay=1&rel=0&playsinline=1&modestbranding=1" title="Demo video"
 allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></body></html>)";
 
-            const auto folder = SettingsFolder::folder ("Store video", "Store video");
+            const auto folder = SettingsFolder::webViewProfile();   // the page's own: its browser is already running
 
             return Options{}
                 .withBackend (Options::Backend::webview2)
@@ -1188,13 +1188,55 @@ void StorePage::showMoreMenu()
     menu.addItem (1, "Copy the website's address", ad.website.isNotEmpty());
     menu.addItem (2, "Copy the ad's id (" + ad.id + ")");
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&detail.moreButton), [ad] (int choice)
+    if (! ad.mine)
+    {
+        menu.addSeparator();
+        menu.addItem (3, juce::String::fromUTF8 ("Report this ad\xe2\x80\xa6"), client.isSignedIn());
+    }
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&detail.moreButton),
+                        [safeThis = juce::Component::SafePointer<StorePage> (this), ad] (int choice)
     {
         if (choice == 1)
             juce::SystemClipboard::copyTextToClipboard (ad.website);
         else if (choice == 2)
             juce::SystemClipboard::copyTextToClipboard (ad.id);
+        else if (choice == 3 && safeThis != nullptr)
+            safeThis->reportAd();
     });
+}
+
+void StorePage::reportAd()
+{
+    const auto ad = detail.ad;
+    auto* window = new juce::AlertWindow ("Report this ad",
+                                          "\"" + ad.title + "\": tell Fanan what breaks the Store's rules. When enough people report it, "
+                                          "Fanan AI reads it again, and an ad that breaks the rules comes off the board.",
+                                          juce::MessageBoxIconType::WarningIcon, this);
+    window->addComboBox ("reason", StoreClient::reportReasons(), "What's wrong");
+    window->addTextEditor ("note", {}, "In your words (optional)");
+    window->addButton ("Report", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    juce::Component::SafePointer<juce::AlertWindow> shown (window);
+
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis = juce::Component::SafePointer<StorePage> (this), shown, ad] (int answer)
+    {
+        if (safeThis == nullptr || shown == nullptr || answer != 1)
+            return;
+
+        const auto* box = shown->getComboBoxComponent ("reason");
+        const auto reason = box != nullptr ? box->getText() : juce::String ("Something else");
+        const auto note = shown->getTextEditorContents ("note");
+
+        safeThis->detail.setStatus (juce::String::fromUTF8 ("Sending the report\xe2\x80\xa6"), false);
+        safeThis->client.report (ad, reason, note, [safeThis, id = ad.id] (const juce::Result& result)
+        {
+            if (safeThis != nullptr && safeThis->detail.ad.id == id)
+                safeThis->detail.setStatus (result.failed() ? result.getErrorMessage()
+                                                            : juce::String ("Thank you: the report is with Fanan."), result.failed());
+        });
+    }), true);
 }
 
 void StorePage::hideOrShow()
@@ -1748,6 +1790,77 @@ void StorePage::postForm()
             return;
         }
     }
+
+    postWithRules (std::move (item));
+}
+
+void StorePage::postWithRules (StorePublisher::Item item)
+{
+    setFormStatus (juce::String::fromUTF8 ("Checking the Store's rules\xe2\x80\xa6"), false);
+
+    publisher.rules ([safeThis = juce::Component::SafePointer<StorePage> (this), item] (const juce::Result& result, const StorePublisher::Rules& rules) mutable
+    {
+        if (safeThis == nullptr)
+            return;
+
+        if (result.failed())
+        {
+            safeThis->setFormStatus (result.getErrorMessage(), true);
+            return;
+        }
+
+        if (rules.banned)
+        {
+            safeThis->setFormStatus ("Posting in the Store is closed for this account: three of its posts broke the Store's rules.", true);
+            return;
+        }
+
+        if (rules.accepted)
+        {
+            safeThis->sendPost (std::move (item));
+            return;
+        }
+
+        // The first post (or the rules changed): read and accepted once.
+        auto options = juce::MessageBoxOptions()
+                           .withIconType (juce::MessageBoxIconType::InfoIcon)
+                           .withTitle ("The Store's rules")
+                           .withMessage (rules.text + "\n\nFanan AI checks every ad against these rules before it's posted. "
+                                         "A post that breaks them isn't posted, and after three such posts, posting in the Store "
+                                         "closes for this account for good.")
+                           .withButton ("I accept")
+                           .withButton ("Cancel")
+                           .withAssociatedComponent (safeThis.getComponent());
+
+        juce::AlertWindow::showAsync (options, [safeThis, item, version = rules.version] (int answer) mutable
+        {
+            if (safeThis == nullptr)
+                return;
+
+            if (answer != 1)
+            {
+                safeThis->setFormStatus ("Not posted: posting in the Store needs its rules accepted.", true);
+                return;
+            }
+
+            safeThis->publisher.acceptRules (version, [safeThis, item] (const juce::Result& accepted) mutable
+            {
+                if (safeThis == nullptr)
+                    return;
+
+                if (accepted.failed())
+                    safeThis->setFormStatus (accepted.getErrorMessage(), true);
+                else
+                    safeThis->sendPost (std::move (item));
+            });
+        });
+    });
+}
+
+void StorePage::sendPost (StorePublisher::Item item)
+{
+    if (publisher.isPosting())
+        return;
 
     const bool sendsPackage = item.sendPackage;
 

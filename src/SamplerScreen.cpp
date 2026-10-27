@@ -1,6 +1,7 @@
 // D:\workspace\Fanan_web_hub\src\SamplerScreen.cpp
 
 #include "SamplerScreen.h"
+#include "PluginHeader.h"
 
 namespace
 {
@@ -579,9 +580,10 @@ namespace
             : juce::DocumentWindow ("Sonify Sampler", Look::page, juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton)
         {
             setUsingNativeTitleBar (true);
+            PluginHeader::attach (*this, sampler);
             setContentOwned (SamplerScreen::createPage (sampler).release(), true);
             setResizable (true, true);
-            setResizeLimits (1020, 500, 2400, 1200);
+            getConstrainer()->setSizeLimits (1020, 500, 2400, 1200);
             centreWithSize (getWidth(), getHeight());
         }
 

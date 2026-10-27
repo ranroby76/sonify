@@ -144,6 +144,13 @@ public:
     /** The poster deletes one of theirs for good. */
     void remove (const Ad& ad, Done done);
 
+    /** Anyone signed in tells Fanan an ad breaks the Store's rules (reason: one of reportReasons,
+        note: their own words). The store keeps one report per account and ad; when enough
+        people report the same ad, Fanan AI reads it again against the rules, and one that
+        breaks them comes off the board (a strike for its poster). */
+    void report (const Ad& ad, const juce::String& reason, const juce::String& note, Done done);
+    static const juce::StringArray& reportReasons();
+
     /** A plugin was installed (or updated): Sonify's Browser shows it. */
     std::function<void (const juce::File& folder, const juce::String& name, bool replaced)> onPluginInstalled;
 

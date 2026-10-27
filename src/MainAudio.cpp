@@ -1105,7 +1105,7 @@ void MainComponent::finishAudioToMidi (const AudioToMidi::Result& result)
         if (engine.loadPlugin (id, juce::File (best->file), best->id, -1, 0, slot).wasOk())
             library.markUsed (best->file, best->id);
         else
-            note = best->name + " didn't load, so the new track plays the Test Synth.";
+            note = best->name + " didn't load, so the new track plays Cayman.";
     }
 
     engine.setTrackName (id, name);

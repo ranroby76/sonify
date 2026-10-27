@@ -2,6 +2,8 @@
 
 #include "ProjectTools.h"
 #include "GuiLayout.h"
+#include "GalleryBrowser.h"   // the KnobMan gallery on this computer
+#include "KnobFile.h"
 #include "LayerRender.h"
 #include "Looks.h"
 #include "MaterialChoices.h"
@@ -858,6 +860,33 @@ juce::var ProjectTools::getDefinitions (bool builder) const
                          props, { "name" }));
     }
 
+    // The KnobMan gallery: knobs, sliders and switches made by its community, the ones whose
+    // licence allows them in a plugin that's sold. Looked through first, before designing a look.
+    {
+        auto props = object();
+        auto kind = property ("string", "\"knob\", \"slider\" (either way up) or \"switch\".");
+        kind.getDynamicObject()->setProperty ("enum", juce::Array<juce::var> { "knob", "slider", "switch" });
+        props.getDynamicObject()->setProperty ("kind", kind);
+        props.getDynamicObject()->setProperty ("words", property ("string", "What to look for in their names, tags and notes, e.g. \"metal vintage\", "
+                                                                            "\"black chicken head\", \"led ring\". Left out: the newest."));
+        tools.add (tool ("find_gallery_looks",
+                         "Looks through the KnobMan gallery on this computer for knobs, sliders or switches whose licence allows them "
+                         "in a plugin that's sold: up to 20, each with its id, name, tags, note, author and licence. Use it first when "
+                         "the panel needs knobs (or sliders, switches), before designing a look: pick the item whose name, tags and "
+                         "note suit the plugin's character, then use_gallery_look. Changes nothing.",
+                         props, { "kind" }));
+    }
+
+    {
+        auto props = object();
+        props.getDynamicObject()->setProperty ("id", property ("integer", "The gallery item's id (from find_gallery_looks)."));
+        props.getDynamicObject()->setProperty ("name", property ("string", "The look's name in this plugin, e.g. \"Vintage knob\" (left out: the item's own)."));
+        tools.add (tool ("use_gallery_look",
+                         "Brings a gallery item (from find_gallery_looks) into the plugin as its own look, drawn exactly as KnobMan "
+                         "draws it, its author and licence kept with it. Then put it on controls with their \"style\" (edit_layout).",
+                         props, { "id" }));
+    }
+
     if (! builder)
         return tools;
 
@@ -1106,6 +1135,26 @@ juce::String ProjectTools::describeProject() const
         if (! poolLines.isEmpty())
             text << "Looks of your inspiration pool, worn the same way (read the inspiration-looks skill for what each is like):\n"
                  << poolLines.joinIntoString ("\n") << "\n";
+
+        // The KnobMan gallery on this computer: what find_gallery_looks can offer.
+        int knobs = 0, sliders = 0, switches = 0;
+
+        for (const auto& item : GalleryLibrary::loadIndex())
+        {
+            if (! item.isCommercialSafe() || ! GalleryLibrary::knobFile (item.id).existsAsFile())
+                continue;
+
+            const auto category = item.category();
+            knobs += category == "$knob" ? 1 : 0;
+            sliders += category == "$slider" ? 1 : 0;
+            switches += category == "$switch" ? 1 : 0;
+        }
+
+        if (knobs + sliders + switches > 0)
+            text << "The KnobMan gallery on this computer (find_gallery_looks, use_gallery_look; licences that allow selling only): "
+                 << knobs << " knobs, " << sliders << " sliders, " << switches << " switches.\n";
+        else
+            text << "The KnobMan gallery isn't downloaded on this computer: design looks from the list above (make_look).\n";
     }
 
     PresetBank bank;
@@ -1327,6 +1376,12 @@ juce::String ProjectTools::describeCall (const juce::String& name, const juce::v
 
     if (name == "make_look")
         return "Designing the look \"" + input.getProperty ("name", {}).toString().trim() + "\"";
+
+    if (name == "find_gallery_looks")
+        return juce::String::fromUTF8 ("Looking through the knob gallery\xe2\x80\xa6");
+
+    if (name == "use_gallery_look")
+        return "Taking a look from the knob gallery";
 
     return {};
 }
@@ -1929,6 +1984,12 @@ void ProjectTools::run (const juce::String& name, const juce::var& input, Done d
     if (name == "make_look")
         return makeLook (input, std::move (done));
 
+    if (name == "find_gallery_looks")
+        return findGalleryLooks (input, std::move (done));
+
+    if (name == "use_gallery_look")
+        return useGalleryLook (input, std::move (done));
+
     fail ("There's no tool called " + name + ".");
 }
 
@@ -2126,6 +2187,136 @@ void ProjectTools::makeLook (const juce::var& input, Done done)
 
     done ("Made the look \"" + name + "\" (" + Looks::kindDisplayName (kind) + ", from \"" + fromLabel + "\"): " + changes.joinIntoString ("; ")
               + ". It's this plugin's own: put it on controls with \"style\": \"" + name + "\" (edit_layout).",
+          false);
+}
+
+//==============================================================================
+// The KnobMan gallery (GalleryLibrary): its items whose licence allows them in a plugin that's sold
+namespace
+{
+    /** "$knob", "$slider", "$switch" for find_gallery_looks' kind. */
+    juce::String galleryCategory (const juce::String& kind)
+    {
+        return kind == "slider" || kind == "hslider" ? "$slider" : kind == "switch" ? "$switch" : "$knob";
+    }
+
+    /** What a KnobMan knob is, by its shape and frames (as the Knob Studio has it). */
+    Looks::Kind kindOfKnobDoc (const LayerDoc& doc)
+    {
+        return doc.frames == 2                           ? Looks::Kind::button
+             : doc.canvasHeight >= doc.canvasWidth * 2   ? Looks::Kind::slider
+             : doc.canvasWidth >= doc.canvasHeight * 2   ? Looks::Kind::sliderAcross
+                                                         : Looks::Kind::knob;
+    }
+}
+
+void ProjectTools::findGalleryLooks (const juce::var& input, Done done)
+{
+    const auto category = galleryCategory (input.getProperty ("kind", "knob").toString().trim().toLowerCase());
+    juce::StringArray words;
+    words.addTokens (input.getProperty ("words", {}).toString().toLowerCase(), " ,;", "\"");
+    words.removeEmptyStrings();
+
+    struct Found { const GalleryItem* item; int score; };
+    const auto index = GalleryLibrary::loadIndex();
+    std::vector<Found> found;
+
+    for (const auto& item : index)
+    {
+        if (! item.isCommercialSafe() || item.category() != category || ! GalleryLibrary::knobFile (item.id).existsAsFile())
+            continue;
+
+        const auto text = (item.file + " " + item.tags + " " + item.comment).toLowerCase();
+        int score = 0;
+
+        for (const auto& w : words)
+            score += text.contains (w) ? 1 : 0;
+
+        if (words.isEmpty() || score > 0)
+            found.push_back ({ &item, score });
+    }
+
+    if (index.isEmpty())
+        return done ("The KnobMan gallery isn't downloaded on this computer: design the look from the project's looks list (make_look).", false);
+
+    // The best matches first, then the newest.
+    std::sort (found.begin(), found.end(), [] (const Found& a, const Found& b)
+    {
+        return a.score != b.score ? a.score > b.score : a.item->id > b.item->id;
+    });
+
+    if (found.empty())
+        return done ("No gallery " + category.substring (1) + " allowed in a sold plugin matches that. Try other words, "
+                     "or design the look from the project's looks list (make_look).", false);
+
+    juce::String text;
+    text << juce::String ((int) juce::jmin ((size_t) 20, found.size())) << " of " << juce::String ((int) found.size())
+         << " gallery " << category.substring (1) << "s (all allowed in a sold plugin):\n";
+
+    for (size_t i = 0; i < found.size() && i < 20; ++i)
+    {
+        const auto& item = *found[i].item;
+        auto tags = item.tags.removeCharacters ("$").replace (",", ", ").trim();
+        text << "- id " << item.id << ": \"" << item.file.upToLastOccurrenceOf (".", false, false) << "\""
+             << (tags.isNotEmpty() ? ", tags: " + tags : juce::String())
+             << (item.comment.trim().isNotEmpty() ? ", note: " + item.comment.trim().substring (0, 90) : juce::String())
+             << (item.author.isNotEmpty() ? ", by " + item.author : juce::String())
+             << ", licence " << (item.licence.isNotEmpty() ? item.licence : juce::String ("not given")) << "\n";
+    }
+
+    done (text + "Then use_gallery_look with the id of the one that suits the plugin.", false);
+}
+
+void ProjectTools::useGalleryLook (const juce::var& input, Done done)
+{
+    if (! project.isOpen())
+        return done ("No project is open: the user has to create one (New) or open one first.", true);
+
+    const auto id = (int) input.getProperty ("id", 0);
+    const GalleryItem* item = nullptr;
+    const auto index = GalleryLibrary::loadIndex();
+
+    for (const auto& candidate : index)
+        if (candidate.id == id)
+            item = &candidate;
+
+    if (item == nullptr || ! GalleryLibrary::knobFile (id).existsAsFile())
+        return done ("There's no gallery item " + juce::String (id) + " on this computer: pick one find_gallery_looks listed.", true);
+
+    // Only what its licence allows in a plugin that's sold.
+    if (! item->isCommercialSafe())
+        return done ("Gallery item " + juce::String (id) + "'s licence (" + item->licence + ") doesn't allow it in a sold plugin: pick another.", true);
+
+    const auto parsed = KnobFile::parseFile (GalleryLibrary::knobFile (id));
+
+    if (! parsed.ok)
+        return done ("Gallery item " + juce::String (id) + " couldn't be read (" + parsed.error + "): pick another.", true);
+
+    Looks looks;
+    looks.setGuiFolder (project.getGuiFolder());
+
+    const auto own = item->file.upToLastOccurrenceOf (".", false, false).replaceCharacters ("_", " ").trim();
+    auto wanted = input.getProperty ("name", {}).toString().trim();
+    wanted = (wanted.isNotEmpty() ? wanted : own.isNotEmpty() ? own : "Gallery " + juce::String (id))
+                 .removeCharacters ("\\/:*?\"<>|").substring (0, 48).trim();
+    const auto name = looks.freeName (wanted);
+    const auto kind = kindOfKnobDoc (parsed.document);
+    const auto credits = "From the KnobMan gallery (#" + juce::String (id) + ")"
+                       + (item->author.isNotEmpty() ? ", by " + item->author : juce::String())
+                       + ". Licence: " + (item->licence.isNotEmpty() ? item->licence : juce::String ("not given")) + ".";
+
+    looks.setProjectLook (name, kind, parsed.document, credits);
+
+    if (looks.find (name, Looks::Origin::project) == nullptr)
+        return done ("The look couldn't be saved in gui/looks.", true);
+
+    if (onLayoutChanged != nullptr)
+        onLayoutChanged();
+
+    done ("Added the gallery look \"" + name + "\" (" + Looks::kindDisplayName (kind) + ", " + credits
+              + ") as this plugin's own: put it on controls with \"style\": \"" + name + "\" (edit_layout)"
+              + (kind == Looks::Kind::sliderAcross ? juce::String (", on sliders across (\"orientation\": \"horizontal\")") : juce::String())
+              + (parsed.warnings.isEmpty() ? juce::String (".") : ". " + parsed.warnings.joinIntoString (" ")),
           false);
 }
 
