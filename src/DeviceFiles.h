@@ -120,6 +120,11 @@ namespace Devices
             Sonify. Nonexistent when it isn't there. */
         static juce::File folder();
 
+        /** The C++ library's headers in the compiler at folder (share/wasi-sysroot/include/
+            wasm32-wasip1/c++/v1), named to clang with -stdlib++-isystem: clang finds them on its
+            own only through an empty include/c++/v1, which the installer leaves out. */
+        static juce::File libcxxHeaders (const juce::File& folder);
+
         static bool isAvailable (juce::String* why = nullptr);
 
         struct Result

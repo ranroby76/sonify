@@ -349,6 +349,12 @@ juce::File Compiler::folder()
    #endif
 }
 
+juce::File Compiler::libcxxHeaders (const juce::File& folder)
+{
+    return folder.getChildFile ("share").getChildFile ("wasi-sysroot").getChildFile ("include")
+                 .getChildFile ("wasm32-wasip1").getChildFile ("c++").getChildFile ("v1");
+}
+
 namespace
 {
     juce::File clangIn (const juce::File& folder)
@@ -730,6 +736,11 @@ Compiler::Result Compiler::compile (const std::map<juce::String, juce::String>& 
         "--sysroot=" + tools.getChildFile ("share").getChildFile ("wasi-sysroot").getFullPathName(),
         "-O2"
     };
+
+    // The C++ library's headers (<cmath>, <vector>...), named here: clang finds them on its own only
+    // through an empty include/c++/v1 folder, and Sonify's installer leaves empty folders out.
+    if (const auto libcxx = libcxxHeaders (tools); libcxx.isDirectory())
+        { common.add ("-stdlib++-isystem"); common.add (libcxx.getFullPathName()); }
 
     // Its own headers named from the folder as it's given here (found on its own, a link on the
     // way would be followed, and they'd seem to be from elsewhere).

@@ -33,6 +33,11 @@ namespace
         args.add ("--sysroot=" + sdk.getChildFile ("share").getChildFile ("wasi-sysroot").getFullPathName());
         args.addArray ({ "-fintegrated-cc1", "-fno-color-diagnostics" });   // as Sonify's device builds run it
 
+        // The C++ library's headers (<cmath>, <vector>...), named here: clang finds them on its own
+        // only through an empty include/c++/v1 folder, and Sonify's installer leaves empty folders out.
+        if (const auto libcxx = Devices::Compiler::libcxxHeaders (sdk); libcxx.isDirectory())
+            { args.add ("-stdlib++-isystem"); args.add (libcxx.getFullPathName()); }
+
         if (const auto versions = sdk.getChildFile ("lib").getChildFile ("clang").findChildFiles (juce::File::findDirectories, false); ! versions.isEmpty())
             args.add ("-resource-dir=" + versions.getFirst().getFullPathName());
 
