@@ -610,24 +610,32 @@
       if (!track) return;
 
       const startY = event.clientY, startHeight = row.getBoundingClientRect().height;
-      row.classList.add("resizing");
+      // A selected track's edge sizes the whole selection to the same height (tracks only: FX
+      // channels and buses have no headers here).
+      const group = Hub.groupOf(track.id).map((id) => ({ track: Hub.trackById(id), row: rows.get(id) })).filter((each) => each.track && each.row);
+      for (const each of group) each.row.classList.add("resizing");
       edge.setPointerCapture(event.pointerId);
 
       // Dragged as it shows (the height zoom on it); kept as its own height at 100%.
       const zoom = Hub.arrange && Hub.arrange.vzoom ? Hub.arrange.vzoom() : 1;
       const move = (e) => {
         const height = Math.round(Math.max(56, Math.min(600, (startHeight + e.clientY - startY) / zoom)));
-        track.height = height;
-        row.style.height = `${Hub.arrange ? Hub.arrange.shownHeight(track) : height}px`;
+        for (const each of group) {
+          each.track.height = height;
+          each.row.style.height = `${Hub.arrange ? Hub.arrange.shownHeight(each.track) : height}px`;
+        }
         if (Hub.arrange) { Hub.arrange.updateSizes(); Hub.arrange.redraw(); }
       };
       const up = () => {
         edge.removeEventListener("pointermove", move);
         edge.removeEventListener("pointerup", up);
         edge.removeEventListener("pointercancel", up);
-        row.classList.remove("resizing");
-        applyHeight(row, track);
-        Hub.send("trackSettings", { id: track.id, height: track.height || 0 });
+        for (const each of group) {
+          each.row.classList.remove("resizing");
+          applyHeight(each.row, each.track);
+        }
+        if (group.length > 1) Hub.send("tracksSettings", { ids: group.map((each) => each.track.id), height: track.height || 0 });
+        else Hub.send("trackSettings", { id: track.id, height: track.height || 0 });
       };
       edge.addEventListener("pointermove", move);
       edge.addEventListener("pointerup", up);
@@ -640,10 +648,17 @@
       const row = edge.closest(".track");
       const track = Hub.trackById(Number(row.dataset.id));
       if (!track) return;
-      track.height = 0;
-      applyHeight(row, track);
+      // The whole selection back to the Track size, when this track is in it.
+      const ids = Hub.groupOf(track.id).filter((id) => rows.has(id));
+      for (const id of ids) {
+        const each = Hub.trackById(id);
+        if (!each) continue;
+        each.height = 0;
+        applyHeight(rows.get(id), each);
+      }
       if (Hub.arrange) { Hub.arrange.updateSizes(); Hub.arrange.redraw(); }
-      Hub.send("trackSettings", { id: track.id, height: 0 });
+      if (ids.length > 1) Hub.send("tracksSettings", { ids, height: 0 });
+      else Hub.send("trackSettings", { id: track.id, height: 0 });
     });
   }
 

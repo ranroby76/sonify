@@ -244,7 +244,11 @@ Click a header to select a track; **Ctrl**+click adds or removes one, **Shift**+
 
 ### Right-click menu
 
-Right-click a header for **Duplicate Track**, **Remove Track**, **Color...**, **Rename...** (several tracks get numbered names, like "Vocals 1", "Vocals 2"), **Select All Tracks** and **Add Bus for Selected Channels**. They act on the whole selection. An instrument track's menu also has **Show as Score...** (see Score); an audio track's has **Load Media...** (see Importing audio files). The track menu follows them; right-click the empty space under the tracks for the track menu alone:
+Right-click a header for **Cut Track**, **Copy Track**, **Paste Track** (the tracks you cut or copied, under the one you right-clicked), **Remove Track**, the two duplicates, **Color...**, **Rename...** (several tracks get numbered names, like "Vocals 1", "Vocals 2"), **Select All Tracks** and **Add Bus for Selected Channels**. They act on the whole selection. The duplicates:
+- Instrument tracks: **Duplicate Track** copies the notes and settings without the instrument (Cayman plays it until you pick one); **Duplicate Track + Instrument** copies everything.
+- Audio tracks: **Duplicate Track** makes a new track with the same settings and effects, without the clips; **Duplicate Track Fully** copies the clips too.
+
+Select several tracks with **Shift+click** (every track from the last one clicked) or **Ctrl+click** (one more, or one less). Dragging the bottom edge of a selected track sizes every selected track the same; double-click the edge to put them all back. An instrument track's menu also has **Show as Score...** (see Score); an audio track's has **Load Media...** (see Importing audio files). The track menu follows them; right-click the empty space under the tracks for the track menu alone:
 
 - **Add Tracks...** (**T**): the Add Tracks window (above).
 - **Add Audio Track (mono)**, **Add Audio Track (stereo)**, **Add Instrument Track** and **Add Choir Track**: one new track.
@@ -377,7 +381,7 @@ WAV, AIFF, FLAC, MP3 and Ogg Vorbis go in as they are (and WMA on Windows). M4A,
 - **Split at Playhead** (**Alt+X**) cuts the selected clips at the playhead, or the selected track's clip when none is selected.
 - Double-click a MIDI clip for the Editor, an audio clip for the Audio Editor.
 - On an audio clip, drag the squares at its top corners for fade in and fade out, and the bar at its top middle for its volume (**Shift** for fine steps).
-- Right-click an audio clip for the Audio menu, a MIDI clip for **Make Block from Selected Clips** and **Go to Song Builder Blocks**.
+- Right-click a clip for **Cut**, **Copy**, **Paste** (at the playhead, on the selected track), **Delete** and **Duplicate**, then the clip's own: the Audio menu for an audio clip; **Make Block from Selected Clips**, **Go to Song Builder Blocks** and the rest for a MIDI clip.
 
 ### Loop range
 
@@ -632,6 +636,9 @@ Each change is one Undo step. Audio clips keep their speed when the tempo change
 
 The Console is the mixer: a strip for every track, bus and FX channel, one for each Sub output, and Main on the right. Open it with **View > Console**, the Console button at the right of the transport bar, or **F3** (in the default key set).
 
+### Showing some channels
+The buttons down the Console's left side choose which strips show: **Instrument tracks**, **Audio tracks**, **Buses** and **FX channels**. Click one to show only that kind; click it again for all of them. **Ctrl+click** adds a kind or takes it out, and the top button (**All**) shows every strip. Main and the Sub outputs always show. Sonify remembers the choice for next time.
+
 ### A channel strip
 - The menu at the top picks where it plays: **Main**, a Sub output, or a bus.
 - **+ Insert** adds an effect. Click an insert to open its window; click its light to bypass it.
@@ -642,7 +649,7 @@ The Console is the mixer: a strip for every track, bus and FX channel, one for e
 
 Right-click the Console where there's no strip for **Add Bus Channel** and **Add FX Channel**. Main's arrow shows its inserts beside it. Drag the top edge of the Console (or the Editor, or the Audio Editor) to make it taller, up to the toolbar; double-click the edge for its usual height.
 
-**Ctrl+click** and **Shift+click** select several strips; their buttons and faders then move together. Right-click a strip for **Duplicate Track**, **Remove Track**, **Color...**, **Rename...** and **Add Bus for Selected Channels**.
+**Ctrl+click** and **Shift+click** select several strips; their buttons, faders and pans then move together, each fader and pan by as much as the one you move, from wherever it is (one at -4 dB moved to -1 takes another from -3 to 0). Their sends to the same FX channel move together the same way, and choosing an output on one sends them all there. Right-click a strip for the same menu as a track header (**Cut**, **Copy**, **Paste**, **Remove**, the duplicates, **Color...**, **Rename...**, **Add Bus for Selected Channels**).
 
 ### Inserts and sends
 Click the arrow at the bottom of a strip (**Show inserts and sends**) to open its panel. Under **Inserts**, + adds an effect; each insert has an on/off light, its name (click to open), a window button and x to remove. Drag inserts to reorder them. A channel holds up to 16. Greyed names in italics after the inserts are placeholders from a DAWproject: plugins that can't play here, kept for when the song goes back out (see Other DAWs' Projects).

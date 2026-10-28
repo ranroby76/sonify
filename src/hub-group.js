@@ -7,8 +7,12 @@
 // With several selected, the selection works as one:
 //   Mute, Solo, Record and Monitor     a click on one switches them all the same way
 //   Faders and pans                    move together, each by as much (hub-core.js)
-//   Right-click                        Duplicate, Remove, Color, Rename (numbered: "Vocals 1",
-//                                      "Vocals 2"...), Select All, Add Bus for Selected Channels;
+//   Right-click                        Cut, Copy, Paste (under the track clicked), Remove; Duplicate
+//                                      Track (an instrument track's notes without its instrument, an
+//                                      audio track's settings and effects without its clips) and
+//                                      Duplicate Track + Instrument / Fully (everything); Color, Rename
+//                                      (numbered: "Vocals 1", "Vocals 2"...), Select All, Add Bus for
+//                                      Selected Channels;
 //                                      on a bus, Select What Plays Into It; then the track menu
 //                                      (hub-tracks.js: Add Tracks, Collapse, Track Presets...)
 //   Dragging a header (its number or name), or a strip (its name)   moves them all there
@@ -24,6 +28,7 @@
   const ACTIONS = ["mute", "solo", "recordArm", "monitor", "polarity"];
   let reorder = null;
   let popover = null;
+  let clipboardCount = 0;   // tracks Cut or Copy kept (Sonify says, "trackClipboard")
 
   const many = (ids, one, more) => (ids.length > 1 ? more.replace("#", String(ids.length)) : one);
 
@@ -68,9 +73,33 @@
     const channel = Hub.trackById(id);
     const feeders = channel && channel.kind === "bus" ? feedersOf(id) : [];
     const tracks = ids.filter(isTrack);
+    // The two duplicates, named for what's selected: instrument tracks, audio tracks, or a mix.
+    const kinds = new Set(ids.map((other) => (Hub.trackById(other) || {}).kind));
+    const onlyInstruments = kinds.size === 1 && kinds.has("instrument");
+    const onlyAudio = kinds.size === 1 && kinds.has("audio");
+    const mixOnly = [...kinds].every((kind) => kind === "fx" || kind === "bus");
+    const plural = ids.length > 1;
+    const key = (command) => (Hub.keys ? Hub.keys.label(command) : "");
+    const duplicates = mixOnly
+      ? [{ label: many(ids, "Duplicate Channel", "Duplicate # Channels"), value: "duplicateFull" }]
+      : [{ label: plural ? `Duplicate ${ids.length} Tracks` : "Duplicate Track", value: "duplicateBasic",
+           title: onlyAudio ? "A new audio track with the same settings and effects, without the clips"
+                : onlyInstruments ? "A new track with the same notes and settings, without the instrument (Cayman plays it until you pick one)"
+                : "Instrument tracks: their notes without their instruments; audio tracks: their settings and effects without their clips" },
+         { label: onlyInstruments ? (plural ? `Duplicate ${ids.length} Tracks + Instruments` : "Duplicate Track + Instrument")
+                : plural ? `Duplicate ${ids.length} Tracks Fully` : "Duplicate Track Fully",
+           value: "duplicateFull", shortcut: key("duplicateTracks"),
+           title: "Everything: clips, instrument, effects, sends and envelopes" }];
+
     const items = [
-      { label: many(ids, "Duplicate Track", "Duplicate # Tracks"), value: "duplicate" },
-      { label: many(ids, "Remove Track", "Remove # Tracks"), value: "remove" },
+      { label: many(ids, "Cut Track", "Cut # Tracks"), value: "cut" },
+      { label: many(ids, "Copy Track", "Copy # Tracks"), value: "copy" },
+      { label: clipboardCount > 1 ? `Paste ${clipboardCount} Tracks` : "Paste Track", value: "paste", disabled: !clipboardCount,
+        title: "Under this track" },
+      { label: many(ids, "Remove Track", "Remove # Tracks"), value: "remove", shortcut: key("removeTrack") },
+      { separator: true },
+      ...duplicates,
+      { separator: true },
       { label: "Color…", value: "colour" },
       { label: many(ids, "Rename…", "Rename # Tracks…"), value: "rename" },
       { label: "Select All Tracks", value: "all" },
@@ -97,7 +126,11 @@
 
     Hub.popupMenu(at, items, (value) => {
       if (value && typeof value === "object" && value.track) { Hub.trackMenu.run(value.track); return; }
-      if (value === "duplicate") Hub.send("duplicateTracks", { ids });
+      if (value === "duplicateBasic") Hub.send("duplicateTracks", { ids, mode: "basic" });
+      if (value === "duplicateFull") Hub.send("duplicateTracks", { ids, mode: "full" });
+      if (value === "cut") Hub.send("cutTracks", { ids });
+      if (value === "copy") Hub.send("copyTracks", { ids });
+      if (value === "paste") Hub.send("pasteTracks", { after: id });
       if (value === "remove") Hub.send("removeTracks", { ids });
       if (value === "colour") colours(ids, at);
       if (value === "rename") rename(ids, at);
@@ -316,6 +349,12 @@
     if (ids.length) Hub.send("addBusChannel", { ids });
     else Hub.toast("Select the tracks to play into the bus first.");
   };
+
+  // What Cut or Copy kept (an event the page's own list doesn't name, so it's listened to here).
+  if (window.__JUCE__ && window.__JUCE__.backend)
+    window.__JUCE__.backend.addEventListener("trackClipboard", (data) => Hub.emit("trackClipboard", data));
+
+  Hub.on("trackClipboard", (data) => { clipboardCount = Math.max(0, Number(data && data.count) || 0); });
 
   Hub.group = { click, toggle, menu, startReorder, closePopover, selectFeeders };
 })();

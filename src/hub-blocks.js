@@ -563,13 +563,14 @@
       // Merge Clips, Bounce to New Track and Export Clip to Audio, as an audio clip's menu has them (hub-audioeditor.js).
       const tools = Hub.clipTools;
       const merge = tools ? tools.mergeable(track, clip) : null;
-      const items = [...clipMenuItems, { separator: true },
+      const items = [...Hub.arrange.clipEditItems(), { separator: true }, ...clipMenuItems, { separator: true },
                      { label: "Automation", value: "clipAutomation", title: "The clip's own controller lines (Mod Wheel, Expression, Sustain...), drawn on the clip (they move and copy with it)" },
                      { label: "Show Track as Score\u2026", value: "showClipScore" },
                      { label: "Detect Chords", value: "detectChords", title: "The selected MIDI clips' chords, onto the chord track (Master Song Channel > Chords)" }];
       if (tools) items.push({ separator: true }, { label: merge.label, value: "merge", disabled: !merge.ok, title: merge.title },
                             tools.bounceItem(track, clip), ...tools.exportItems());
       Hub.popupMenu(at, items, (command) => {
+        if (Hub.arrange.runClipEdit(command)) return;
         if (command === "clipAutomation") { if (Hub.clipAutomation) Hub.clipAutomation.open(track, clip); }
         else if (command === "merge") tools.merge(track, clip);
         else if (command === "bounce") tools.bounce(track, clip);

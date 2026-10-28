@@ -1,6 +1,7 @@
 // D:\workspace\Fanan_web_hub\src\StemSplitter.cpp
 
 #include "StemSplitter.h"
+#include "Preferences.h"
 
 #include <juce_cryptography/juce_cryptography.h>
 
@@ -1031,9 +1032,17 @@ juce::String StemSplitter::runtimeProblem()
 
 juce::File StemSplitter::modelFile (Model model)
 {
-    // Next to Sonify, like its other files.
-    return juce::File::getSpecialLocation (juce::File::currentExecutableFile).getSiblingFile ("Models")
-               .getChildFile (model == Model::sixStems ? "htdemucs_6s.onnx" : "htdemucs.onnx");
+    const auto name = model == Model::sixStems ? "htdemucs_6s.onnx" : "htdemucs.onnx";
+
+    // One shipped next to Sonify (or downloaded there by a build-folder Sonify before) is used
+    // as it is; a download goes into Sonify's own folder in AppData, which can always be written
+    // (Program Files, where Sonify is installed, can't).
+    const auto beside = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getSiblingFile ("Models").getChildFile (name);
+
+    if (beside.existsAsFile())
+        return beside;
+
+    return SettingsFolder::get().getChildFile ("Models").getChildFile (name);
 }
 
 bool StemSplitter::hasModel (Model model)

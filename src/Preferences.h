@@ -153,7 +153,9 @@ namespace SettingsFolder
     juce::File folder (const juce::String& name, const juce::String& oldName = {});
 
     /** Windows: the one WebView2 profile every web view in Sonify uses (its page, the Web
-        Browser's tabs, the store's videos), beside Sonify.exe where the page's always was. One
+        Browser's tabs, the store's videos): AppData\Fanan\Sonify\WebView2 (never beside
+        Sonify.exe: Program Files can't be written; what a build folder's profile held is brought
+        over once). One
         profile is one browser process for them all: a new view opens in a moment, where a
         profile of its own started a browser of its own first and froze Sonify for seconds. */
     juce::File webViewProfile();

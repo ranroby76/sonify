@@ -1312,6 +1312,9 @@ juce::WebBrowserComponent::Options MainComponent::createWebOptions()
                        .withEventListener ("tracksSettings", afterEvent (this, [this] (const juce::var& event) { handleTrackGroup ("settings", event); }))
                        .withEventListener ("removeTracks", afterEvent (this, [this] (const juce::var& event) { handleTrackGroup ("remove", event); }))
                        .withEventListener ("duplicateTracks", afterEvent (this, [this] (const juce::var& event) { handleTrackGroup ("duplicate", event); }))
+                       .withEventListener ("copyTracks", afterEvent (this, [this] (const juce::var& event) { handleTrackGroup ("copy", event); }))
+                       .withEventListener ("cutTracks", afterEvent (this, [this] (const juce::var& event) { handleTrackGroup ("cut", event); }))
+                       .withEventListener ("pasteTracks", afterEvent (this, [this] (const juce::var& event) { handleTrackGroup ("paste", event); }))
                        .withEventListener ("trackMenu", afterEvent (this, [this] (const juce::var& event) { handleTrackMenu (event); }))
                        .withEventListener ("score", afterEvent (this, [this] (const juce::var& event) { handleScore (event); }))
                        .withEventListener ("importMedia", afterEvent (this, [this] (const juce::var& event) { handleImport (event); }))
@@ -1678,7 +1681,7 @@ juce::WebBrowserComponent::Options MainComponent::createWebOptions()
     options = withSamplingEvents (std::move (options));
 
    #if JUCE_WINDOWS
-    // WebView2 keeps its profile next to the executable, inside the build folder: the one profile
+    // WebView2 keeps its profile in Sonify's AppData folder (never beside Sonify.exe): the one profile
     // every web view in Sonify shares (SettingsFolder::webViewProfile).
     const auto userDataFolder = SettingsFolder::webViewProfile();
 
@@ -6676,7 +6679,33 @@ void MainComponent::handleTrackGroup (const juce::String& what, const juce::var&
         return;
     }
 
-    if (what == "remove")
+    // Cut and Copy: the tracks kept for Paste, in the song's order (Cut then removes them).
+    if (what == "copy" || what == "cut")
+    {
+        juce::Array<juce::var> kept;
+
+        for (const auto id : Edits::allTrackIds (engine))
+            if (std::find (ids.begin(), ids.end(), id) != ids.end())
+                if (const auto copied = Song::copyTrack (engine, id); copied.isObject())
+                    kept.add (copied);
+
+        if (kept.isEmpty())
+            return;
+
+        trackClipboard = kept;
+
+        if (webView != nullptr)
+        {
+            juce::DynamicObject::Ptr state (new juce::DynamicObject());
+            state->setProperty ("count", kept.size());
+            webView->emitEventIfBrowserIsVisible ("trackClipboard", juce::var (state.get()));
+        }
+
+        if (what == "copy")
+            return;
+    }
+
+    if (what == "remove" || what == "cut")
     {
         // Kept, plugins and all, so one undo brings them all back exactly.
         bool first = true;
@@ -6687,7 +6716,8 @@ void MainComponent::handleTrackGroup (const juce::String& what, const juce::var&
 
             if (auto removed = engine.detachTrack (id, index))
             {
-                addToHistory (ids.size() > 1 ? "Remove Tracks" : "Remove Track", new Edits::TrackRemoved (engine, id, index, std::move (removed)), ! first);
+                addToHistory (what == "cut" ? (ids.size() > 1 ? "Cut Tracks" : "Cut Track") : (ids.size() > 1 ? "Remove Tracks" : "Remove Track"),
+                              new Edits::TrackRemoved (engine, id, index, std::move (removed)), ! first);
                 first = false;
             }
 
@@ -6699,31 +6729,61 @@ void MainComponent::handleTrackGroup (const juce::String& what, const juce::var&
         return;
     }
 
-    if (what == "duplicate")
+    if (what == "duplicate" || what == "paste")
     {
-        // Each copy right under its original, plugins and all; one undo step. The copies are selected.
+        // Duplicate: each copy right under its original, plugins and all (mode "full"), or as the
+        // track menu asks ("basic": an instrument track's notes and settings without its instrument,
+        // an audio track's settings and effects without its clips; FX channels and buses as they
+        // are). Paste: the tracks Cut or Copy kept, under the track named (none: at the end).
+        // One undo step either way. The copies are selected.
+        const bool basic = event.getProperty ("mode", "full").toString() == "basic";
         std::vector<int> copies;
         juce::StringArray problems;
         bool first = true;
+        int after = what == "paste" ? static_cast<int> (event.getProperty ("after", 0)) : 0;
 
-        for (const auto id : ids)
+        const auto place = [this, &copies, &first, &after, &ids, &what] (int copy, int under)
         {
-            const auto copy = Song::duplicateTrack (engine, id, problems);
-
-            if (copy == 0)
-                continue;
-
             auto order = Edits::allTrackIds (engine);
             order.erase (std::remove (order.begin(), order.end(), copy), order.end());
-            const auto original = std::find (order.begin(), order.end(), id);
+            const auto original = std::find (order.begin(), order.end(), under);
             order.insert (original == order.end() ? order.end() : original + 1, copy);
             engine.setTrackOrder (order);
 
             const auto placed = Edits::allTrackIds (engine);
             const auto index = static_cast<int> (std::find (placed.begin(), placed.end(), copy) - placed.begin());
-            addToHistory (ids.size() > 1 ? "Duplicate Tracks" : "Duplicate Track", new Edits::TrackAdded (engine, copy, index), ! first);
+            const bool several = what == "paste" ? trackClipboard.size() > 1 : ids.size() > 1;
+            addToHistory (what == "paste" ? (several ? "Paste Tracks" : "Paste Track") : (several ? "Duplicate Tracks" : "Duplicate Track"),
+                          new Edits::TrackAdded (engine, copy, index), ! first);
             first = false;
             copies.push_back (copy);
+            after = copy;
+        };
+
+        if (what == "paste")
+        {
+            for (const auto& copied : trackClipboard)
+                if (const auto copy = Song::pasteTrack (engine, copied, problems); copy != 0)
+                    place (copy, after);
+        }
+        else
+        {
+            for (const auto id : ids)
+            {
+                const auto* track = engine.findTrack (id);
+
+                if (track == nullptr)
+                    continue;
+
+                const bool instrumentTrack = track->kind == Track::Kind::instrument;
+                const bool audioTrack = track->kind == Track::Kind::audio;
+                const auto copy = Song::duplicateTrack (engine, id, problems,
+                                                        ! (basic && audioTrack),          // an audio track's basic copy: no clips
+                                                        ! (basic && instrumentTrack));    // an instrument track's: no instrument
+
+                if (copy != 0)
+                    place (copy, id);
+            }
         }
 
         // The keyboard plays the first copy that's a track (FX channels aren't played).

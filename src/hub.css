@@ -2096,6 +2096,21 @@ body.hide-audio-editor #audio-editor { display: none; }
 }
 #console-strips { flex: 1; display: flex; align-items: stretch; gap: 2px; padding: 6px; overflow-x: auto; overflow-y: hidden; }
 #console-empty { margin: 16px; color: var(--muted); }
+/* The view filter, left of the strips: which kinds of channel show (hub-console.js). */
+#console-filters {
+  flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px;
+  border-right: 1px solid var(--line); background: #242529;
+}
+.console-filter {
+  width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid #3d4046; border-radius: 6px; background: #2b2c30; color: var(--muted); cursor: pointer;
+}
+.console-filter svg { width: 15px; height: 15px; }
+.console-filter:hover { color: var(--bright); border-color: #55585e; }
+.console-filter[aria-pressed="true"] { color: #fff; background: var(--accent-2); border-color: var(--accent); }
+.console-filter.all { margin-bottom: 4px; }
+.console-filter:focus-visible { outline: 2px solid var(--accent-light); outline-offset: 1px; }
+.strip.filtered-out { display: none !important; }
 #console-main { flex: none; display: flex; padding: 6px 8px; border-left: 1px solid var(--line); background: #242529; }
 #console-outputs { flex: none; display: flex; gap: 2px; padding: 6px 2px 6px 8px; border-left: 1px solid var(--line); background: #242529; overflow-x: auto; max-width: 40%; }
 #console-outputs[hidden] { display: none; }
@@ -2130,7 +2145,7 @@ body.hide-audio-editor #audio-editor { display: none; }
 .strip-expand[aria-pressed="true"] { color: var(--accent); }
 .strip-number .strip-expand[aria-pressed="true"] svg { transform: scaleX(-1); }
 .strip.expanded {
-  width: 160px; grid-template-columns: 72px minmax(0, 1fr); column-gap: 3px;
+  width: 240px; grid-template-columns: 72px minmax(0, 1fr); column-gap: 3px;
   grid-template-rows: 20px 0 34px 22px 18px minmax(0, 1fr) 18px 22px;
 }
 .strip.expanded > :not(.strip-panel) { grid-column: 1; }
@@ -2329,7 +2344,7 @@ body.hide-audio-editor #audio-editor { display: none; }
 .main-strip .vmeter { width: 15px; }
 .main-strip .vmeter .bar { width: 6px; }
 /* Main expanded: its inserts beside it (no sends). */
-.main-strip.expanded { width: 176px; grid-template-columns: 84px minmax(0, 1fr); }
+.main-strip.expanded { width: 264px; grid-template-columns: 84px minmax(0, 1fr); }
 .main-strip.expanded .strip-panel { grid-template-rows: minmax(0, 1fr); }
 
 /* ------------------------------------------------------------------ transport */

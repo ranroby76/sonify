@@ -1422,6 +1422,7 @@ private:
     /** Several tracks and channels at once (the page's selection): settings (mixing, no undo
         step), remove, duplicate, move and rename (each one undo step). */
     void handleTrackGroup (const juce::String& what, const juce::var& event);
+    juce::Array<juce::var> trackClipboard;   // tracks the track menu's Cut or Copy kept (Song::copyTrack), for Paste
 
     /** The track list's right-click menu (MainTracks.cpp): Add Tracks, Add Audio Track (mono /
         stereo), Add Tracks for all Inputs, Store and Load Track Preset. */

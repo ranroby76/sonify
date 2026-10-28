@@ -346,16 +346,31 @@
         button.setAttribute("aria-pressed", String(on));
         row.classList.toggle("off", !on);
         Hub.send("setSend", { trackId: channel, sendId, on });
+        // The selection's sends to the same FX channel switch the same way.
+        for (const other of sendPartners(channel, sendId)) Hub.send("setSend", { trackId: other.trackId, sendId: other.sendId, on });
       } else if (event.target.closest(".panel-send-remove")) {
         Hub.send("removeSend", { trackId: channel, sendId });
       }
     });
 
     // The level: the engine follows the drag; one step goes into the history when it's let go.
+    // The selection's sends to the same FX channel move with it, each by as much (in dB), each
+    // from where it was when the drag began.
+    let partners = [];
     sends.addEventListener("pointerdown", (event) => {
       const slider = event.target.closest(".panel-send-level");
-      if (slider) slider.dataset.from = String(Hub.faderToDb(Number(slider.value)));
+      if (!slider) return;
+      slider.dataset.from = String(Hub.faderToDb(Number(slider.value)));
+      partners = sendPartners(channel, Number(slider.closest(".panel-send").dataset.sendId));
     });
+    const movePartners = (db, from, commit) => {
+      for (const other of partners) {
+        const level = Hub.clamp(other.level + db - from, Hub.SILENT_DB, Hub.MAX_DB);
+        const message = { trackId: other.trackId, sendId: other.sendId, level, commit };
+        if (commit) message.from = other.level;
+        Hub.send("setSend", message);
+      }
+    };
     // A key moves it with input then change: the step starts from the level before the key.
     sends.addEventListener("keydown", (event) => {
       const slider = event.target.closest(".panel-send-level");
@@ -368,6 +383,7 @@
       const db = Hub.faderToDb(Number(slider.value));
       row.querySelector(".panel-send-db").textContent = sendDbText(db);
       Hub.send("setSend", { trackId: channel, sendId: Number(row.dataset.sendId), level: db, commit: false });
+      if (partners.length && slider.dataset.from !== undefined) movePartners(db, Number(slider.dataset.from), false);
     });
     sends.addEventListener("change", (event) => {
       const slider = event.target.closest(".panel-send-level");
@@ -376,6 +392,8 @@
       const db = Hub.faderToDb(Number(slider.value));
       const message = { trackId: channel, sendId: Number(row.dataset.sendId), level: db, commit: true };
       if (slider.dataset.from !== undefined) message.from = Number(slider.dataset.from);
+      if (partners.length && slider.dataset.from !== undefined) movePartners(db, Number(slider.dataset.from), true);
+      partners = [];
       delete slider.dataset.from;
       Hub.send("setSend", message);
     });
@@ -385,6 +403,22 @@
       const row = slider.closest(".panel-send");
       Hub.send("setSend", { trackId: channel, sendId: Number(row.dataset.sendId), level: 0, commit: true });
     });
+  }
+
+  /** The other selected channels' sends to the same FX channel as this one (not sidechains):
+      [{trackId, sendId, level}] as they are now. None when the channel isn't in a selection. */
+  function sendPartners(channel, sendId) {
+    const group = Hub.groupOf(channel);
+    if (group.length < 2) return [];
+    const own = ((Hub.trackById(channel) || {}).sends || []).find((send) => send.id === sendId);
+    if (!own || own.sidechain) return [];
+    const found = [];
+    for (const other of group) {
+      if (other === channel) continue;
+      const send = ((Hub.trackById(other) || {}).sends || []).find((each) => !each.sidechain && each.target === own.target);
+      if (send) found.push({ trackId: other, sendId: send.id, level: send.level });
+    }
+    return found;
   }
 
   /** Inserts reorder by dragging their banners (a line shows where one lands). */
@@ -652,18 +686,29 @@
       const track = current();
       event.target.blur();
 
+      // The selection goes the same way, when this channel is in it: into a bus, the tracks
+      // among it (a bus doesn't play into a bus, nor an FX channel); to Main or a Sub, all of them.
+      const group = Hub.groupOf(id);
+
       if (value.startsWith("bus:")) {
         const bus = Number(value.slice(4));
-        if (track) track.bus = bus;
+        const ids = group.filter((other) => {
+          const channel = Hub.trackById(other);
+          return other === id || (channel && other !== bus && channel.kind !== "fx" && channel.kind !== "bus");
+        });
+        for (const other of ids) { const channel = Hub.trackById(other); if (channel) channel.bus = bus; }
         event.target.classList.remove("sub");
-        Hub.send("trackSettings", { id, bus });
+        if (ids.length > 1) Hub.send("tracksSettings", { ids, bus });
+        else Hub.send("trackSettings", { id, bus });
         return;
       }
 
       const output = Number(value) || 0;
+      for (const other of group) { const channel = Hub.trackById(other); if (channel) { channel.output = output; channel.bus = 0; } }
       if (track) { track.output = output; track.bus = 0; }
       event.target.classList.toggle("sub", output !== 0);
-      Hub.send("trackSettings", { id, output, bus: 0 });
+      if (group.length > 1) Hub.send("tracksSettings", { ids: group, output, bus: 0 });
+      else Hub.send("trackSettings", { id, output, bus: 0 });
     });
 
     root.querySelector(".strip-feeds").addEventListener("click", (event) => {
@@ -904,7 +949,103 @@
       }
     }
 
-    $("console-empty").hidden = Hub.state.tracks.length + (Hub.state.busChannels || []).length + (Hub.state.fxChannels || []).length > 0;
+    applyFilter();
+  }
+
+  // ---------------------------------------------------------------- the view filter
+  // Left of the strips, one toggle for each kind of channel. A click shows that kind alone (a
+  // click on the one already shown alone shows them all again); Ctrl + click adds a kind or takes
+  // it out; All shows every channel. Main and the Sub outputs always show. Kept for next time.
+  const FILTER_KEY = "sonify.console.kinds";
+  const FILTER_KINDS = [
+    ["instrument", "Instrument tracks", ICON_KEYS],
+    ["audio", "Audio tracks", '<svg viewBox="0 0 16 16"><path d="M1.5 8h1.6M4.3 5v6M7 2.5v11M9.7 4.5v7M12.4 6.5v3M13.9 8h0.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'],
+    ["bus", "Buses", '<svg viewBox="0 0 16 16"><path d="M2 3.5h4.5L9.5 8 6.5 12.5H2M9.5 8H14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>'],
+    ["fx", "FX channels", '<svg viewBox="0 0 16 16"><path d="M3 13V4.5c0-1.4 1-2 2.6-1.8M2 8h4M8.5 6.5l5 6.5M13.5 6.5l-5 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>']
+  ];
+  const ICON_ALL = '<svg viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>';
+  let shownKinds = new Set(FILTER_KINDS.map(([kind]) => kind));
+
+  try {
+    const kept = JSON.parse(localStorage.getItem(FILTER_KEY) || "null");
+    if (Array.isArray(kept) && kept.length) shownKinds = new Set(kept.filter((kind) => FILTER_KINDS.some(([k]) => k === kind)));
+    if (!shownKinds.size) shownKinds = new Set(FILTER_KINDS.map(([kind]) => kind));
+  } catch (e) { /* every kind */ }
+
+  const showsAll = () => shownKinds.size === FILTER_KINDS.length;
+
+  function setShownKinds(kinds) {
+    shownKinds = kinds.size ? kinds : new Set(FILTER_KINDS.map(([kind]) => kind));
+    try { localStorage.setItem(FILTER_KEY, JSON.stringify([...shownKinds])); } catch (e) { /* this run only */ }
+    showFilters();
+    applyFilter();
+  }
+
+  function createFilters() {
+    const bar = $("console-filters");
+    if (!bar) return;
+    bar.replaceChildren();
+
+    const all = element("button", "console-filter all");
+    all.type = "button";
+    all.dataset.kind = "all";
+    all.innerHTML = ICON_ALL;
+    all.title = "Show every channel";
+    all.setAttribute("aria-label", "Show every channel");
+    bar.appendChild(all);
+
+    for (const [kind, name, icon] of FILTER_KINDS) {
+      const button = element("button", "console-filter");
+      button.type = "button";
+      button.dataset.kind = kind;
+      button.innerHTML = icon;
+      button.title = `${name}: click to show only them, Ctrl + click to add or take them out`;
+      button.setAttribute("aria-label", name);
+      bar.appendChild(button);
+    }
+
+    bar.addEventListener("click", (event) => {
+      const button = event.target.closest(".console-filter");
+      if (!button) return;
+      const kind = button.dataset.kind;
+
+      if (kind === "all") { setShownKinds(new Set(FILTER_KINDS.map(([k]) => k))); return; }
+
+      if (event.ctrlKey || event.metaKey) {
+        const next = new Set(shownKinds);
+        if (next.has(kind)) next.delete(kind); else next.add(kind);
+        setShownKinds(next);
+        return;
+      }
+
+      // Alone already: every kind again. Otherwise: this kind alone.
+      setShownKinds(shownKinds.size === 1 && shownKinds.has(kind) ? new Set() : new Set([kind]));
+    });
+
+    showFilters();
+  }
+
+  function showFilters() {
+    for (const button of document.querySelectorAll("#console-filters .console-filter")) {
+      const kind = button.dataset.kind;
+      button.setAttribute("aria-pressed", String(kind === "all" ? showsAll() : !showsAll() && shownKinds.has(kind)));
+    }
+  }
+
+  function applyFilter() {
+    let shown = 0;
+
+    for (const [id, strip] of strips) {
+      const channel = Hub.trackById(id);
+      const visible = !channel || shownKinds.has(channel.kind);
+      strip.root.classList.toggle("filtered-out", !visible);
+      if (visible) shown += 1;
+    }
+
+    const empty = $("console-empty");
+    const any = strips.size > 0;
+    empty.hidden = !any ? false : shown > 0;
+    empty.textContent = !any ? "No tracks. Add one with + in the track list." : "No channels of the kinds shown. Click All (left) to see every channel.";
   }
 
   // ---------------------------------------------------------------- Main
@@ -1147,6 +1288,7 @@
   }
 
   Hub.on("ready", () => {
+    createFilters();
     setupConsoleMenu();
     main = createMain();
     showPeaks();

@@ -1106,6 +1106,7 @@
     const merge = Hub.clipTools.mergeable(track, clip);
     const shown = transientShown.get(clip.id);
     Hub.popupMenu(anchor, [
+      ...(Hub.arrange && Hub.arrange.clipEditItems ? [...Hub.arrange.clipEditItems(), { separator: true }] : []),
       { label: "Open in the Audio Editor", value: "open" },
       { label: "Automation", value: "automation", title: "The clip's own Gain, Pan and effect lines, drawn on the clip (they move and copy with it)" },
       { separator: true },
@@ -1143,6 +1144,7 @@
       { label: "Clip Effect", submenu: effectItems(clip) },
       { label: "Song Builder Blocks", submenu: Hub.songBlockMenuItems || [] }
     ], (pick) => {
+      if (Hub.arrange && Hub.arrange.runClipEdit && Hub.arrange.runClipEdit(pick)) return;
       if (pick === "sync") syncTempo(false, chosen);
       if (pick === "follow") { if (clip.followTempo) send("followTempo", { on: false }, chosen); else syncTempo(true, chosen); }
       if (pick === "pitch") askPitch(chosen);

@@ -2284,6 +2284,29 @@
   /** Studio One's menu on the lanes' empty space: the tools (the Paint tool's shapes beside it),
       Cut, Copy, Paste (where it was clicked), Delete, Select All, Deselect All, Undo and Redo
       (named after their steps), each with its key in the map in use. */
+  /** A clip's right-click starts with these (hub-blocks.js, hub-audioeditor.js): Cut, Copy, Paste
+      (at the playhead, on the selected track, as Ctrl+V), Delete and Duplicate, for the selection. */
+  function clipEditItems() {
+    const key = (command) => (Hub.keys ? Hub.keys.label(command) : "");
+    const any = Hub.state.selectedClips.length > 0;
+    return [
+      { label: "Cut", value: "clipEdit:cutClips", shortcut: key("cut"), disabled: !any },
+      { label: "Copy", value: "clipEdit:copyClips", shortcut: key("copy"), disabled: !any },
+      { label: "Paste", value: "clipEdit:pasteClips", shortcut: key("paste"), disabled: !(clipboard && clipboard.items.length) || !Hub.state.tracks.length,
+        title: "At the playhead, on the selected track" },
+      { label: "Delete", value: "clipEdit:deleteClip", shortcut: key("delete"), disabled: !any },
+      { label: "Duplicate", value: "clipEdit:duplicateClips", shortcut: key("duplicate"), disabled: !any,
+        title: "Right after the selection, on the same tracks" }
+    ];
+  }
+
+  /** One of clipEditItems picked: true when it was one. */
+  function runClipEdit(pick) {
+    if (typeof pick !== "string" || !pick.startsWith("clipEdit:")) return false;
+    Hub.run(pick.slice(9));
+    return true;
+  }
+
   function showMenu(event) {
     const p = lanePoint(event);
     const key = (command) => (Hub.keys ? Hub.keys.label(command) : "");
@@ -3068,6 +3091,9 @@
     // A clip's own effect (the Audio menu, a Browser effect dropped on a clip: hub-tracks.js).
     effectMenu,
     setClipEffect,
+    // A clip's right-click: Cut, Copy, Paste, Delete, Duplicate.
+    clipEditItems,
+    runClipEdit,
     effectDropAt
   };
 

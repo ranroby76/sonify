@@ -49,6 +49,20 @@ namespace Song
         couldn't come with it (a plugin file that has gone) is listed in problems. */
     int duplicateTrack (AudioEngine& engine, int trackId, juce::StringArray& problems);
 
+    /** A copy made as asked (the track menu's Duplicate Track): withClips false leaves out its clips
+        and envelopes (an audio track's "Duplicate Track": its settings and effects only);
+        withInstrument false leaves out its instrument (an instrument track's "Duplicate Track": its
+        notes and settings, played by Cayman until another is chosen). */
+    int duplicateTrack (AudioEngine& engine, int trackId, juce::StringArray& problems, bool withClips, bool withInstrument);
+
+    /** A track as Copy keeps it (the track menu's Cut and Copy): everything, as duplicateTrack
+        copies it, and which tracks it named then (its sends' FX channels), so Paste links the same
+        ones while they're there. Void: no such track. */
+    juce::var copyTrack (AudioEngine& engine, int trackId);
+
+    /** Paste: a track Copy kept, added at the end of the song. Returns its id (0: it couldn't be). */
+    int pasteTrack (AudioEngine& engine, const juce::var& copied, juce::StringArray& problems);
+
     /** Track presets (.trackpreset, Studio One's Store / Load Track Preset): tracks as a song
         keeps them, without what belongs to one song (clips, envelopes, sends, the bus or output
         and input they use, other tracks they hear, their height, freeze, mute, solo, arm and

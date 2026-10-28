@@ -1583,22 +1583,86 @@ juce::Result Song::restore (AudioEngine& engine, const juce::var& song, juce::St
 
 int Song::duplicateTrack (AudioEngine& engine, int trackId, juce::StringArray& problems)
 {
+    return duplicateTrack (engine, trackId, problems, true, true);
+}
+
+int Song::duplicateTrack (AudioEngine& engine, int trackId, juce::StringArray& problems, bool withClips, bool withInstrument)
+{
+    auto copied = copyTrack (engine, trackId);
+
+    if (! copied.isObject())
+        return 0;
+
+    auto* fields = copied.getProperty ("track", {}).getDynamicObject();
+
+    if (fields == nullptr)
+        return 0;
+
+    if (! withClips)
+        for (const auto* key : { "clips", "automation", "frozen", "frozenDry" })
+            fields->removeProperty (key);
+
+    if (! withInstrument)
+    {
+        for (const auto* key : { "instrument", "instrumentOff", "frozen", "frozenDry" })
+            fields->removeProperty (key);
+
+        // Envelopes of the instrument's knobs go with it (an insert's stay).
+        if (const auto* lanes = fields->getProperty ("automation").getArray())
+        {
+            juce::Array<juce::var> kept;
+
+            for (const auto& lane : *lanes)
+                if (! (lane.hasProperty ("insert") && (int) lane.getProperty ("insert", 0) == -1))
+                    kept.add (lane);
+
+            fields->setProperty ("automation", kept);
+        }
+    }
+
+    return pasteTrack (engine, copied, problems);
+}
+
+juce::var Song::copyTrack (AudioEngine& engine, int trackId)
+{
     const auto& tracks = engine.getTracks();
     const auto found = std::find_if (tracks.begin(), tracks.end(), [trackId] (const auto& t) { return t->id == trackId; });
 
     if (found == tracks.end())
-        return 0;
+        return {};
 
-    // As a song would keep it (audio files by their full paths), then made again at the end:
-    // the tracks it names are named by their place, which the copy maps back to the same tracks.
-    const auto item = captureTrack (engine, **found, {});
-    std::vector<int> ids;
+    // As a song would keep it (audio files by their full paths): the tracks it names are named by
+    // their place, which a paste maps back to the same tracks.
+    juce::Array<juce::var> ids;
 
     for (const auto& track : tracks)
-        ids.push_back (track->id);
+        ids.add (track->id);
+
+    auto copied = object();
+    copied.getDynamicObject()->setProperty ("track", captureTrack (engine, **found, {}));
+    copied.getDynamicObject()->setProperty ("ids", ids);
+    return copied;
+}
+
+int Song::pasteTrack (AudioEngine& engine, const juce::var& copied, juce::StringArray& problems)
+{
+    const auto item = copied.getProperty ("track", {});
+
+    if (! item.isObject())
+        return 0;
+
+    std::vector<int> ids;
+
+    if (const auto* list = copied.getProperty ("ids", {}).getArray())
+        for (const auto& value : *list)
+            ids.push_back ((int) value);
 
     bool monitor = false;
     const auto id = restoreTrack (engine, item, problems, {}, monitor);
+
+    if (id == 0)
+        return 0;
+
     restoreTrackLinks (engine, id, item, ids);
     engine.setTrackMonitor (id, monitor);
     return id;

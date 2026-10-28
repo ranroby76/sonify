@@ -22,6 +22,14 @@ Tomahawk_Sampler/
 *.frb
 axis nam files/
 
+# Videos and screen-recording projects (Camtasia): marketing material, not source
+videos/
+*.mp4
+*.mov
+*.mkv
+*.trec
+*.tscproj/
+
 # Secrets: never in git (the repository is public)
 store_secrets.txt
 *secrets*.txt

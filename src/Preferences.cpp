@@ -141,7 +141,33 @@ juce::File SettingsFolder::folder (const juce::String& name, const juce::String&
 
 juce::File SettingsFolder::webViewProfile()
 {
-    return juce::File::getSpecialLocation (juce::File::currentExecutableFile).getSiblingFile ("FananWebHub-WebView2");
+    // In Sonify's own folder in AppData: beside Sonify.exe it can't be written once Sonify is
+    // installed in Program Files (WebView2 then can't start at all).
+    static const juce::File profile = []
+    {
+        const auto target = get().getChildFile ("WebView2");
+
+        // The profile kept beside Sonify.exe before (a build folder): what the page kept in it
+        // (its local storage: the places, choices and layouts it remembers) comes along, once.
+        // Its caches stay behind.
+        const auto old = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getSiblingFile ("FananWebHub-WebView2");
+
+        if (! target.isDirectory() && old.isDirectory())
+        {
+            for (const auto* part : { "Local Storage", "IndexedDB", "Session Storage" })
+            {
+                const auto from = old.getChildFile ("EBWebView").getChildFile ("Default").getChildFile (part);
+
+                if (from.isDirectory())
+                    from.copyDirectoryTo (target.getChildFile ("EBWebView").getChildFile ("Default").getChildFile (part));
+            }
+        }
+
+        target.createDirectory();
+        return target;
+    }();
+
+    return profile;
 }
 
 void SettingsFolder::removeOldWebViewProfiles()
