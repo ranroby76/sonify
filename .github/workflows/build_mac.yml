@@ -307,21 +307,29 @@ jobs:
             --team-id "$TEAM_ID" \
             --wait
 
-          # Stapling and validating ask Apple's servers, whose connection drops now and then
-          # ("The network connection was lost", error 68): each is tried a few times.
-          for attempt in 1 2 3 4 5; do
+          # Stapling asks Apple's ticket server (CloudKit), whose connection drops now and then
+          # ("The network connection was lost", error 68): tried up to 8 times, waiting longer
+          # each time. The DMG is notarized either way, and Sonify.app inside it carries its own
+          # stapled ticket (the step before), so when the server never answers the build goes on
+          # with a warning: a Mac online checks the DMG's ticket with Apple when it's opened.
+          stapled=no
+
+          for attempt in 1 2 3 4 5 6 7 8; do
             if xcrun stapler staple "$DMG"; then
+              stapled=yes
               break
             fi
 
-            if [ "$attempt" = "5" ]; then
-              echo "::error::stapling the DMG failed 5 times"
-              exit 1
+            if [ "$attempt" != "8" ]; then
+              echo "Stapling failed (attempt $attempt of 8): trying again in $((attempt * 30)) s"
+              sleep $((attempt * 30))
             fi
-
-            echo "Stapling failed (attempt $attempt): trying again in 30 s"
-            sleep 30
           done
+
+          if [ "$stapled" != yes ]; then
+            echo "::warning::The DMG is signed and notarized, but Apple's ticket server didn't answer, so its ticket isn't stapled to it (Sonify.app inside has its own)"
+            exit 0
+          fi
 
           for attempt in 1 2 3 4 5; do
             if xcrun stapler validate "$DMG"; then
@@ -329,8 +337,8 @@ jobs:
             fi
 
             if [ "$attempt" = "5" ]; then
-              echo "::error::validating the DMG's ticket failed 5 times"
-              exit 1
+              echo "::warning::The DMG's stapled ticket couldn't be validated (Apple's server didn't answer)"
+              exit 0
             fi
 
             echo "Validating failed (attempt $attempt): trying again in 30 s"
