@@ -1765,6 +1765,11 @@ void CreatorStudio::exportFinished (const PluginExporter::Result& result)
 
     topBar.showNotice ("Exported");
 
+    // Where DAWs find it (your own plugin folders): each one opened, the plugin picked out there,
+    // so it's seen where the files went.
+    for (const auto& path : result.installed)
+        juce::File (path).revealToUser();
+
     juce::StringArray names;
 
     for (const auto& file : result.files)
@@ -1780,7 +1785,7 @@ void CreatorStudio::exportFinished (const PluginExporter::Result& result)
             << juce::File::getSeparatorString() << "<name>)" << (result.isProtected ? ", with its license.soni" : "") << ".";
 
     if (! result.installed.isEmpty())
-        message << "\n\nAnd copied into your plugin folders, where DAWs look:\n" << result.installed.joinIntoString ("\n")
+        message << "\n\nAnd copied into your plugin folders, where DAWs look (opened for you):\n" << result.installed.joinIntoString ("\n")
                 << "\n\nRescan plugins in your DAW (or start it again) to see " << (names.size() == 1 ? "it." : "them.");
     else
         message << "\n\nFor your DAW, copy each plugin's whole folder into the folders it scans, then rescan plugins.";
@@ -1806,7 +1811,7 @@ void CreatorStudio::exportFinished (const PluginExporter::Result& result)
     auto options = juce::MessageBoxOptions()
                        .withTitle ("Exported")
                        .withMessage (message)
-                       .withButton ("Show in folder")
+                       .withButton ("Show export folder")
                        .withButton ("OK")
                        .withAssociatedComponent (this);
 

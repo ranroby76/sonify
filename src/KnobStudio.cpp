@@ -93,10 +93,13 @@ namespace
     //==========================================================================
     /** KnobMaker's Gallery: every knob in a folder (KnobMan's .knob and Sonify's .fklayers, in
         its folders too) as a picture with its name; double-click one (or Open) to open it. The
-        folder is remembered; at first it's the KnobMan gallery's downloads. In Edit UI its items
-        can also be dragged out onto the plugin's window (dragOut). */
+        folder is remembered; at first it's Sonify's gallery (in AppData, the knobs installed with
+        Sonify copied into it, so knobs can be added to it). Knob files dropped on it from the
+        computer are copied into the folder shown. In Edit UI its items can also be dragged out
+        onto the plugin's window (dragOut). */
     class KnobGallery final : public juce::Component,
                               public juce::DragAndDropContainer,
+                              public juce::FileDragAndDropTarget,
                               private juce::Timer
     {
     public:
@@ -107,13 +110,19 @@ namespace
                 openButton.setButtonText ("Add");
 
             folderButton.onClick = [this] { chooseFolder(); };
+            sonifyButton.setTooltip ("Sonify's gallery: the knobs installed with Sonify, and the ones added to it");
+            sonifyButton.onClick = [this]
+            {
+                memoryFile().deleteFile();   // back to the gallery from now on
+                setFolder (sonifyGallery());
+            };
             openButton.onClick = [this] { openSelected(); };
             exportButton.setTooltip ("Every KnobMan knob (.knob) in this folder saved as a Sonify knob (.fklayers) into a folder you choose");
             exportButton.onClick = [this] { chooseExportFolder(); };
             search.setTextToShowWhenEmpty ("Search by name", Theme::muted);
             search.onTextChange = [this] { filter(); };
 
-            for (auto* c : std::initializer_list<juce::Component*> { &folderButton, &exportButton, &openButton, &search, &folderLabel, &viewport })
+            for (auto* c : std::initializer_list<juce::Component*> { &sonifyButton, &folderButton, &exportButton, &openButton, &search, &folderLabel, &viewport })
                 addAndMakeVisible (c);
 
             folderLabel.setColour (juce::Label::textColourId, Theme::muted);
@@ -133,6 +142,8 @@ namespace
         {
             auto area = getLocalBounds().reduced (12);
             auto bar = area.removeFromTop (30);
+            sonifyButton.setBounds (bar.removeFromLeft (130));
+            bar.removeFromLeft (8);
             folderButton.setBounds (bar.removeFromLeft (150));
             bar.removeFromLeft (8);
             exportButton.setBounds (bar.removeFromLeft (300));
@@ -148,6 +159,70 @@ namespace
         }
 
         void paint (juce::Graphics& g) override   { g.fillAll (Theme::panel); }
+
+        void paintOverChildren (juce::Graphics& g) override
+        {
+            if (! dropHover)
+                return;
+
+            g.setColour (Theme::accent.withAlpha (0.12f));
+            g.fillRect (viewport.getBounds());
+            g.setColour (Theme::accent);
+            g.drawRect (viewport.getBounds(), 2);
+            g.setFont (Theme::font (16.0f, true));
+            g.drawText ("Drop to add to this gallery", viewport.getBounds(), juce::Justification::centred);
+        }
+
+        //======================================================================
+        // Knob files dropped from the computer: copied into the folder shown (Sonify's gallery
+        // when that one can't take them), a name already there kept by numbering the new one.
+        static bool isKnobFile (const juce::String& path)
+        {
+            const juce::File f (path);
+            return f.existsAsFile() && (f.hasFileExtension ("knob") || f.hasFileExtension (Looks::fileExtension));
+        }
+
+        bool isInterestedInFileDrag (const juce::StringArray& files) override
+        {
+            return std::any_of (files.begin(), files.end(), [] (const juce::String& f) { return isKnobFile (f); });
+        }
+
+        void fileDragEnter (const juce::StringArray&, int, int) override   { dropHover = true;  repaint(); }
+        void fileDragExit (const juce::StringArray&) override              { dropHover = false; repaint(); }
+
+        void filesDropped (const juce::StringArray& files, int, int) override
+        {
+            dropHover = false;
+            auto into = folder;
+
+            if (! into.isDirectory() || ! into.hasWriteAccess())
+                into = sonifyGallery();
+
+            int added = 0, failed = 0;
+
+            for (const auto& path : files)
+            {
+                if (! isKnobFile (path))
+                    continue;
+
+                const juce::File source (path);
+
+                if (source.isAChildOf (into))
+                    continue;   // already in it
+
+                const auto target = into.getNonexistentChildFile (source.getFileNameWithoutExtension(), source.getFileExtension(), false);
+                (source.copyFileTo (target) ? added : failed)++;
+            }
+
+            setFolder (into);
+
+            if (failed > 0)
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Gallery",
+                                                        juce::String (failed) + (failed == 1 ? " knob" : " knobs") + " couldn't be copied into "
+                                                            + into.getFullPathName() + ".");
+            else if (added == 0)
+                repaint();
+        }
 
     private:
         struct Item
@@ -172,7 +247,7 @@ namespace
                 {
                     g.setColour (Theme::muted);
                     g.setFont (Theme::font (14.0f));
-                    g.drawFittedText (owner->items.empty() ? "No knobs here (.knob or .fklayers). Choose the folder your knobs are in."
+                    g.drawFittedText (owner->items.empty() ? "No knobs here (.knob or .fklayers). Drop knob files here, or choose the folder your knobs are in."
                                                            : "No knob has that name.",
                                       getLocalBounds().reduced (20).withHeight (60), juce::Justification::centred, 2);
                     return;
@@ -268,10 +343,60 @@ namespace
             return knobMakerSettings ("gallery folder.txt");
         }
 
+        /** The knobs installed with Sonify: "knob_gallery" next to Sonify (on a Mac, in the app's
+            Resources). Read only (Program Files): they're copied into Sonify's gallery. */
+        static juce::File installedKnobs()
+        {
+            const auto exeFolder = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory();
+           #if JUCE_MAC
+            return exeFolder.getSiblingFile ("Resources").getChildFile ("knob_gallery");
+           #else
+            return exeFolder.getChildFile ("knob_gallery");
+           #endif
+        }
+
+        /** Sonify's gallery, in AppData (Fanan\Sonify\Knob Gallery), where knobs can be added.
+            Each knob installed with Sonify is copied into it once: a new Sonify's new knobs come
+            in, and one deleted from the gallery or changed there stays so (the ones copied before
+            are listed in KnobMaker's "gallery installed.txt"). */
+        static juce::File sonifyGallery()
+        {
+            const auto gallery = SettingsFolder::folder ("Knob Gallery");
+            const auto listFile = knobMakerSettings ("gallery installed.txt");
+            juce::StringArray copied;
+            copied.addLines (listFile.loadFileAsString());
+            copied.removeEmptyStrings();
+            const auto before = copied.size();
+
+            if (const auto from = installedKnobs(); from.isDirectory())
+            {
+                for (const auto& file : from.findChildFiles (juce::File::findFiles, true, "*.knob;*" + juce::String (Looks::fileExtension)))
+                {
+                    const auto name = file.getRelativePathFrom (from).replaceCharacter ('\\', '/');
+
+                    if (copied.contains (name))
+                        continue;
+
+                    const auto target = gallery.getChildFile (name);
+
+                    if (target.existsAsFile() || (target.getParentDirectory().createDirectory().wasOk() && file.copyFileTo (target)))
+                        copied.add (name);
+                }
+            }
+
+            if (copied.size() != before)
+                listFile.replaceWithText (copied.joinIntoString ("\n"));
+
+            return gallery;
+        }
+
+        /** The folder chosen last; before one is chosen (or when it's gone), Sonify's gallery. */
         static juce::File rememberedFolder()
         {
-            const juce::File saved (memoryFile().loadFileAsString().trim());
-            return saved.isDirectory() ? saved : GalleryLibrary::knobDir();
+            if (const juce::File saved (memoryFile().loadFileAsString().trim()); saved.isDirectory())
+                return saved;
+
+            return sonifyGallery();
         }
 
         void chooseFolder()
@@ -570,6 +695,8 @@ namespace
         size_t next = 0;
         int selected = -1;
         juce::TextButton folderButton { juce::String::fromUTF8 ("Choose Folder\xe2\x80\xa6") }, openButton { "Open" };
+        juce::TextButton sonifyButton { "Sonify Gallery" };
+        bool dropHover = false;
         juce::TextButton exportButton { juce::String::fromUTF8 ("Export all KnobMan knobs as Sonify knobs\xe2\x80\xa6") };
 
         struct Exporter final : public juce::Timer

@@ -3,12 +3,22 @@
      (NuGet brings the WiX toolset the first time), from D:\workspace\Fanan_web_hub:
        dotnet build wix\Sonify.wixproj -c Release -p:Platform=x64
      The installer lands in wix\bin\x64\Release\Sonify-Setup.msi.
+     Microsoft's WebView2 online installer (put inside Sonify's, for computers without WebView2) is
+     downloaded into wix\obj the first time; delete it there to fetch a newer one.
      Version: keep it in step with project(FananWebHub VERSION ...) in CMakeLists.txt by hand. -->
 <Project Sdk="WixToolset.Sdk/5.0.2">
   <PropertyGroup>
     <OutputName>Sonify-Setup</OutputName>
-    <DefineConstants>Version=0.2.0.0</DefineConstants>
+    <WebView2Setup>$(MSBuildProjectDirectory)\obj\MicrosoftEdgeWebview2Setup.exe</WebView2Setup>
+    <DefineConstants>Version=0.2.0.0;WebView2Setup=$(WebView2Setup)</DefineConstants>
   </PropertyGroup>
+
+  <!-- Microsoft's WebView2 online installer ("Evergreen Bootstrapper"), fetched once. -->
+  <Target Name="FetchWebView2Setup" BeforeTargets="BeforeBuild" Condition="!Exists('$(WebView2Setup)')">
+    <DownloadFile SourceUrl="https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+                  DestinationFolder="$(MSBuildProjectDirectory)\obj"
+                  DestinationFileName="MicrosoftEdgeWebview2Setup.exe" Retries="3" />
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
