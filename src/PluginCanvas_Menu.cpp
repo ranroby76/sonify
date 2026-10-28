@@ -575,7 +575,7 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     backgroundButton.onClick = [this] { canvas.choosePicture (-1); };
 
     knobStudioButton.setTooltip ("Its look opens in the Knob Studio (the studio's own tab): layers, bevels, "
-                                 "textures, the KnobMan gallery. Come back with the Knob Studio's Back");
+                                 "textures, the Gallery. Come back with the Knob Studio's Back");
     knobStudioButton.onClick = [this]
     {
         if (widget >= 0 && canvas.onEditLook != nullptr)

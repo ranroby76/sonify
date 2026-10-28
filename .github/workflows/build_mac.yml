@@ -260,11 +260,33 @@ jobs:
 
           DMG="${APP_NAME}_Mac_${{ matrix.label }}_v${APP_VERSION}.dmg"
 
-          hdiutil create \
-            -volname "${APP_NAME} v${APP_VERSION}" \
-            -srcfolder dmg_contents \
-            -ov -format UDZO \
-            "$DMG"
+          # "hdiutil: create failed - Resource busy" is a known hiccup of GitHub's Mac runners:
+          # XProtect (the Mac's malware scan) holds the new disk image for a moment. It's stopped
+          # first, and the DMG is made again after a pause when it fails anyway (up to 5 tries).
+          sudo pkill -9 XProtect >/dev/null 2>&1 || true
+          for i in 1 2 3 4 5 6 7 8 9 10; do pgrep XProtect >/dev/null || break; sleep 3; done
+
+          made=no
+          for attempt in 1 2 3 4 5; do
+            if hdiutil create \
+                 -volname "${APP_NAME} v${APP_VERSION}" \
+                 -srcfolder dmg_contents \
+                 -ov -format UDZO \
+                 "$DMG"; then
+              made=yes
+              break
+            fi
+
+            echo "hdiutil create failed (try $attempt of 5): trying again in $((attempt * 10)) s"
+            rm -f "$DMG"
+            sudo pkill -9 XProtect >/dev/null 2>&1 || true
+            sleep $((attempt * 10))
+          done
+
+          if [ "$made" != yes ]; then
+            echo "::error::The DMG couldn't be made (hdiutil kept failing)"
+            exit 1
+          fi
 
           ls -lh "$DMG"
           echo "DMG=$DMG" >> $GITHUB_ENV

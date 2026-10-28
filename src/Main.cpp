@@ -4,7 +4,6 @@
 
 #include "BinaryData.h"
 #include "MainComponent.h"
-#include "GalleryBrowser.h"   // GallerySync: the KnobMan gallery's download, stopped here
 #include "PluginScanner.h"
 #include "StellaLookAndFeel.h"
 
@@ -45,10 +44,6 @@ public:
     void shutdown() override
     {
         mainWindow = nullptr;
-
-        // The KnobMan gallery's download (when one was ever started; none is made here) is
-        // stopped and joined while JUCE still stands, not in the static teardown after it.
-        GallerySync::shutdownInstance();
 
         juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
     }

@@ -566,28 +566,6 @@ void LayerWorkspace::applyImport (const LayerDoc& imported, const juce::String& 
         onStatus (message);
 }
 
-void LayerWorkspace::openGallery()
-{
-    auto browser = std::make_unique<GalleryBrowser>();
-    browser->setSize (720, 560);
-
-    browser->onImport = [this] (const LayerDoc& d, const juce::String& n,
-                                const juce::StringArray& w)
-    {
-        applyImport (d, n, w);
-    };
-
-    juce::DialogWindow::LaunchOptions options;
-    options.content.setOwned (browser.release());
-    options.dialogTitle = "KnobMan Gallery";
-    options.dialogBackgroundColour = juce::Colour (0xff262629);
-    options.escapeKeyTriggersCloseButton = true;
-    options.useNativeTitleBar = true;
-    options.resizable = true;
-
-    options.launchAsync();
-}
-
 void LayerWorkspace::importKnobFile()
 {
     knobChooser = std::make_unique<juce::FileChooser> ("Import a KnobMan file",

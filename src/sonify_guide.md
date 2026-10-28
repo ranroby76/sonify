@@ -1287,8 +1287,13 @@ The Knob Studio designs the looks of knobs, sliders and switches in layers, the 
 
 - Every change is saved into the plugin at once and shows on the panel.
 - The header has **Use on** this control, **Give this knob its own look** and **Back to the plugin**.
-- The list shows the plugin's looks, with **+ New look** (built-in, empty, the KnobMan gallery, a KnobMan file or a whole folder of them), **Duplicate**, **Save to my looks** (for every project), **Delete** and **Export…** (the look as a .fklayers file, or its frames as a PNG filmstrip).
-- A look from a KnobMan file (or the KnobMan gallery) is drawn exactly as KnobMan draws it, pictures and textures inside the file included. Edit it here like any look (colours, sizes, turns, masks, layers added, removed or moved) and it stays drawn KnobMan's way; a setting KnobMan has no equivalent for (Bevel & Emboss, say) is left out, and the status line says so. Its **Sonify lighting** switch (above the canvas) lights its spheres and metal circles the way Sonify does, everything else staying as KnobMan draws it.
+- The left panel starts with KnobMaker's buttons, working on the look being designed:
+  - **Save as Sonify knob…** saves it as a .fklayers file (into Sonify's gallery at first, so it's there to pick).
+  - **Export to PNG…** writes its frames, top to bottom, as a PNG filmstrip.
+  - **Load Sonify knob…** and **Load KnobMan knob…** replace it with a .fklayers or .knob file (with no look open, the file becomes a new look).
+  - **Select from Gallery…** opens Sonify's gallery beside the studio, and it stays open. Double-click a knob there (or click **Use**, or drag it onto the studio) and it replaces the look being designed; drag a look from the list below into the gallery to keep it there. Only the same kind replaces (a knob for a knob).
+- Under them, the plugin's looks, with **+ New look** (built-in, empty, one from the Gallery, a KnobMan file or a whole folder of them), **Duplicate**, **Save to my looks** (for every project) and **Delete**.
+- A look from a KnobMan file is drawn exactly as KnobMan draws it, pictures and textures inside the file included. Edit it here like any look (colours, sizes, turns, masks, layers added, removed or moved) and it stays drawn KnobMan's way; a setting KnobMan has no equivalent for (Bevel & Emboss, say) is left out, and the status line says so. Its **Sonify lighting** switch (above the canvas) lights its spheres and metal circles the way Sonify does, everything else staying as KnobMan draws it.
 - The control's **Look** tab can undo the Knob Studio's changes to a built-in look.
 
 ## Presets

@@ -18,8 +18,12 @@
 
         header   the look being edited and how many controls wear it; Use on this knob,
                  Give this knob its own look, Back to the plugin
-        left     the plugin's looks (what its controls wear, then its own), with New look,
-                 Duplicate, Save to my looks and Delete
+        left     KnobMaker's buttons on the look being designed: Save as Sonify knob, Export to
+                 PNG, Load Sonify knob, Load KnobMan knob (a loaded knob replaces the look) and
+                 Select from Gallery (Sonify's gallery, in a window that stays open: a knob
+                 double-clicked there, or dragged here, replaces the look; a look dragged from
+                 the list into it is kept there). Then the plugin's looks (what its controls
+                 wear, then its own), with New look, Duplicate, Save to my looks and Delete
         right    Looks: the layer builder (the preview, its frames, the layers, each layer's
                  shape and effects, Bevel & Emboss, textures). Shapes: the shape inventory
                  Shape layers draw from
@@ -35,6 +39,7 @@
     wearing the same look) at once.
 */
 class KnobStudio final : public juce::Component,
+                         public juce::DragAndDropTarget,
                          private juce::ListBoxModel
 {
 public:
@@ -61,24 +66,33 @@ public:
         on is kept in KnobMaker's library, so it's there again next time. No plugin, no Back. */
     void setWorkbench (bool isWorkbench);
 
-    /** KnobMaker: opens a knob from a file, a Sonify knob (.fklayers) or a KnobMan one (.knob). */
+    /** A knob from a file, a Sonify knob (.fklayers) or a KnobMan one (.knob): KnobMaker opens
+        it; on a plugin it replaces the look being designed (with none open: a new look). */
     void openKnobFile (const juce::File& file);
 
     //==========================================================================
-    /** The Gallery (every knob, slider and switch in a folder, as pictures; at first the KnobMan
-        gallery's downloads) in a window of its own, beside near. A double-click (or Open) gives
+    /** The Gallery (every knob, slider and switch in a folder, as pictures; at first Sonify's
+        gallery) in a window of its own, beside near. A double-click (or Open, or pickText) gives
         onPick the file; closeOnPick: the window goes then (one pick), else it stays (several).
-        dragOut: its items can also be dragged out onto Edit UI's window (galleryDrag). */
-    static void showGallery (const juce::String& title, std::function<void (const juce::File&)> onPick,
-                             bool closeOnPick, bool dragOut, juce::Component* near = nullptr);
+        dragOut: its items can also be dragged out, onto Edit UI's window or the Knob Studio
+        (galleryDrag). modal: nothing else in Sonify takes clicks while it's open; else it stays
+        beside, Sonify in use too (the Knob Studio's, for dragging both ways). Returns the window. */
+    static juce::ResizableWindow* showGallery (const juce::String& title, std::function<void (const juce::File&)> onPick,
+                                               bool closeOnPick, bool dragOut, juce::Component* near = nullptr,
+                                               const juce::String& pickText = {}, bool modal = true);
+
+    /** Sonify's gallery: AppData\Fanan\Sonify\Knob Gallery (Library/Fanan/Sonify on a Mac),
+        made the first time, the knobs installed with Sonify copied into it (each once). */
+    static juce::File galleryFolder();
 
     /** A gallery item dragged out: its drag description, and the file back from one ("" when it isn't). */
     static juce::var galleryDrag (const juce::File& file);
     static juce::File galleryDragFile (const juce::var& description);
 
     /** A gallery file (a KnobMan .knob or a Sonify .fklayers) as a look: its drawing, what it's
-        for, and its credits (a KnobMan gallery download's author and licence). commercialSafe:
-        whether its licence allows it in a plugin that's sold. False, with error, when it can't be read. */
+        for, and its credits (what a Sonify knob file says about itself). commercialSafe: false
+        only when those credits name a licence that doesn't allow selling. False, with error,
+        when it can't be read. */
     static bool readGalleryItem (const juce::File& file, LayerDoc& doc, Looks::Kind& kind,
                                  juce::String& credits, bool& commercialSafe, juce::String& error);
 
@@ -87,12 +101,19 @@ public:
     std::function<void()> onBack;
 
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
+
+    bool isInterestedInDragSource (const SourceDetails&) override;
+    void itemDragEnter (const SourceDetails&) override;
+    void itemDragExit (const SourceDetails&) override;
+    void itemDropped (const SourceDetails&) override;
 
 private:
     int getNumRows() override;
     void paintListBoxItem (int row, juce::Graphics&, int width, int height, bool selected) override;
     void selectedRowsChanged (int lastRowSelected) override;
+    juce::var getDragSourceDescription (const juce::SparseSet<int>& rows) override;   // a look dragged into the Gallery
 
     void refreshList();
     void select (const juce::String& name);
@@ -108,9 +129,10 @@ private:
     void showNewMenu();
     void addLook (const juce::String& baseName, Looks::Kind kind, const LayerDoc& doc, const juce::String& description = {});
     void openLookFile();
+    void addLookFromFile (const juce::File& file);      // a .knob or .fklayers file as a new look (New look's Gallery pick)
+    void replaceCurrentFrom (const juce::File& file);   // ...or in place of the look being designed
+    void builderChanged();                              // the builder's drawing saved as the look (every change)
     void importKnobFolder();
-    void showExportMenu();
-    void exportLookFile();
     void exportFilmstrip();
     juce::String ownerName() const;   // "this plugin", or "your library" (the workbench)
     void status (const juce::String& text);
@@ -120,6 +142,7 @@ private:
     void saveKnobFile();
     void chooseKnobFile (bool knobMan);
     void openGallery();
+    void refreshGallery();   // the open Gallery reads its folder again
 
     Looks& looks;
     GuiLayout layout;
@@ -136,15 +159,16 @@ private:
     juce::ListBox list { "Looks", this };
     juce::TextButton newButton { "+ New look" }, duplicateButton { "Duplicate" };
     juce::TextButton mineButton { "Save to my looks" }, deleteButton { "Delete" };
-    juce::TextButton exportButton { juce::String::fromUTF8 ("Export\xe2\x80\xa6") };
     juce::TextButton useButton, uniqueButton, backButton { "Back to the plugin" };
 
-    // KnobMaker's menu, in place of the list of looks.
+    // KnobMaker's buttons (KnobMaker: in place of the list of looks).
     juce::TextButton saveKnobButton { juce::String::fromUTF8 ("Save as Sonify knob\xe2\x80\xa6") };
     juce::TextButton exportPngButton { juce::String::fromUTF8 ("Export to PNG\xe2\x80\xa6") };
     juce::TextButton loadKnobButton { juce::String::fromUTF8 ("Load Sonify knob\xe2\x80\xa6") };
     juce::TextButton loadKnobManButton { juce::String::fromUTF8 ("Load KnobMan knob\xe2\x80\xa6") };
-    juce::TextButton galleryButton { juce::String::fromUTF8 ("Gallery\xe2\x80\xa6") };
+    juce::TextButton galleryButton { juce::String::fromUTF8 ("Select from Gallery\xe2\x80\xa6") };
+    juce::Component::SafePointer<juce::ResizableWindow> galleryWindow;   // the Gallery it opened, while it's open
+    bool dropHover = false;                                          // a gallery knob dragged over it
     juce::String knobTitle { "New knob" };   // the knob's file name
     juce::File knobFolder;                   // where the last one was loaded or saved
 

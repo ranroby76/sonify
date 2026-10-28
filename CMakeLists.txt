@@ -454,8 +454,6 @@ target_sources(FananWebHub PRIVATE
     src/KnobFile.cpp
     src/KnobManEngine.h
     src/KnobManEngine.cpp
-    src/GalleryBrowser.h
-    src/GalleryBrowser.cpp
     src/ShapeDoc.h
     src/ShapeDoc.cpp
     src/ShapeEditor.h

@@ -1,6 +1,6 @@
 // D:\workspace\Fanan_web_hub\src\LayerWorkspace.h
 // From KnobMaker (C:\workspace\knobmaker); in Stella it edits the look the Knob Studio hands it
-// and says when it changed (onDocumentChanged), a gallery or .knob import becomes a new look
+// and says when it changed (onDocumentChanged), a .knob import becomes a new look
 // (onImported) instead of replacing this one, the examples box is the studio's New look menu,
 // and the tabs take the studio's own colours.
 
@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "GalleryBrowser.h"
+#include "KnobFile.h"
 #include "LayerPanels.h"
 #include "LayerRender.h"
 
@@ -108,7 +108,6 @@ public:
     void setActualSize (bool b)        { canvas.setActualSize (b); actualSizeButton.setToggleState (b, juce::dontSendNotification); }
     bool isActualSize() const noexcept { return canvas.isActualSize(); }
 
-    void openGallery();
     void importKnobFile();
 
     std::function<void (const juce::String&)> onStatus;
@@ -116,8 +115,7 @@ public:
     /** Stella: the user changed the document (not setDocument). */
     std::function<void()> onDocumentChanged;
 
-    /** Stella: a knob picked in the gallery or read from a .knob file, for the studio to
-        add as a look of its own. */
+    /** Stella: a knob read from a .knob file, for the studio to add as a look of its own. */
     std::function<void (const LayerDoc&, const juce::String& name)> onImported;
 
 private:
