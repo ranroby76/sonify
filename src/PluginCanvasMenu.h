@@ -151,8 +151,9 @@ private:
     // Knobs, sliders and switches: two long buttons under the row, one over the other.
     juce::TextButton galleryButton { "Replace this item with gallery item" };
     juce::TextButton knobStudioButton { "Edit in Knob Studio" };
-    juce::ToggleButton similarToggle { "Include similars" };   // beside it: every control like this one
-    int actionsSize() const;    // the actions' height: the row, and the two buttons when they show
+    juce::ToggleButton similarToggle { "Apply this knob on similars" };   // under it: every control of its kind wears its look, for now
+    juce::TextButton similarApplyButton { "Apply" };                      // ...beside it: for good (asked first)
+    int actionsSize() const;    // the actions' height: the row, and the long buttons when they show
     juce::Rectangle<int> actionsArea;
     TabStrip tabStrip;
 

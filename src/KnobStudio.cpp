@@ -923,7 +923,7 @@ void KnobStudio::builderChanged()
 
         refreshList();
         status ("The " + controlName() + " has a look of its own now: \"" + current + "\". Changes here change only it "
-                "(tick \"Include similars\" in its menu to change the controls like it too).");
+                "(\"Apply this " + controlName() + " on similars\", in its menu in Edit UI, puts it on the controls like it).");
     }
 
     if (const auto* saved = looks.find (current))
@@ -1863,7 +1863,7 @@ void KnobStudio::paint (juce::Graphics& g)
         g.setColour (Theme::muted);
         g.setFont (Theme::font (15.0f));
         g.drawFittedText ("Select a control in Edit UI and press \"Design it in the Knob Studio\" in its menu: its look opens here "
-                          "(tick \"Include similars\" to design every control like it at once). Looks are made of layers, the "
+                          "(\"Apply this knob on similars\", under it, puts its look on every control of its kind). Looks are made of layers, the "
                           "KnobMan way: a shape on each, with its own light, bevel, texture and movement.",
                           hint.withSizeKeepingCentre (juce::jmin (520, hint.getWidth() - 40), 80), juce::Justification::centred, 3, 1.0f);
     }

@@ -1282,8 +1282,11 @@ Click **+ Pages** above the window: the window becomes the "Main" page, a new pa
 The Knob Studio designs the looks of knobs, sliders and switches in layers, the KnobMan way: each layer a shape with its own light, bevel, texture and movement.
 
 1. In Edit UI, open a control's menu and go to its **Look** tab (its **Look** list also has ready-made looks).
-2. Tick **Include similars** to design every control like it at once; unticked, only this one changes.
-3. Click **Design it in the Knob Studio**.
+2. Click **Edit in Knob Studio**: its look opens there, and changes change only this control.
+
+Under **Edit in Knob Studio**, **Apply this knob on similars** (slider, switch) puts this control's look on every other control of its kind:
+- Tick it and they wear it at once; untick it and each wears its own look again.
+- **Apply** beside it does it for good. It asks first, since there's no way back: unticking won't give them their own looks again.
 
 - Every change is saved into the plugin at once and shows on the panel.
 - The header has **Use on** this control, **Give this knob its own look** and **Back to the plugin**.

@@ -435,6 +435,7 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     markColour (knobStudioButton);
     addChildComponent (knobStudioButton);
     addChildComponent (similarToggle);
+    addChildComponent (similarApplyButton);
 
     addChildComponent (copyButton);
     addChildComponent (pasteButton);
@@ -579,11 +580,53 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     knobStudioButton.onClick = [this]
     {
         if (widget >= 0 && canvas.onEditLook != nullptr)
-            canvas.onEditLook (widget, similarToggle.getToggleState());
+            canvas.onEditLook (widget, false);
     };
 
-    similarToggle.setTooltip ("Design every control like this one at once (the same kind, wearing the same look). "
-                              "Unticked, only this one changes");
+    // Every other control of its kind wears its look: ticked, at once (unticked: back as they
+    // were); Apply: for good, after a Yes.
+    similarToggle.onClick = [this]
+    {
+        if (widget >= 0)
+            canvas.trySimilars (widget, similarToggle.getToggleState());
+
+        similarToggle.setToggleState (canvas.isTryingSimilars (widget), juce::dontSendNotification);
+    };
+
+    similarApplyButton.onClick = [this]
+    {
+        const auto index = widget;
+
+        if (! juce::isPositiveAndBelow (index, (int) canvas.layout.widgets.size()) || canvas.looks == nullptr)
+            return;
+
+        const auto& w = canvas.layout.widgets[(size_t) index];
+        const auto kind = Looks::kindOf (w) == Looks::Kind::knob ? juce::String ("knob")
+                        : Looks::kindOf (w) == Looks::Kind::button ? juce::String ("switch") : juce::String ("slider");
+        const auto look = canvas.looks->lookFor (w).name;
+        const auto count = canvas.isTryingSimilars (index) ? (int) canvas.similarsTry.before.size() : canvas.similarsToChange (index);
+
+        if (count == 0)
+        {
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Apply on similars",
+                                                    "Every " + kind + " here wears \"" + look + "\" already.");
+            return;
+        }
+
+        const auto message = juce::String (count) + " other " + kind + (count == 1 ? "" : "s") + " will wear \"" + look
+                           + "\" for good.\n\nThere's no way back: unticking \"Apply this " + kind + " on similars\" won't "
+                             "give them their own looks again.\n\nApply it?";
+
+        juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "Apply on similars", message, "Yes", "No", this,
+                                            juce::ModalCallbackFunction::create ([safeThis = juce::Component::SafePointer<ElementMenu> (this), index] (int result)
+                                            {
+                                                if (safeThis == nullptr || result != 1)
+                                                    return;
+
+                                                safeThis->canvas.applySimilars (index);
+                                                safeThis->similarToggle.setToggleState (false, juce::dontSendNotification);
+                                            }));
+    };
 
     // Delete, in the header beside the close button: on every tab.
     removeButton.setTooltip ("Delete it from the window (Delete key)");
@@ -1986,7 +2029,23 @@ void PluginCanvas::ElementMenu::showActions (bool forElements)
                          && Looks::takesLook (canvas.layout.widgets[(size_t) widget]);
     galleryButton.setVisible (wearsALook);
     knobStudioButton.setVisible (wearsALook && canvas.looks != nullptr && canvas.onEditLook != nullptr);
-    similarToggle.setVisible (knobStudioButton.isVisible());
+    similarToggle.setVisible (wearsALook && canvas.looks != nullptr);
+    similarApplyButton.setVisible (similarToggle.isVisible());
+
+    if (similarToggle.isVisible())
+    {
+        const auto& w = canvas.layout.widgets[(size_t) widget];
+        const auto kind = Looks::kindOf (w) == Looks::Kind::knob ? juce::String ("knob")
+                        : Looks::kindOf (w) == Looks::Kind::button ? juce::String ("switch") : juce::String ("slider");
+        const auto trying = canvas.isTryingSimilars (widget);
+
+        similarToggle.setButtonText ("Apply this " + kind + " on similars");
+        similarToggle.setToggleState (trying, juce::dontSendNotification);
+        similarToggle.setEnabled (trying || canvas.similarsToChange (widget) > 0);
+        similarToggle.setTooltip ("Ticked: every other " + kind + " here wears this one's look at once. Unticked: they wear their own looks again");
+        similarApplyButton.setTooltip ("Every other " + kind + " here wears this one's look for good (it asks first: there's no way back)");
+        similarApplyButton.setEnabled (trying || canvas.similarsToChange (widget) > 0);
+    }
     layerBox.setVisible (forElements);
     pasteButton.setVisible (true);
     pasteButton.setEnabled (! canvas.clipboardElements().empty());
@@ -2081,7 +2140,8 @@ int PluginCanvas::ElementMenu::getIdealHeight() const
 
 int PluginCanvas::ElementMenu::actionsSize() const
 {
-    return actionsHeight + (galleryButton.isVisible() ? 34 : 0) + (knobStudioButton.isVisible() ? 34 : 0);
+    return actionsHeight + (galleryButton.isVisible() ? 34 : 0) + (knobStudioButton.isVisible() ? 34 : 0)
+                         + (similarToggle.isVisible() ? 34 : 0);
 }
 
 void PluginCanvas::ElementMenu::resized()
@@ -2096,13 +2156,20 @@ void PluginCanvas::ElementMenu::resized()
     actionsArea = area.removeFromTop (actionsSize());
     auto strip = actionsArea.reduced (pad, 7);
 
-    // Under the row, two long buttons, the lower one taken first: a gallery item in this one's
-    // place, and its look designed in the Knob Studio (with the controls like it, when it's ticked).
-    if (knobStudioButton.isVisible())
+    // Under the row, long buttons, the lowest taken first: a gallery item in this one's place,
+    // its look designed in the Knob Studio, and under it, its look on every control of its kind
+    // (ticked: for now; Apply: for good).
+    if (similarToggle.isVisible())
     {
         auto line = strip.removeFromBottom (28);
-        similarToggle.setBounds (line.removeFromRight (juce::roundToInt ((float) line.getWidth() * 0.36f)));
-        knobStudioButton.setBounds (line.withTrimmedRight (6));
+        similarApplyButton.setBounds (line.removeFromRight (80));
+        similarToggle.setBounds (line.withTrimmedRight (6));
+        strip.removeFromBottom (6);
+    }
+
+    if (knobStudioButton.isVisible())
+    {
+        knobStudioButton.setBounds (strip.removeFromBottom (28));
         strip.removeFromBottom (6);
     }
 

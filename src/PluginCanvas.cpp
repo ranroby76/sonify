@@ -1212,6 +1212,100 @@ void PluginCanvas::useLook (int widgetIndex, const juce::String& lookName)
     edited();
 }
 
+//==============================================================================
+// "Apply this knob on similars"
+int PluginCanvas::similarsToChange (int widgetIndex) const
+{
+    if (looks == nullptr || ! juce::isPositiveAndBelow (widgetIndex, (int) layout.widgets.size()))
+        return 0;
+
+    const auto& w = layout.widgets[(size_t) widgetIndex];
+
+    if (! Looks::takesLook (w))
+        return 0;
+
+    const auto kind = Looks::kindOf (w);
+    const auto look = looks->lookFor (w).name;
+    int count = 0;
+
+    for (size_t i = 0; i < layout.widgets.size(); ++i)
+    {
+        const auto& other = layout.widgets[i];
+
+        if ((int) i != widgetIndex && Looks::takesLook (other) && Looks::kindOf (other) == kind && looks->lookFor (other).name != look)
+            ++count;
+    }
+
+    return count;
+}
+
+void PluginCanvas::putSimilarsBack()
+{
+    if (similarsTry.widget < 0)
+        return;
+
+    // Only the ones still wearing the tried look (one changed since keeps its change).
+    for (const auto& [index, style] : similarsTry.before)
+        if (juce::isPositiveAndBelow (index, (int) layout.widgets.size()) && layout.widgets[(size_t) index].style == similarsTry.look)
+            layout.widgets[(size_t) index].style = style;
+
+    similarsTry = {};
+}
+
+void PluginCanvas::trySimilars (int widgetIndex, bool on)
+{
+    if (! on)
+    {
+        if (isTryingSimilars (widgetIndex))
+        {
+            putSimilarsBack();
+            edited();
+        }
+
+        return;
+    }
+
+    if (looks == nullptr || ! juce::isPositiveAndBelow (widgetIndex, (int) layout.widgets.size()) || isTryingSimilars (widgetIndex))
+        return;
+
+    putSimilarsBack();   // another control's try, undone first
+
+    const auto& w = layout.widgets[(size_t) widgetIndex];
+
+    if (! Looks::takesLook (w))
+        return;
+
+    const auto kind = Looks::kindOf (w);
+    const auto look = looks->lookFor (w).name;
+    SimilarsTry tried;
+    tried.widget = widgetIndex;
+    tried.look = look;
+
+    for (size_t i = 0; i < layout.widgets.size(); ++i)
+    {
+        auto& other = layout.widgets[i];
+
+        if ((int) i == widgetIndex || ! Looks::takesLook (other) || Looks::kindOf (other) != kind || looks->lookFor (other).name == look)
+            continue;
+
+        tried.before.emplace_back ((int) i, other.style);
+        rememberOriginalLook (other);
+        other.style = look;
+    }
+
+    similarsTry = std::move (tried);
+    edited();
+}
+
+void PluginCanvas::applySimilars (int widgetIndex)
+{
+    if (! isTryingSimilars (widgetIndex))
+        trySimilars (widgetIndex, true);
+
+    if (isTryingSimilars (widgetIndex))
+        similarsTry = {};   // for good: nothing kept to put back
+}
+
 juce::String PluginCanvas::giveOwnLook (int widgetIndex)
 {
     if (looks == nullptr || ! juce::isPositiveAndBelow (widgetIndex, (int) layout.widgets.size()))

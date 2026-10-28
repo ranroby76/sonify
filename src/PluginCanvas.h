@@ -46,8 +46,9 @@ class WasmElements;
     Photoshop does: a box over it whose sides and corners drag in or out (past the window:
     it grows), dragged inside to move it, then Enter (or Apply, or a double-click) to crop to
     it, Esc to leave it. Double-clicking a knob, slider or switch opens its menu, where
-    "Design it in the Knob Studio" opens its look there (with "Include similars": the controls
-    like it too); double-clicking a picture picks its file.
+    "Edit in Knob Studio" opens its look there, and "Apply this knob on similars" puts its look
+    on every control of its kind (ticked: for now; Apply: for good); double-clicking a picture
+    picks its file.
 
     Elements lie in layers, in the layout's order: the first at the back. The menu's Layer
     list brings one to the front or forward, or sends it backward or to the back (also
@@ -129,6 +130,16 @@ public:
         returned), so changing it changes only that control. */
     void useLook (int widgetIndex, const juce::String& lookName);
     juce::String giveOwnLook (int widgetIndex);
+
+    /** "Apply this knob on similars" (a control's menu): every other control of its kind (knobs,
+        sliders the same way up, switches) wears its look. trySimilars on: they wear it for now,
+        each one's own look kept; off: they wear their own again. applySimilars: for good, nothing
+        kept (one control's try at a time: trying another puts the last one's back first).
+        similarsToChange: how many of them wear another look now. */
+    void trySimilars (int widgetIndex, bool on);
+    void applySimilars (int widgetIndex);
+    bool isTryingSimilars (int widgetIndex) const noexcept   { return widgetIndex >= 0 && similarsTry.widget == widgetIndex; }
+    int similarsToChange (int widgetIndex) const;
 
     /** Edit mode: the Gallery's knobs, sliders and switches (KnobStudio::showGallery) on the panel.
         useGalleryItem: a control wears one instead of its look, keeping its size, place, parameter,
@@ -394,6 +405,17 @@ private:
     /** Play mode: the key under the mouse plays (the one before stops); -1 lets go. */
     void playKey (int widgetIndex, juce::Point<float> plugin);
     void releaseKey();
+
+    /** A try of "Apply this knob on similars": whose look, and what each other control wore. */
+    struct SimilarsTry
+    {
+        int widget = -1;
+        juce::String look;
+        std::vector<std::pair<int, juce::String>> before;   // a control's index, and its style before
+    };
+
+    SimilarsTry similarsTry;
+    void putSimilarsBack();   // the try undone: each control wears what it wore
 
     /** The look most of the window's controls of this kind wear, for a new one (none: the default). */
     juce::String commonLook (const GuiWidget& widget) const;
