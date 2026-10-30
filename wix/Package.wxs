@@ -71,6 +71,11 @@
 
     <!-- The wizard: welcome and licence, progress, finish (with "Start Sonify now"). -->
     <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)License.rtf" />
+    <!-- Sonify's own pictures in the wizard (24-bit BMPs, at exactly these sizes): the banner along
+         the top of its inner pages (493 x 58) and the welcome and finish pages' picture (493 x 312,
+         its left 164 pixels showing; the wizard writes its text on the white part). -->
+    <WixVariable Id="WixUIBannerBmp" Value="$(sys.SOURCEFILEDIR)WixUIBanner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(sys.SOURCEFILEDIR)WixUIDialog.bmp" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Start Sonify now" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
     <Property Id="WixShellExecTarget" Value="[#filSonifyExe]" />

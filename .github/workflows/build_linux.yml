@@ -16,7 +16,7 @@ on:
 
 env:
   APP_NAME: "Sonify"
-  APP_VERSION: "0.2.0"
+  APP_VERSION: "1.0.2"
   # JUCE 9.0.1, the release the Windows build uses. Pinned, not a branch.
   JUCE_VERSION: "9.0.1"
 

@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- D:\workspace\Fanan_web_hub\wix\Package.wxs -->
+<!-- Sonify's installer: everything CMake put next to Sonify.exe in the build folder
+     (build\FananWebHub_artefacts\Release, its folders too) goes to Program Files\Fanan\Sonify.
+     Nothing is listed by hand but Sonify.exe itself (for its shortcuts), so whatever the build
+     adds there later (DLLs, the knob gallery, tools) is in the next installer without a change here.
+     Sonify's own folder in AppData (settings, user data) is never touched, by install or uninstall.
+     Microsoft's WebView2 Runtime (Sonify's screen runs on it) is installed too when the computer
+     hasn't got it: its small online installer (MicrosoftEdgeWebview2Setup.exe, fetched by
+     Sonify.wixproj) is inside this one. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <?ifndef WebView2Setup ?>
+  <?define WebView2Setup = "$(sys.SOURCEFILEDIR)obj\MicrosoftEdgeWebview2Setup.exe" ?>
+  <?endif?>
+
+  <?ifndef BuildDir ?>
+  <?define BuildDir = "$(sys.SOURCEFILEDIR)..\build\FananWebHub_artefacts\Release" ?>
+  <?endif?>
+
+  <Package Name="Sonify"
+           Manufacturer="Fanan"
+           Version="$(var.Version)"
+           UpgradeCode="DB017A73-5013-4DFF-B328-87EF1E034E21"
+           Scope="perMachine">
+
+    <!-- A newer installer replaces the installed Sonify (the same version too, for test builds). -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of Sonify is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Its icon in Installed apps and on its shortcuts: taken from Sonify.exe itself. -->
+    <Icon Id="Sonify.exe" SourceFile="$(var.BuildDir)\Sonify.exe" />
+    <Property Id="ARPPRODUCTICON" Value="Sonify.exe" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="FananFolder" Name="Fanan">
+        <Directory Id="INSTALLFOLDER" Name="Sonify" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
+
+    <!-- Sonify.exe, with its Start menu and desktop shortcuts. -->
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="SonifyExe">
+        <File Id="filSonifyExe" Source="$(var.BuildDir)\Sonify.exe" KeyPath="yes">
+          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="Sonify"
+                    WorkingDirectory="INSTALLFOLDER" Advertise="yes" Icon="Sonify.exe" IconIndex="0" />
+          <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="Sonify"
+                    WorkingDirectory="INSTALLFOLDER" Advertise="yes" Icon="Sonify.exe" IconIndex="0" />
+        </File>
+      </Component>
+    </DirectoryRef>
+
+    <!-- Everything else in the build folder, its folders kept as they are. -->
+    <ComponentGroup Id="SonifyFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.BuildDir)\**">
+        <Exclude Files="$(var.BuildDir)\Sonify.exe" />
+        <Exclude Files="$(var.BuildDir)\*.pdb" />
+      </Files>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="Sonify">
+      <ComponentRef Id="SonifyExe" />
+      <ComponentGroupRef Id="SonifyFiles" />
+    </Feature>
+
+    <!-- The wizard: welcome and licence, progress, finish (with "Start Sonify now"). -->
+    <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)License.rtf" />
+    <!-- Sonify's own pictures in the wizard (24-bit BMPs, at exactly these sizes): the banner along
+         the top of its inner pages (493 x 58) and the welcome and finish pages' picture (493 x 312,
+         its left 164 pixels showing; the wizard writes its text on the white part). -->
+    <WixVariable Id="WixUIBannerBmp" Value="$(sys.SOURCEFILEDIR)WixUIBanner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(sys.SOURCEFILEDIR)WixUIDialog.bmp" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Start Sonify now" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#filSonifyExe]" />
+    <CustomAction Id="LaunchSonify" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixShellExec"
+                  Impersonate="yes" Return="ignore" />
+
+    <!-- WebView2: there when either key holds its version (for every user, or this user's own). -->
+    <Property Id="WEBVIEW2_MACHINE">
+      <RegistrySearch Id="WebView2Machine" Root="HKLM" Bitness="always32"
+                      Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+                      Name="pv" Type="raw" />
+    </Property>
+    <Property Id="WEBVIEW2_USER">
+      <RegistrySearch Id="WebView2User" Root="HKCU"
+                      Key="Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+                      Name="pv" Type="raw" />
+    </Property>
+
+    <!-- Missing: Microsoft's online installer, run quietly for every user. It downloads the
+         runtime, so it needs the internet; when it can't, Sonify is installed all the same and
+         says at its start that WebView2 is missing. -->
+    <Binary Id="WebView2Setup" SourceFile="$(var.WebView2Setup)" />
+    <CustomAction Id="InstallWebView2" BinaryRef="WebView2Setup" ExeCommand="/silent /install"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="InstallWebView2" Before="InstallFinalize"
+              Condition="NOT REMOVE AND (NOT WEBVIEW2_MACHINE OR WEBVIEW2_MACHINE = &quot;0.0.0.0&quot;) AND (NOT WEBVIEW2_USER OR WEBVIEW2_USER = &quot;0.0.0.0&quot;)" />
+    </InstallExecuteSequence>
+
+    <UI>
+      <ui:WixUI Id="WixUI_Minimal" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchSonify"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
+    </UI>
+  </Package>
+</Wix>

@@ -10,7 +10,7 @@
   <PropertyGroup>
     <OutputName>Sonify-Setup</OutputName>
     <WebView2Setup>$(MSBuildProjectDirectory)\obj\MicrosoftEdgeWebview2Setup.exe</WebView2Setup>
-    <DefineConstants>Version=0.2.0.0;WebView2Setup=$(WebView2Setup)</DefineConstants>
+    <DefineConstants>Version=1.0.2.0;WebView2Setup=$(WebView2Setup)</DefineConstants>
   </PropertyGroup>
 
   <!-- Microsoft's WebView2 online installer ("Evergreen Bootstrapper"), fetched once. -->

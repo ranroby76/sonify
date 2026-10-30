@@ -20,6 +20,7 @@
 #include "DeviceStudio.h"
 #include "VoiceControl.h"
 #include "PhoneRemote.h"
+#include "UpdateCheck.h"
 #include "PluginScanner.h"
 #include "Edits.h"
 #include "Library.h"
@@ -1204,6 +1205,12 @@ private:
     // same account). Always off at launch.
     std::unique_ptr<PhoneRemote> phoneRemote;
     void pushRemote();
+
+    // The update reminder: a newer Sonify on Fanan's site, shown in a floating window on the page
+    // until "Get it", "Later" or "Skip this version" (started once the page is ready).
+    std::unique_ptr<UpdateCheck> updateCheck;
+    juce::var pendingUpdate;   // the newer release the page shows, while it's open
+    void pushUpdate();
     void askFromPhone (const juce::String& text, bool spoken);
     juce::StringArray pageCommands;   // the page's commands, for Fanan AI (aiCommandList)
 

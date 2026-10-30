@@ -17,8 +17,9 @@
     - In the studio (the phone on the same Wi-Fi): Sonify serves the remote's page itself, on
       the local network (http://<this computer>:<port>/). The phone scans the QR code the AI
       panel shows: its address carries this computer's pairing key, which the page keeps. No
-      internet, sign-in or Fanan's server needed, and it's instant. New pairing key: every phone
-      paired before has to scan again.
+      internet, sign-in or Fanan's server needed, and it's instant. The key is new each time
+      Sonify starts, so a phone stays paired for that session only; New pairing key does the
+      same at once: every phone paired before has to scan again.
     - Away: through Fanan's server (sonifyRemote): Sonify checks in every second and a half,
       posting the conversation when it changed and picking up what the phone asked for. The
       phone is the page /sonify on Fanan's site, signed in to the same Fanan account.
@@ -135,7 +136,7 @@ private:
     int session = 0;            // moves on when it's turned off or on: answers from before are dropped
     std::shared_ptr<bool> alive = std::make_shared<bool> (true);
 
-    juce::String pairingKey;    // kept, so a paired phone stays paired
+    juce::String pairingKey;    // new each time Sonify starts: phones pair for one session
     juce::var shortcuts;        // [{ id, name, text }], kept
     juce::String localProblem;
     bool localSeen = false;

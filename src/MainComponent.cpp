@@ -818,6 +818,18 @@ juce::WebBrowserComponent::Options MainComponent::createWebOptions()
                        .withNativeIntegrationEnabled()
                        .withResourceProvider ([this] (const juce::String& url) { return getResource (url); })
                        .withEventListener ("uiReady", afterEvent (this, [this] (const juce::var&) { handleUiReady(); }))
+                       .withEventListener ("updateOpen", afterEvent (this, [this] (const juce::var&)
+                       {
+                           const auto page = UpdateCheck::safePage (pendingUpdate.getProperty ("page", {}).toString());
+                           pendingUpdate = juce::var();
+                           juce::URL (page).launchInDefaultBrowser();
+                       }))
+                       .withEventListener ("updateLater", afterEvent (this, [this] (const juce::var&) { pendingUpdate = juce::var(); }))
+                       .withEventListener ("updateSkip", afterEvent (this, [this] (const juce::var&)
+                       {
+                           UpdateCheck::skip (pendingUpdate.getProperty ("version", {}).toString());
+                           pendingUpdate = juce::var();
+                       }))
                        // The page has drawn itself: a moment more for that frame to reach the screen, and the splash goes.
                        .withEventListener ("uiShown", afterEvent (this, [this] (const juce::var&) { dismissSplash (100); }))
                        .withEventListener ("closeSong", afterEvent (this, [this] (const juce::var&) { closeSong(); }))
@@ -5155,6 +5167,12 @@ void MainComponent::pushAudioPeaks (const juce::String& path)
     webView->emitEventIfBrowserIsVisible ("audioPeaks", juce::var (item.get()));
 }
 
+void MainComponent::pushUpdate()
+{
+    if (webView != nullptr && pendingUpdate.isObject())
+        webView->emitEventIfBrowserIsVisible ("updateAvailable", pendingUpdate);
+}
+
 void MainComponent::handleUiReady()
 {
     // The page says when it has drawn itself (uiShown), and the splash goes; if it never does, the
@@ -5171,6 +5189,29 @@ void MainComponent::handleUiReady()
     pushVoice();
     pushRemote();
     restoreWebTabs();
+
+    // The update reminder: started with the first page (a page loaded again gets the one showing).
+    if (updateCheck == nullptr)
+        updateCheck = std::make_unique<UpdateCheck> ([this] (const UpdateCheck::Release& release)
+        {
+            juce::DynamicObject::Ptr shown (new juce::DynamicObject());
+            shown->setProperty ("version", release.version);
+            shown->setProperty ("current", UpdateCheck::currentVersion());
+            shown->setProperty ("released", release.released);
+            shown->setProperty ("important", release.important);
+            shown->setProperty ("page", release.page);
+
+            juce::Array<juce::var> notes;
+
+            for (const auto& note : release.notes)
+                notes.add (note);
+
+            shown->setProperty ("notes", notes);
+            pendingUpdate = juce::var (shown.get());
+            pushUpdate();
+        });
+    else
+        pushUpdate();
     pushAccount();
     pushLibrary();
     pushSettings();

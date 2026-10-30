@@ -174,6 +174,15 @@ The **Ask anything about Sonify** panel, on the right, answers your questions ab
 - The AI Assistant answers questions as well as doing the work.
 - For Fanan's support, the account window shows "This computer:" with a code to give them.
 
+### New versions
+
+When a new Sonify is out, a small window floats over the lower right of any studio a few seconds after Sonify starts (Sonify looks once a day while it stays open, and only with the internet on). It names the new version and what's new; drag it by its top.
+- **Get it** opens Sonify's page on fananteam.site, where you download the new version.
+- **Later** (or ✕) closes it until Sonify starts again.
+- **Skip this version** keeps it quiet until a later version comes out.
+
+An **Important update** (a security fix, say) has an orange edge and no Skip: it shows each time Sonify starts until you update.
+
 # Studio
 
 ## Overview
@@ -1844,7 +1853,7 @@ Links belong to your setup, not the song: they work in every song, by track numb
 ## Phone and Voice
 
 **Phone remote** (in the AI Assistant) lets you text Fanan AI from your phone. Fanan AI can do everything there that it does when you type in Sonify. Turn it on, then:
-- **In the studio:** scan the QR code it shows with the phone's camera. The phone must be on the same Wi-Fi as the computer. No sign-in needed, and the phone stays paired. **New pairing code** unpairs every phone; scan again after it. The first time, Windows may ask whether Sonify can use the network: allow private networks.
+- **In the studio:** scan the QR code it shows with the phone's camera. The phone must be on the same Wi-Fi as the computer. No sign-in needed. The phone stays paired until Sonify closes: each time Sonify starts it makes a new code, so scan again then (a visitor's phone, or a QR code seen in a screenshot, stops working too). **New pairing code** unpairs every phone at once; scan again after it. The first time, Windows may ask whether Sonify can use the network: allow private networks.
 - **Away:** open the address it shows on the phone and sign in with the same Fanan account.
 
 On the phone, **CHAT** shows the conversation, and a line under your last message says where it is: Message sent, Message arrived, Sonify is generating an answer, Message received. A chime plays when the answer arrives (the bell at the top turns it off). **Stop** stops Fanan AI. Save a text you send often as a shortcut: hold your message down and pick **Add to shortcuts** (or use the ☆, or **+ New shortcut**). It becomes a button on **SHORTCUTS**: tap it, say **Yes**, and it's sent. Hold a shortcut down to **Send**, **Edit** or **Delete** it (✕ deletes it too). Shortcuts are kept in Sonify for next time, so every phone has the same ones.

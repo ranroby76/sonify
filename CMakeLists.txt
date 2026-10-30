@@ -2,7 +2,7 @@
 
 cmake_minimum_required(VERSION 3.22)
 
-project(FananWebHub VERSION 0.2.0 LANGUAGES C CXX)
+project(FananWebHub VERSION 1.0.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -260,6 +260,8 @@ target_sources(FananWebHub PRIVATE
     src/VoiceControl.cpp
     src/PhoneRemote.h
     src/PhoneRemote.cpp
+    src/UpdateCheck.h
+    src/UpdateCheck.cpp
     src/Preferences.h
     src/Preferences.cpp
     src/MidiSync.h
@@ -482,6 +484,7 @@ juce_add_binary_data(FananWebHubWeb SOURCES
     src/hub-panelsize.js
     src/hub-miditools.js
     src/hub-console.js
+    src/hub-update.js
     src/hub-editor.js
     src/hub-quantize.js
     src/hub-choir.js

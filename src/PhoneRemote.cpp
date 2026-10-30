@@ -801,14 +801,10 @@ void PhoneRemote::loadSettings()
 {
     const auto kept = parseJson (settingsFile().loadFileAsString());
 
-    pairingKey = kept.getProperty ("key", {}).toString();
-
-    if (pairingKey.length() < 16)
-    {
-        pairingKey = newKey();
-        shortcuts = juce::Array<juce::var>();
-        saveSettings();
-    }
+    // A new pairing key every time Sonify starts: a phone (a visitor's too) stays paired for one
+    // session only, and a QR code seen anywhere (a screenshot, say) stops working once Sonify
+    // closes. The shortcuts are kept.
+    pairingKey = newKey();
 
     juce::Array<juce::var> list;
 
