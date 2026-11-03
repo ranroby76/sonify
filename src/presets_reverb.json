@@ -2,182 +2,498 @@
  "presets": [
   {
    "name": "Default",
+   "values": {}
+  },
+  {
+   "name": "Vocal Plate",
    "values": {
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 0.0,
+    "Size": 55.0,
+    "Decay": 45.0,
+    "Damping": 35.0,
+    "Pre-Delay": 20.0,
+    "Low Cut": 180.0,
+    "High Cut": 15000.0,
+    "Texture": 85.0,
+    "Wet": 28.0
+   }
+  },
+  {
+   "name": "Bright Plate",
+   "values": {
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 0.0,
     "Size": 50.0,
-    "Decay": 50.0,
-    "Damping": 50.0,
-    "Pre-Delay": 25.0,
-    "Low Cut": 150.0,
-    "High Cut": 20000.0,
-    "Early": 0.0,
-    "Early Size": 50.0,
-    "Dry": 100.0,
-    "Wet": 30.0
+    "Decay": 55.0,
+    "Damping": 15.0,
+    "Pre-Delay": 10.0,
+    "Low Cut": 250.0,
+    "Color": 35.0,
+    "Texture": 90.0,
+    "Wet": 25.0
+   }
+  },
+  {
+   "name": "Drum Plate",
+   "values": {
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 0.0,
+    "Size": 35.0,
+    "Decay": 30.0,
+    "Damping": 40.0,
+    "Pre-Delay": 5.0,
+    "Low Cut": 300.0,
+    "High Cut": 12000.0,
+    "Wet": 25.0
    }
   },
   {
    "name": "Small Room",
    "values": {
-    "Size": 20,
-    "Decay": 25,
-    "Damping": 60,
-    "Pre-Delay": 25,
-    "Low Cut": 200,
-    "High Cut": 12000,
-    "Early": 40,
-    "Early Size": 30,
-    "Dry": 100,
-    "Wet": 25
-   }
-  },
-  {
-   "name": "Vocal Hall",
-   "values": {
-    "Size": 45,
-    "Decay": 45,
-    "Damping": 40,
-    "Pre-Delay": 40,
-    "Low Cut": 250,
-    "High Cut": 14000,
-    "Early": 10,
-    "Early Size": 50,
-    "Dry": 100,
-    "Wet": 25
-   }
-  },
-  {
-   "name": "Large Hall",
-   "values": {
-    "Size": 80,
-    "Decay": 70,
-    "Damping": 50,
-    "Pre-Delay": 40,
-    "Low Cut": 150,
-    "High Cut": 16000,
-    "Early": 20,
-    "Early Size": 70,
-    "Dry": 100,
-    "Wet": 30
-   }
-  },
-  {
-   "name": "Cathedral",
-   "values": {
-    "Size": 100,
-    "Decay": 95,
-    "Damping": 45,
-    "Pre-Delay": 60,
-    "Low Cut": 120,
-    "High Cut": 15000,
-    "Early": 15,
-    "Early Size": 90,
-    "Dry": 100,
-    "Wet": 35
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 2.0,
+    "Size": 25.0,
+    "Decay": 35.0,
+    "Damping": 60.0,
+    "Pre-Delay": 5.0,
+    "Low Cut": 200.0,
+    "High Cut": 12000.0,
+    "Early": 40.0,
+    "Early Size": 30.0,
+    "Wet": 25.0
    }
   },
   {
    "name": "Drum Room",
    "values": {
-    "Size": 30,
-    "Decay": 30,
-    "Damping": 55,
-    "Pre-Delay": 25,
-    "Low Cut": 150,
-    "High Cut": 12000,
-    "Early": 60,
-    "Early Size": 35,
-    "Dry": 100,
-    "Wet": 25
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 2.0,
+    "Size": 40.0,
+    "Decay": 40.0,
+    "Damping": 55.0,
+    "Pre-Delay": 0.0,
+    "Low Cut": 150.0,
+    "High Cut": 12000.0,
+    "Early": 60.0,
+    "Early Size": 35.0,
+    "Wet": 25.0
    }
   },
   {
-   "name": "Ambient Wash",
+   "name": "Chamber",
    "values": {
-    "Size": 95,
-    "Decay": 100,
-    "Damping": 30,
-    "Pre-Delay": 80,
-    "Low Cut": 300,
-    "High Cut": 18000,
-    "Early": 0,
-    "Early Size": 50,
-    "Dry": 80,
-    "Wet": 60
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 3.0,
+    "Size": 55.0,
+    "Decay": 50.0,
+    "Damping": 35.0,
+    "Pre-Delay": 15.0,
+    "Low Cut": 180.0,
+    "High Cut": 16000.0,
+    "Early": 20.0,
+    "Wet": 25.0
+   }
+  },
+  {
+   "name": "Vocal Hall",
+   "values": {
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 1.0,
+    "Size": 45.0,
+    "Decay": 45.0,
+    "Damping": 40.0,
+    "Pre-Delay": 40.0,
+    "Low Cut": 250.0,
+    "High Cut": 14000.0,
+    "Early": 10.0,
+    "Wet": 25.0
+   }
+  },
+  {
+   "name": "Large Hall",
+   "values": {
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 1.0,
+    "Size": 80.0,
+    "Decay": 65.0,
+    "Damping": 50.0,
+    "Pre-Delay": 40.0,
+    "Low Cut": 150.0,
+    "High Cut": 16000.0,
+    "Early": 20.0,
+    "Early Size": 70.0,
+    "Wet": 30.0
    }
   },
   {
    "name": "Dark Hall",
    "values": {
-    "Size": 75,
-    "Decay": 70,
-    "Damping": 85,
-    "Pre-Delay": 40,
-    "Low Cut": 150,
-    "High Cut": 6000,
-    "Early": 20,
-    "Early Size": 70,
-    "Dry": 100,
-    "Wet": 30
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 1.0,
+    "Size": 75.0,
+    "Decay": 65.0,
+    "Damping": 85.0,
+    "Pre-Delay": 40.0,
+    "Low Cut": 150.0,
+    "High Cut": 6000.0,
+    "Color": -40.0,
+    "Early": 20.0,
+    "Early Size": 70.0,
+    "Wet": 30.0
    }
   },
   {
-   "name": "Bright Hall",
+   "name": "Cathedral",
    "values": {
-    "Size": 75,
-    "Decay": 60,
-    "Damping": 15,
-    "Pre-Delay": 30,
-    "Low Cut": 200,
-    "High Cut": 20000,
-    "Early": 20,
-    "Early Size": 70,
-    "Dry": 100,
-    "Wet": 25
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 4.0,
+    "Size": 90.0,
+    "Decay": 60.0,
+    "Damping": 45.0,
+    "Pre-Delay": 60.0,
+    "Low Cut": 120.0,
+    "High Cut": 15000.0,
+    "Early": 15.0,
+    "Early Size": 90.0,
+    "Wet": 35.0
    }
   },
   {
-   "name": "Snare Verb",
+   "name": "Surf Spring",
    "values": {
-    "Size": 50,
-    "Decay": 40,
-    "Damping": 40,
-    "Pre-Delay": 25,
-    "Low Cut": 400,
-    "High Cut": 14000,
-    "Early": 30,
-    "Early Size": 40,
-    "Dry": 100,
-    "Wet": 30
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 5.0,
+    "Size": 50.0,
+    "Decay": 55.0,
+    "Damping": 30.0,
+    "Pre-Delay": 0.0,
+    "Low Cut": 120.0,
+    "Wet": 35.0
+   }
+  },
+  {
+   "name": "80s Digital Hall",
+   "values": {
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 6.0,
+    "Size": 70.0,
+    "Decay": 60.0,
+    "Damping": 45.0,
+    "Pre-Delay": 30.0,
+    "Mod": 45.0,
+    "Texture": 55.0,
+    "Wet": 30.0
+   }
+  },
+  {
+   "name": "Shimmer Pad",
+   "values": {
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 7.0,
+    "Size": 85.0,
+    "Decay": 70.0,
+    "Damping": 30.0,
+    "Pre-Delay": 60.0,
+    "Low Cut": 250.0,
+    "Wet": 40.0
+   }
+  },
+  {
+   "name": "Gated Snare",
+   "values": {
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 2.0,
+    "Size": 55.0,
+    "Decay": 80.0,
+    "Damping": 35.0,
+    "Pre-Delay": 0.0,
+    "Low Cut": 200.0,
+    "Early": 50.0,
+    "Early Size": 60.0,
+    "Shape": 1.0,
+    "Shape Time": 280.0,
+    "Wet": 35.0
+   }
+  },
+  {
+   "name": "Reverse Swell",
+   "values": {
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 1.0,
+    "Size": 75.0,
+    "Decay": 70.0,
+    "Pre-Delay": 0.0,
+    "Shape": 2.0,
+    "Shape Time": 600.0,
+    "Low Cut": 200.0,
+    "Wet": 45.0
    }
   },
   {
    "name": "Pad Bloom",
    "values": {
-    "Size": 90,
-    "Decay": 90,
-    "Damping": 40,
-    "Pre-Delay": 120,
-    "Low Cut": 250,
-    "High Cut": 16000,
-    "Early": 0,
-    "Early Size": 50,
-    "Dry": 100,
-    "Wet": 45
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 0.0,
+    "Size": 90.0,
+    "Decay": 85.0,
+    "Damping": 40.0,
+    "Pre-Delay": 80.0,
+    "Low Cut": 250.0,
+    "High Cut": 16000.0,
+    "Shape": 3.0,
+    "Shape Time": 900.0,
+    "Wet": 45.0
+   }
+  },
+  {
+   "name": "Ambient Wash",
+   "values": {
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 4.0,
+    "Size": 100.0,
+    "Decay": 80.0,
+    "Damping": 30.0,
+    "Pre-Delay": 80.0,
+    "Low Cut": 300.0,
+    "High Cut": 18000.0,
+    "Mod": 50.0,
+    "Dry": 80.0,
+    "Wet": 60.0
+   }
+  },
+  {
+   "name": "Tape Echo",
+   "values": {
+    "Reverb On": 0.0,
+    "Style": 0.0,
+    "Mode": 0.0,
+    "Note": 6.0,
+    "Feedback": 40.0,
+    "Drive": 40.0,
+    "Wet": 30.0
+   }
+  },
+  {
+   "name": "Analog Ping-Pong",
+   "values": {
+    "Reverb On": 0.0,
+    "Style": 1.0,
+    "Mode": 2.0,
+    "Note": 3.0,
+    "Feedback": 45.0,
+    "Mod": 35.0,
+    "Wet": 30.0
+   }
+  },
+  {
+   "name": "Oil Can Warble",
+   "values": {
+    "Reverb On": 0.0,
+    "Style": 2.0,
+    "Mode": 0.0,
+    "Note": 2.0,
+    "Feedback": 45.0,
+    "Mod": 40.0,
+    "Wet": 35.0
+   }
+  },
+  {
+   "name": "Slapback",
+   "values": {
+    "Reverb On": 0.0,
+    "Style": 0.0,
+    "Mode": 0.0,
+    "Sync": 0.0,
+    "Time": 110.0,
+    "Feedback": 8.0,
+    "Drive": 35.0,
+    "Low Cut": 150.0,
+    "High Cut": 8000.0,
+    "Wet": 35.0
+   }
+  },
+  {
+   "name": "Swing Echo",
+   "values": {
+    "Reverb On": 0.0,
+    "Style": 3.0,
+    "Mode": 2.0,
+    "Note": 3.0,
+    "Groove": 30.0,
+    "Accent": 40.0,
+    "Feedback": 40.0,
+    "Wet": 30.0
+   }
+  },
+  {
+   "name": "Rhythm Pattern",
+   "values": {
+    "Reverb On": 0.0,
+    "Style": 4.0,
+    "Mode": 3.0,
+    "Note": 4.0,
+    "Feedback": 25.0,
+    "Wet": 35.0,
+    "Tap 1": 0.0,
+    "Tap 2": 0.0,
+    "Tap 3": 100.0,
+    "Tap 4": 0.0,
+    "Tap 5": 0.0,
+    "Tap 6": 75.0,
+    "Tap 7": 0.0,
+    "Tap 8": 55.0,
+    "Tap 9": 0.0,
+    "Tap 10": 0.0,
+    "Tap 11": 40.0,
+    "Tap 12": 0.0,
+    "Tap 13": 0.0,
+    "Tap 14": 30.0,
+    "Tap 15": 0.0,
+    "Tap 16": 20.0
+   }
+  },
+  {
+   "name": "Echoes into Hall",
+   "values": {
+    "Voicing": 1.0,
+    "Routing": 0.0,
+    "Blend": 55.0,
+    "Size": 65.0,
+    "Decay": 55.0,
+    "Note": 2.0,
+    "Style": 1.0,
+    "Mode": 2.0,
+    "Feedback": 35.0,
+    "Wet": 30.0
+   }
+  },
+  {
+   "name": "Diffusing Repeats",
+   "values": {
+    "Voicing": 0.0,
+    "Routing": 1.0,
+    "Blend": 45.0,
+    "Size": 45.0,
+    "Decay": 35.0,
+    "Note": 2.0,
+    "Style": 0.0,
+    "Feedback": 55.0,
+    "Wet": 35.0
+   }
+  },
+  {
+   "name": "Spring Echo",
+   "values": {
+    "Voicing": 5.0,
+    "Routing": 2.0,
+    "Blend": 45.0,
+    "Decay": 45.0,
+    "Style": 0.0,
+    "Note": 6.0,
+    "Feedback": 35.0,
+    "Wet": 35.0
+   }
+  },
+  {
+   "name": "Shimmer Echo",
+   "values": {
+    "Voicing": 7.0,
+    "Routing": 0.0,
+    "Blend": 65.0,
+    "Size": 80.0,
+    "Decay": 60.0,
+    "Style": 3.0,
+    "Mode": 2.0,
+    "Note": 5.0,
+    "Feedback": 45.0,
+    "Low Cut": 250.0,
+    "Wet": 40.0
+   }
+  },
+  {
+   "name": "Ducked Vocal Space",
+   "values": {
+    "Voicing": 0.0,
+    "Routing": 0.0,
+    "Blend": 50.0,
+    "Note": 2.0,
+    "Style": 0.0,
+    "Feedback": 35.0,
+    "Low Cut": 200.0,
+    "Wet": 40.0,
+    "Duck On": 1.0
+   }
+  },
+  {
+   "name": "Ducked by Sidechain",
+   "values": {
+    "Voicing": 1.0,
+    "Routing": 3.0,
+    "Blend": 60.0,
+    "Size": 70.0,
+    "Decay": 60.0,
+    "Note": 6.0,
+    "Style": 1.0,
+    "Feedback": 40.0,
+    "Wet": 45.0,
+    "Duck On": 1.0,
+    "Duck Key": 1.0
+   }
+  },
+  {
+   "name": "Frozen Space",
+   "values": {
+    "Voicing": 4.0,
+    "Routing": 3.0,
+    "Blend": 70.0,
+    "Size": 90.0,
+    "Decay": 80.0,
+    "Note": 1.0,
+    "Style": 0.0,
+    "Feedback": 50.0,
+    "Wet": 50.0
    }
   },
   {
    "name": "Wet Only",
    "values": {
-    "Size": 60,
-    "Decay": 60,
-    "Damping": 50,
-    "Pre-Delay": 40,
-    "Low Cut": 150,
-    "High Cut": 16000,
-    "Early": 20,
-    "Early Size": 60,
-    "Dry": 0,
-    "Wet": 100
+    "Dry": 0.0,
+    "Wet": 100.0
    }
   }
  ]

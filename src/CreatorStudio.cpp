@@ -310,6 +310,18 @@ CreatorStudio::CreatorStudio (AudioEngine& sonifyEngine, FananServer& fananServe
     workspace.readScope = [this] (const juce::String& source, float* destination, int numSamples) { preview.readScope (source, destination, numSamples); };
     workspace.onSourcesChanged = [this] (const juce::StringArray& levels, const juce::StringArray& scopes) { preview.setGuiSources (levels, scopes); };
     workspace.onAutoLayoutRequested = [this] { autoLayout(); };
+    workspace.onClearDraftRequested = [this] { clearDraft(); };
+
+    // The draft GUI went into the plugin Sonify AI just created: the plugin shows it, and the
+    // next draft starts empty.
+    projectTools.onUserGuiTaken = [this]
+    {
+        loadLayout (false);
+        history.absorb();   // it came with the plugin: nothing to undo
+        layoutSaveScheduled = false;
+        draftFolder().deleteRecursively();
+        draftChosen.reset();
+    };
     projectTools.onLayoutChanged = [this] { loadLayout (false); };
     projectTools.onPresetsChanged = [this] { presets.refresh(); pushPresets(); };
     projectTools.onCreateProject = [this] (const juce::String& name, PluginKind kind)
@@ -507,6 +519,7 @@ CreatorStudio::~CreatorStudio()
     ai.onTurnStarted = nullptr;
     ai.onTurnFinished = nullptr;
     newProjectDialog = nullptr;
+    draftDialog = nullptr;
     saveAsDialog = nullptr;
     signOutDialog = nullptr;
     autoLayoutDialog = nullptr;
@@ -568,8 +581,15 @@ void CreatorStudio::projectChanged()
 {
     if (project.isOpen())
     {
-        // One thing is open at a time: a MIDI FX that was open steps aside.
+        // One thing is open at a time: a MIDI FX that was open steps aside, and the draft GUI waits.
         closeMidiFx();
+
+        if (drafting)
+        {
+            drafting = false;
+            draftChosen.reset();
+            workspace.setDraft (false);
+        }
 
         const auto& info = project.getInfo();
 
@@ -615,10 +635,7 @@ void CreatorStudio::projectChanged()
         preview.unload();
         libraryWindow = nullptr;
         preview.setLibrary ({});
-        workspace.setGuiFolder ({});
-        workspace.setLayout ({});
-
-        history.reset ({});
+        openDraft();   // Edit UI designs the draft GUI (its own undo too)
         presets.setPlugin ({}, {}, false);
         playStatePending = false;
         playStateDirty = false;
@@ -1006,7 +1023,20 @@ void CreatorStudio::previewChanged()
 void CreatorStudio::loadLayout (bool makeOneIfMissing)
 {
     if (! project.isOpen())
+    {
+        // The draft GUI (an undo put a file back, say); none yet: an empty window.
+        if (drafting)
+        {
+            GuiLayout draft;
+
+            if (GuiLayout::load (draftGuiFolder().getChildFile (GuiLayout::fileName), draft).failed())
+                draft = GuiLayout();
+
+            workspace.setLayout (draft);
+        }
+
         return;
+    }
 
     const auto file = project.getGuiFolder().getChildFile (GuiLayout::fileName);
     GuiLayout layout;
@@ -1040,7 +1070,19 @@ void CreatorStudio::loadLayout (bool makeOneIfMissing)
 void CreatorStudio::saveLayout()
 {
     if (! project.isOpen())
+    {
+        if (drafting)
+        {
+            draftGuiFolder().createDirectory();
+
+            if (const auto saved = workspace.getLayout().save (draftGuiFolder().getChildFile (GuiLayout::fileName)); saved.failed())
+                showError ("Couldn't save the draft GUI", saved.getErrorMessage());
+            else
+                recordHistory ("Changed the GUI");
+        }
+
         return;
+    }
 
     // An Instrument list just dropped shows the library's names.
     if (auto layout = workspace.getLayout(); syncLibraryLists (layout))
@@ -1172,13 +1214,13 @@ void CreatorStudio::savePlayState()
 //==============================================================================
 void CreatorStudio::recordHistory (const juce::String& label)
 {
-    if (project.isOpen())
+    if (project.isOpen() || drafting)
         history.record (label);
 }
 
 void CreatorStudio::undoOrRedo (bool redo)
 {
-    if (! project.isOpen() || ai.isBusy())
+    if ((! project.isOpen() && ! drafting) || ai.isBusy())
         return;   // never under Sonify AI's feet
 
     // A GUI edit still waiting to be written is a step of its own first (and isn't written over
@@ -1192,6 +1234,9 @@ void CreatorStudio::undoOrRedo (bool redo)
 
     if (changed.layout)
         loadLayout (false);
+
+    if (! project.isOpen())
+        return;   // the draft GUI has only its layout
 
     if (changed.presets)
     {
@@ -1294,6 +1339,13 @@ void CreatorStudio::flushLayoutSave()
 
 void CreatorStudio::askAiAboutGui (int widgetIndex, const juce::String& instruction)
 {
+    if (! project.isOpen() && drafting && instruction.trim().isNotEmpty())
+    {
+        showError ("Describe your plugin first", "Fanan AI works on a plugin's GUI once the plugin is started: describe it in Build with AI "
+                                                  "(you'll be asked whether to build it on this design).");
+        return;
+    }
+
     if (! project.isOpen() || instruction.trim().isEmpty())
         return;
 
@@ -1375,8 +1427,24 @@ void CreatorStudio::sendFromChat (const juce::String& request, const juce::Array
                                   : type == ChatPanel::BuildType::widget   ? std::optional<PluginKind> (PluginKind::widget)
                                   : type == ChatPanel::BuildType::instrument ? std::optional<PluginKind> (PluginKind::instrument)
                                                                              : std::nullopt);
+
+        // A GUI designed first: Sonify asks (free, before Sonify AI hears anything) whether this
+        // plugin is built on it. Asked once; the answer holds until a plugin opens.
+        if (draftHasDesign() && ! draftChosen.has_value())
+        {
+            askAboutDraft (request, files);
+            return;
+        }
+
+        flushLayoutSave();   // the draft as the user left it
+        projectTools.setUserGui (draftChosen.value_or (false) && draftHasDesign() ? draftGuiFolder() : juce::File());
     }
 
+    sendToAi (request, files);
+}
+
+void CreatorStudio::sendToAi (const juce::String& request, const juce::Array<juce::File>& files)
+{
     // Pictures sent with a request also go into the project, so Sonify AI can use them in
     // the GUI (a background, a logo...).
     juce::StringArray saved;
@@ -1396,6 +1464,80 @@ void CreatorStudio::sendFromChat (const juce::String& request, const juce::Array
     ai.send (request + "\n\n(The attached pictures are also saved in the project as gui/images/" + saved.joinIntoString (", gui/images/")
                  + ": the GUI can use them by those names.)",
              files, request);
+}
+
+//==============================================================================
+juce::File CreatorStudio::draftFolder()
+{
+    return Settings::getCacheFolder().getChildFile ("Draft GUI");
+}
+
+void CreatorStudio::openDraft()
+{
+    drafting = true;
+
+    const auto gui = draftGuiFolder();
+    gui.createDirectory();
+    workspace.setGuiFolder (gui);   // its pictures, looks and view are the draft's
+    loadLayout (false);
+    workspace.setDraft (true);
+    history.reset (draftFolder());
+}
+
+bool CreatorStudio::draftHasDesign() const
+{
+    return drafting && ! project.isOpen() && ! workspace.getLayout().widgets.empty();
+}
+
+void CreatorStudio::clearDraft()
+{
+    if (! drafting)
+        return;
+
+    juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "Clear the draft GUI?",
+                                        "Everything on the draft goes: its elements, pictures and looks.", "Clear", "Cancel", this,
+                                        juce::ModalCallbackFunction::create ([safeThis = juce::Component::SafePointer<CreatorStudio> (this)] (int result)
+                                        {
+                                            if (safeThis == nullptr || result != 1 || ! safeThis->drafting || safeThis->project.isOpen())
+                                                return;
+
+                                            safeThis->layoutSaveScheduled = false;   // nothing of the old draft is written back
+                                            safeThis->draftFolder().deleteRecursively();
+                                            safeThis->draftChosen.reset();
+                                            safeThis->openDraft();
+                                        }));
+}
+
+void CreatorStudio::askAboutDraft (const juce::String& request, const juce::Array<juce::File>& files)
+{
+    draftDialog = std::make_unique<juce::AlertWindow> ("Use your GUI?",
+                                                       "You designed a GUI before starting this plugin. Build the plugin on it?\n\n"
+                                                       "Yes: Fanan AI keeps your design as it is and wires your controls to what it builds. "
+                                                       "For a feature that has no control of yours, it asks before styling one.\n\n"
+                                                       "No: Fanan AI designs its own GUI. Your draft stays for a later plugin.",
+                                                       juce::MessageBoxIconType::QuestionIcon, this);
+    draftDialog->addButton ("Yes, use my GUI", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    draftDialog->addButton ("No", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    draftDialog->enterModalState (true, juce::ModalCallbackFunction::create (
+        [safeThis = juce::Component::SafePointer<CreatorStudio> (this), request, files] (int result)
+        {
+            if (safeThis == nullptr || safeThis->draftDialog == nullptr)
+                return;
+
+            safeThis->draftDialog->setVisible (false);
+            safeThis->draftChosen = result == 1;
+
+            // Let the modal machinery finish with the dialog, then the request goes on its way.
+            juce::MessageManager::callAsync ([safeThis, request, files]
+            {
+                if (safeThis == nullptr)
+                    return;
+
+                safeThis->draftDialog = nullptr;
+                safeThis->sendFromChat (request, files);
+            });
+        }), false);
 }
 
 juce::String CreatorStudio::lastAnswer() const

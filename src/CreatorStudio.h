@@ -128,6 +128,17 @@ private:
     void autoLayout();
     void askAiAboutGui (int widgetIndex, const juce::String& instruction);
     void sendFromChat (const juce::String& request, const juce::Array<juce::File>& files);
+    void sendToAi (const juce::String& request, const juce::Array<juce::File>& files);   // the request goes (pictures saved in the project)
+
+    // No plugin open: Edit UI designs a draft GUI, kept in a folder of its own (it survives
+    // closing Sonify). The first request for a new plugin asks, in a free Yes/No box, whether to
+    // build the plugin on it; create_project then takes it in (ProjectTools::setUserGui).
+    static juce::File draftFolder();                                       // the draft's own "project" folder (undo's)
+    static juce::File draftGuiFolder()    { return draftFolder().getChildFile ("gui"); }
+    void openDraft();
+    void clearDraft();                                                     // asked first
+    bool draftHasDesign() const;
+    void askAboutDraft (const juce::String& request, const juce::Array<juce::File>& files);
     juce::String lastAnswer() const;
     void buildPlugin();
     void showBuildLog();
@@ -209,7 +220,7 @@ private:
 
     std::unique_ptr<juce::DocumentWindow> logWindow, libraryWindow;
     std::unique_ptr<juce::FileChooser> chooser;
-    std::unique_ptr<juce::AlertWindow> newProjectDialog, signOutDialog, autoLayoutDialog, saveAsDialog, exportDialog;
+    std::unique_ptr<juce::AlertWindow> newProjectDialog, signOutDialog, autoLayoutDialog, saveAsDialog, exportDialog, draftDialog;
     std::unique_ptr<juce::Component> exportOptions;   // the export dialog's formats and folder (it goes first)
 
     History history;
@@ -230,6 +241,8 @@ private:
     juce::String builtProjectId;     // the project the preview was built for
     int shownParamsVersion = -1;
     bool layoutSaveScheduled = false;
+    bool drafting = false;               // no plugin open: Edit UI shows the draft GUI
+    std::optional<bool> draftChosen;     // the draft's Yes/No, asked once (until a plugin opens or the draft's cleared)
     bool guiRequestPending = false;  // Sonify AI is answering an Edit UI menu's request
     bool adding = false;             // Add to Sonify is writing the plugin
     bool addWhenPlaying = false;     // Add to Sonify pressed while it built: it's added once it plays

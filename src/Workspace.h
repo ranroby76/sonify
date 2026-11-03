@@ -59,6 +59,10 @@ public:
     /** The open project's gui folder (pictures, looks, the Edit UI view); none: no project. */
     void setGuiFolder (const juce::File& folder);
 
+    /** No plugin open: Edit UI designs the draft GUI (the studio's draft folder is the gui folder),
+        for the plugin the user starts next. Its own row: Gallery, Clear draft, a note. */
+    void setDraft (bool drafting);
+
     /** The looks the plugin's controls wear, and the Knob Studio edits. */
     Looks& getLooks() noexcept                    { return looks; }
 
@@ -113,6 +117,7 @@ public:
     std::function<void()> onExportPluginRequested;   // Export: VST3, CLAP (and on a Mac, Audio Unit) files
     std::function<void()> onPanicRequested;   // the Panic button: every note off
     std::function<void()> onAutoLayoutRequested;
+    std::function<void()> onClearDraftRequested;   // the draft's Clear draft button
     std::function<void()> onLayoutEdited;
     std::function<void (int index, float value)> onParameterChanged;
     std::function<void (int note, float velocity)> onNote;   // a keyboard element's key: down (velocity 0..1) or up (0)
@@ -144,6 +149,7 @@ private:
         PluginView();
 
         void setProject (const juce::String& name, const juce::String& kindName);
+        void setDraft (bool drafting);
         void setPlayMode (bool playMode);
         void setBuild (BuildState state, const juce::String& status);
         void setExporting (bool exporting);
@@ -151,7 +157,7 @@ private:
 
         void setPresets (const PresetMenu& presets);
 
-        std::function<void()> onShowLog, onExport, onExportPlugin, onAutoLayout, onPanic;
+        std::function<void()> onShowLog, onExport, onExportPlugin, onAutoLayout, onPanic, onClearDraft;
         std::function<void (int)> onPresetChosen;
         std::function<void (PresetAction)> onPresetAction;
         std::function<void (bool playMode)> onMode;
@@ -179,6 +185,10 @@ private:
         // switches, dragged onto the panel (or onto a control, to wear one).
         juce::TextButton autoButton { "Auto layout" };
         juce::TextButton galleryButton { juce::String::fromUTF8 ("Gallery\xe2\x80\xa6") };
+
+        // No plugin open: the draft GUI's row (the Gallery, and starting the draft over).
+        juce::TextButton clearDraftButton { "Clear draft" };
+        bool draft = false;
 
         // The Play tab's row: the preset manager.
         juce::ComboBox presetBox;

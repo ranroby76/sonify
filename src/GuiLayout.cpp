@@ -41,13 +41,60 @@ namespace
 
     /** A line from its points in the window: "from", "to" and the "bend" it bows through (left
         out: straight). Its box holds the curve and its stroke, the points kept in it as fractions
-        (the same curve as ObjectPaint draws: a quadratic through the bend point halfway). */
+        (the same curve as ObjectPaint draws: a quadratic through the bend point halfway). Or
+        through several bend points, "bends": [[x, y], ...], each an arc or a corner as its
+        "bendKinds" say (graph art: zigzags, waves). */
     bool lineFromPoints (const juce::var& item, GuiWidget& w)
     {
         juce::Point<float> a, b, m;
 
         if (! pointOf (item.getProperty ("from", {}), a) || ! pointOf (item.getProperty ("to", {}), b))
             return false;
+
+        if (const auto* list = item.getProperty ("bends", {}).getArray(); list != nullptr && ! list->isEmpty())
+        {
+            std::vector<juce::Point<float>> bends;
+
+            for (const auto& entry : *list)
+                if (juce::Point<float> p; pointOf (entry, p) && bends.size() < 16)
+                    bends.push_back (p);
+
+            if (! bends.empty())
+            {
+                // Its box: round every point, with room for the stroke and for arcs bulging a
+                // little past their points (the box fits snugly again when it's next reshaped).
+                auto low = juce::Point<float> (juce::jmin (a.x, b.x), juce::jmin (a.y, b.y));
+                auto high = juce::Point<float> (juce::jmax (a.x, b.x), juce::jmax (a.y, b.y));
+
+                for (const auto& p : bends)
+                {
+                    low = { juce::jmin (low.x, p.x), juce::jmin (low.y, p.y) };
+                    high = { juce::jmax (high.x, p.x), juce::jmax (high.y, p.y) };
+                }
+
+                const auto half = juce::jlimit (0.25f, 60.0f, w.number ("lineWidth", 4.0f) * 0.5f);
+                const float room = juce::jmax (7.0f, half * 5.0f) * 0.5f + 10.0f;
+                auto box = juce::Rectangle<float> (low, high).expanded (room).getSmallestIntegerContainer();
+                box = box.withSizeKeepingCentre (juce::jmax (12, box.getWidth()), juce::jmax (12, box.getHeight()));
+                w.bounds = box;
+
+                const auto origin = box.getPosition().toFloat();
+                const float bw = (float) box.getWidth(), bh = (float) box.getHeight();
+                auto fraction = [] (float v) { return juce::roundToInt (v * 10000.0f) / 10000.0; };
+                juce::Array<juce::var> fractions { fraction ((a.x - origin.x) / bw), fraction ((a.y - origin.y) / bh) };
+
+                for (const auto& p : bends)
+                {
+                    fractions.add (fraction ((p.x - origin.x) / bw));
+                    fractions.add (fraction ((p.y - origin.y) / bh));
+                }
+
+                fractions.add (fraction ((b.x - origin.x) / bw));
+                fractions.add (fraction ((b.y - origin.y) / bh));
+                w.settings["line"] = fractions;
+                return true;
+            }
+        }
 
         if (! pointOf (item.getProperty ("bend", item.getProperty ("through", {})), m))
             m = (a + b) * 0.5f;
@@ -398,6 +445,10 @@ GuiWidget GuiLayout::widgetFromVar (const juce::var& item)
                 if (item.hasProperty (juce::Identifier (key)) && w.settings.count (key) == 0)
                     w.settings[key] = item.getProperty (juce::Identifier (key), {});
 
+        // Text effects may lie beside "type" too.
+        if (item.hasProperty ("textEffects") && w.settings.count ("textEffects") == 0)
+            w.settings["textEffects"] = item.getProperty ("textEffects", {});
+
         // A lamp's, selector's, keyboard's or label's display may lie beside "type" too.
         if (w.takesPartDisplay())
             for (const auto& key : GuiWidget::partKeys())
@@ -446,6 +497,7 @@ GuiWidget GuiLayout::widgetFromVar (const juce::var& item)
 
     w.opacity = juce::jlimit (0.0f, 1.0f, (float) (double) item.getProperty ("opacity", 1.0));
     w.page = item.getProperty ("page", {}).toString().trim();
+    w.command = item.getProperty ("command", {}).toString().trim();
 
     w.label = item.getProperty (w.type == GuiWidget::Type::label || w.type == GuiWidget::Type::group || w.type == GuiWidget::Type::registration
                                     ? "text" : "label", {}).toString();
@@ -457,8 +509,14 @@ GuiWidget GuiLayout::widgetFromVar (const juce::var& item)
     w.originalKnown = item.hasProperty ("originalStyle");
     w.originalStyle = item.getProperty ("originalStyle", {}).toString().trim();
     w.colour = colourFromString (item.getProperty ("color", item.getProperty ("colour", {})).toString(), juce::Colours::transparentBlack);
-    w.fontSize = (float) (double) item.getProperty ("size", 0.0);
+    // Words' size: a label's, title's or tabs' "size"; a caption's "textSize" (a knob's "size" is its diameter).
+    w.fontSize = juce::jlimit (0.0f, 200.0f, (float) (double) item.getProperty (w.type == GuiWidget::Type::label || w.type == GuiWidget::Type::group
+                                                                                    || w.type == GuiWidget::Type::tabs ? "size" : "textSize", 0.0));
     w.bold = (bool) item.getProperty ("bold", false);
+    w.italic = (bool) item.getProperty ("italic", false);
+    w.underline = (bool) item.getProperty ("underline", false);
+    w.textColour = colourFromString (item.getProperty ("textColor", item.getProperty ("textColour", {})).toString(), juce::Colours::transparentBlack);
+    w.textShift = juce::jlimit (-GuiWidget::maxTextShift, GuiWidget::maxTextShift, juce::roundToInt ((double) item.getProperty ("textShift", 0)));
     w.font = item.getProperty ("font", {}).toString().trim();
 
     if (w.type != GuiWidget::Type::shape && item.hasProperty ("rounding"))
@@ -500,13 +558,9 @@ GuiWidget GuiLayout::widgetFromVar (const juce::var& item)
         // A knob is given by its diameter; its caption sits under it.
         const auto size = juce::jlimit (16, 400, intOf (item, "size", intOf (item, "w", 56)));
         w.bounds = { x, y, size, size + captionHeight };
-        w.fontSize = 0.0f;
     }
     else
     {
-        if (w.type != GuiWidget::Type::label && w.type != GuiWidget::Type::group && w.type != GuiWidget::Type::tabs)
-            w.fontSize = 0.0f;
-
         const auto t = w.type;
         const auto defaultW = t == GuiWidget::Type::slider ? 32 : t == GuiWidget::Type::toggle ? 48 : t == GuiWidget::Type::meter ? 18
                             : t == GuiWidget::Type::lamp ? 30 : t == GuiWidget::Type::xy ? 160 : t == GuiWidget::Type::label ? 160
@@ -568,11 +622,24 @@ juce::var GuiLayout::widgetToVar (const GuiWidget& w)
     if (! w.colour.isTransparent())
         set (item, "color", colourToString (w.colour));
 
-    if (w.fontSize > 0.0f && (w.type == GuiWidget::Type::label || w.type == GuiWidget::Type::group || w.type == GuiWidget::Type::tabs))
-        set (item, "size", w.fontSize);
+    if (w.fontSize > 0.0f)
+        set (item, w.type == GuiWidget::Type::label || w.type == GuiWidget::Type::group || w.type == GuiWidget::Type::tabs ? "size" : "textSize",
+             w.fontSize);
 
     if (w.bold)
         set (item, "bold", true);
+
+    if (w.italic)
+        set (item, "italic", true);
+
+    if (w.underline)
+        set (item, "underline", true);
+
+    if (! w.textColour.isTransparent())
+        set (item, "textColor", colourToString (w.textColour));
+
+    if (w.textShift != 0)
+        set (item, "textShift", w.textShift);
 
     if (w.font.isNotEmpty())
         set (item, "font", w.font);
@@ -652,6 +719,9 @@ juce::var GuiLayout::widgetToVar (const GuiWidget& w)
 
     if (w.page.isNotEmpty())
         set (item, "page", w.page);
+
+    if (w.command.isNotEmpty())
+        set (item, "command", w.command);
 
     return item;
 }

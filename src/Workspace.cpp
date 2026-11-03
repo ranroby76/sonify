@@ -45,6 +45,9 @@ Workspace::PluginView::PluginView()
     panicButton.setColour (juce::TextButton::textColourOffId, juce::Colour (0xffff8a80));
     panicButton.onClick = [this] { if (onPanic != nullptr) onPanic(); };
 
+    clearDraftButton.setTooltip ("Start the draft GUI over: everything on it goes");
+    clearDraftButton.onClick = [this] { if (onClearDraft != nullptr) onClearDraft(); };
+
     autoButton.setTooltip ("Replace the GUI with a plain automatic one: a group per module, a control per parameter");
     autoButton.onClick = [this] { if (onAutoLayout != nullptr) onAutoLayout(); };
 
@@ -104,6 +107,7 @@ Workspace::PluginView::PluginView()
         addChildComponent (c);
     addChildComponent (autoButton);
     addChildComponent (galleryButton);
+    addChildComponent (clearDraftButton);
     addChildComponent (canvas);
 
     // The toolbox: drag a primitive onto the window, or double-click it.
@@ -133,22 +137,34 @@ void Workspace::PluginView::setProject (const juce::String& name, const juce::St
     repaint();
 }
 
+void Workspace::PluginView::setDraft (bool drafting)
+{
+    if (draft == drafting)
+        return;
+
+    draft = drafting;
+    setPlayMode (playMode);
+}
+
 void Workspace::PluginView::setPlayMode (bool shouldPlay)
 {
     playMode = shouldPlay;
     (playMode ? playTab : editTab).setToggleState (true, juce::dontSendNotification);
 
-    // Each tab has a row of its own: Edit's tools, or Play's preset manager.
+    // Each tab has a row of its own: Edit's tools, or Play's preset manager. With no plugin
+    // open, the draft GUI is designed as in Edit.
     const bool hasProject = projectName.isNotEmpty();
+    const bool designing = hasProject ? ! playMode : draft;   // the draft is only ever edited
 
     autoButton.setVisible (hasProject && ! playMode);
-    galleryButton.setVisible (hasProject && ! playMode);
-    toolbox.setVisible (hasProject && ! playMode);
+    galleryButton.setVisible (designing);
+    toolbox.setVisible (designing);
+    clearDraftButton.setVisible (draft && ! hasProject);
 
     for (auto* c : std::initializer_list<juce::Component*> { &presetBox, &previousButton, &nextButton, &saveButton, &saveAsButton, &loadButton, &moreButton })
         c->setVisible (hasProject && playMode);
 
-    canvas.setDesignMode (! playMode);
+    canvas.setDesignMode (hasProject ? ! playMode : true);
     resized();   // the toolbox shows in Edit only
     repaint();
 }
@@ -231,9 +247,22 @@ void Workspace::PluginView::paint (juce::Graphics& g)
 {
     g.fillAll (Theme::panel);
 
-    // No project: the canvas's grid fills the whole tab.
+    // No project: the canvas's grid fills the whole tab, under the draft's row.
     if (projectName.isEmpty())
+    {
+        if (draft)
+        {
+            g.setColour (Theme::outline);
+            g.fillRect (0, rowHeight - 1, getWidth(), 1);
+            g.setColour (Theme::muted);
+            g.setFont (Theme::font (13.5f));
+            g.drawFittedText (juce::String::fromUTF8 ("Your GUI draft: design the window first Â· when you describe your plugin to Fanan AI, "
+                                                      "you choose whether it's built on this design"),
+                              hintArea, juce::Justification::centredLeft, 1, 0.85f);
+        }
+
         return;
+    }
 
     // The build bar: a light for the state, and what's happening.
     auto bar = statusArea;
@@ -292,13 +321,24 @@ void Workspace::PluginView::resized()
 
     statusArea = juce::Rectangle<int>::leftTopRightBottom (bar.getX(), bar.getY() + 1, juce::jmax (bar.getX(), editTab.getX() - 14), bar.getBottom() - 1);
 
-    const auto row = getLocalBounds().withTrimmedTop (barHeight).removeFromTop (rowHeight).reduced (16, 6);
+    const auto row = getLocalBounds().withTrimmedTop (projectName.isNotEmpty() ? barHeight : 0).removeFromTop (rowHeight).reduced (16, 6);
 
-    // Edit's row: Auto layout, then how editing works.
+    // Edit's row: Auto layout, then how editing works. The draft's: the Gallery, Clear draft, a note.
     auto tools = row;
-    autoButton.setBounds (tools.removeFromLeft (104));
-    tools.removeFromLeft (8);
-    galleryButton.setBounds (tools.removeFromLeft (96));
+
+    if (projectName.isNotEmpty())
+    {
+        autoButton.setBounds (tools.removeFromLeft (104));
+        tools.removeFromLeft (8);
+        galleryButton.setBounds (tools.removeFromLeft (96));
+    }
+    else
+    {
+        galleryButton.setBounds (tools.removeFromLeft (96));
+        tools.removeFromLeft (8);
+        clearDraftButton.setBounds (tools.removeFromLeft (104));
+    }
+
     tools.removeFromLeft (18);
     hintArea = tools;
 
@@ -320,7 +360,9 @@ void Workspace::PluginView::resized()
 
     // The grid: under the bars with a project, the whole tab without one. In Edit, the
     // toolbox runs down its left side.
-    auto rest = projectName.isNotEmpty() ? getLocalBounds().withTrimmedTop (barHeight + rowHeight) : getLocalBounds();
+    auto rest = projectName.isNotEmpty() ? getLocalBounds().withTrimmedTop (barHeight + rowHeight)
+              : draft                    ? getLocalBounds().withTrimmedTop (rowHeight)
+                                         : getLocalBounds();
 
     if (toolbox.isVisible())
         toolbox.setBounds (rest.removeFromLeft (Toolbox::width));
@@ -372,6 +414,7 @@ Workspace::Workspace()
             done ("Painting isn't available here.");
     };
     pluginView.onAutoLayout = [this] { if (onAutoLayoutRequested != nullptr) onAutoLayoutRequested(); };
+    pluginView.onClearDraft = [this] { if (onClearDraftRequested != nullptr) onClearDraftRequested(); };
     pluginView.onMode       = [this] (bool play) { if (onModeChanged != nullptr) onModeChanged (play); };
 
     pluginView.canvas.onLayoutEdited = [this]
@@ -531,6 +574,11 @@ void Workspace::setNotice (const juce::String& title, const juce::String& detail
 void Workspace::setProject (const juce::String& name, const juce::String& kindName)
 {
     pluginView.setProject (name, kindName);
+}
+
+void Workspace::setDraft (bool drafting)
+{
+    pluginView.setDraft (drafting);
 }
 
 void Workspace::setGuiFolder (const juce::File& folder)

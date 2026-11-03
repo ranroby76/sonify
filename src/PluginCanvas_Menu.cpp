@@ -47,6 +47,35 @@ namespace
             && w.type != GuiWidget::Type::registration;
     }
 
+    /** Words of its own: a label's, a frame's title, the page tabs, the "Unregistered" badge. */
+    bool isWords (const GuiWidget& w)
+    {
+        return w.type == GuiWidget::Type::label || w.type == GuiWidget::Type::group || w.type == GuiWidget::Type::registration
+            || w.type == GuiWidget::Type::tabs;
+    }
+
+    /** A caption the canvas draws under (or over) it: controls and displays. */
+    bool hasOwnCaption (const GuiWidget& w)
+    {
+        return ! isWords (w) && w.type != GuiWidget::Type::image && w.type != GuiWidget::Type::shape && w.type != GuiWidget::Type::preset
+            && w.type != GuiWidget::Type::keyboard && w.type != GuiWidget::Type::custom;
+    }
+
+    /** Whether its text can be bold, italic and underlined, and take effects: every element with
+        words (the badge's are fixed): labels, titles, tabs, captions, a selector's names, the
+        preset manager's name, readouts. */
+    bool takesTextStyle (const GuiWidget& w)
+    {
+        return PanelParts::hasText (w);
+    }
+
+    /** Whether "Text colour" is its words' colour: a caption's, the tabs', the preset name's
+        (a label's or a title's words wear its Colour). */
+    bool takesTextColour (const GuiWidget& w)
+    {
+        return hasOwnCaption (w) || w.type == GuiWidget::Type::tabs || w.type == GuiWidget::Type::preset;
+    }
+
     juce::String pictureChoice (const juce::String& name)
     {
         return name.isNotEmpty() ? name : juce::String::fromUTF8 ("Choose picture\xe2\x80\xa6");
@@ -384,7 +413,8 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     copyButton.setTooltip ("Copy (Ctrl+C): a frame takes what's inside it along");
     pasteButton.setTooltip ("Paste (Ctrl+V)");
     duplicateButton.setTooltip ("Duplicate (Ctrl+D)");
-    layerBox.setTooltip ("Bring to front or forward, send backward or to the back (Ctrl+Shift+], Ctrl+], Ctrl+[, Ctrl+Shift+[)");
+    layerBox.setTooltip ("Bring to front, forward one layer (over the next elements that overlap it), backward one layer (under them) "
+                         "or to the back (Ctrl+Shift+], Ctrl+], Ctrl+[, Ctrl+Shift+[)");
 
     copyButton.onClick = [this]
     {
@@ -404,6 +434,29 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     {
         canvas.copyElements (targets());
         canvas.pasteElements ({});
+    };
+
+    // Its style: how it looks, onto others (their place, size, words and what they work kept).
+    copyStyleButton.setTooltip ("Copy how it looks (Ctrl+Alt+C): colours, text style and font, opacity, and its kind's own "
+                                "(a knob's look, a shape's material and layer style...)");
+    copyStyleButton.onClick = [this]
+    {
+        if (widget >= 0)
+            canvas.copyStyle (widget);
+
+        showActions (true);   // Paste style knows what it has now
+        resized();
+    };
+
+    pasteStyleButton.onClick = [this]
+    {
+        const auto onto = targets();
+        canvas.pasteStyle (onto);
+
+        if (several.empty())
+            showFor (widget);   // its settings as they are now
+        else
+            showForSeveral (onto);
     };
 
     layerBox.onChange = [this]
@@ -440,6 +493,8 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     addChildComponent (copyButton);
     addChildComponent (pasteButton);
     addChildComponent (duplicateButton);
+    addChildComponent (copyStyleButton);
+    addChildComponent (pasteStyleButton);
     addChildComponent (layerBox);
 
     label.onTextChange = [this] { apply(); };
@@ -451,10 +506,55 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     textSize.onTextChange = [this] { typedBox = &textSize; };
     textSize.onReturnKey = [this] { typedBox = nullptr; apply(); };
     textSize.onFocusLost = [this] { if (typedBox == &textSize) commitTyped(); };
-    boldToggle.onClick = [this] { apply(); };
+    textStyle.bold.setTooltip ("Its text in bold");
+    textStyle.italic.setTooltip ("Its text leaning (italic)");
+    textStyle.underline.setTooltip ("Its text underlined");
+
+    for (auto* tick : { &textStyle.bold, &textStyle.italic, &textStyle.underline })
+        tick->onClick = [this] { apply(); };
+
+    textShift.value.setInputRestrictions (4, "-0123456789");
+    textShift.value.setJustification (juce::Justification::centred);
+    textShift.value.setTooltip ("Pixels its caption is moved down from its place (minus: up)");
+    textShift.value.setFont (Theme::font (14.0f));
+    textShift.value.onTextChange = [this] { typedBox = &textShift.value; };
+    textShift.value.onReturnKey = [this] { typedBox = nullptr; apply(); };
+    textShift.value.onFocusLost = [this] { if (typedBox == &textShift.value) commitTyped(); };
+    textShift.up.setTooltip ("Caption up a pixel (Shift: 5)");
+    textShift.down.setTooltip ("Caption down a pixel (Shift: 5)");
+
+    for (auto* button : { &textShift.up, &textShift.down })
+        button->onClick = [this, button]
+        {
+            const auto step = juce::ModifierKeys::currentModifiers.isShiftDown() ? 5 : 1;
+            const auto now = textShift.value.getText().getIntValue() + (button == &textShift.up ? -step : step);
+            textShift.value.setText (juce::String (juce::jlimit (-GuiWidget::maxTextShift, GuiWidget::maxTextShift, now)), juce::dontSendNotification);
+            typedBox = nullptr;
+            apply();
+        };
+
+    textEffectsButton.setButtonText (juce::String::fromUTF8 ("Text effects (fx)\xe2\x80\xa6"));
+    textEffectsButton.setTooltip ("Photoshop's Layer Style on its words: Bevel & Emboss, Stroke, Inner Shadow, Color Overlay and Drop Shadow "
+                                  "(its words, caption, names and readout alike)");
+    textEffectsButton.onClick = [this]
+    {
+        if (widget >= 0)
+            canvas.editTextEffects (widget);
+    };
+
+    textColour.setTooltip ("Its caption's colour (see-through: the standard one)");
+    textColour.setStandardColour (PanelParts::standardCaptionColour());
+    textColour.onColourChange = [this] { apply(); };
 
     colour.setTooltip ("Its colour (see-through: the standard one)");
     colour.onColourChange = [this] { apply(); };
+
+    // A keyboard's white and black keys, in any colour (shaded as its display shades them).
+    whiteKeysSwatch.setTooltip ("Its white keys' colour, shaded as its display shades them (see-through: the display's own)");
+    blackKeysSwatch.setTooltip ("Its black keys' colour, shaded as its display shades them (see-through: the display's own)");
+
+    for (auto* swatch : { &whiteKeysSwatch, &blackKeysSwatch })
+        swatch->onColourChange = [this] { apply(); };
 
     for (auto* box : { &widthBox, &heightBox })
     {
@@ -555,6 +655,90 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
 
     for (auto* slider : { &topPoint, &middleX, &middleY, &leanX, &leanY })
         slider->setDoubleClickReturnValue (true, 0.0);
+
+    // A line's bend points: pick one (or click its handle), make it an arc or a corner, add more
+    // (each its own kind), take one away.
+    bendPick.setTooltip ("Which bend point: its handle is ringed on the line (or click a handle)");
+    bendPick.onChange = [this]
+    {
+        if (updating || ! canvas.isLine (widget))
+            return;
+
+        canvas.activeBend = juce::jmax (0, bendPick.getSelectedId() - 1);
+        canvas.repaint();
+        showFor (widget);
+    };
+
+    bendKind.addItem ("Arc: curves through it", 1);
+    bendKind.addItem ("Corner: turns sharply there", 2);
+    bendKind.setTooltip ("How the line goes through this bend point (or double-click its handle)");
+    bendKind.onChange = [this]
+    {
+        if (updating || ! canvas.isLine (widget))
+            return;
+
+        auto& w = canvas.layout.widgets[(size_t) widget];
+        ObjectPaint::setBendCorner (w, canvas.activeBend, bendKind.getSelectedId() == 2);
+        ObjectPaint::setLinePoints (w, ObjectPaint::linePoints (w), true);
+        canvas.edited();
+        canvas.repaint();
+        showFor (widget);   // one arc alone can be pulled again (or can't)
+    };
+
+    addBendButton.setTooltip ("Another bend point, halfway along the part after this one: drag it where you like, "
+                              "and make it an arc or a corner");
+    addBendButton.onClick = [this]
+    {
+        if (! canvas.isLine (widget))
+            return;
+
+        auto& w = canvas.layout.widgets[(size_t) widget];
+
+        if (const auto added = ObjectPaint::addBend (w, canvas.activeBend); added >= 0)
+        {
+            canvas.activeBend = added;
+            canvas.edited();
+            canvas.repaint();
+            showFor (widget);
+        }
+    };
+
+    removeBendButton.setTooltip ("This bend point goes (a line keeps one at least)");
+    removeBendButton.onClick = [this]
+    {
+        if (! canvas.isLine (widget))
+            return;
+
+        auto& w = canvas.layout.widgets[(size_t) widget];
+        ObjectPaint::removeBend (w, canvas.activeBend);
+        canvas.activeBend = juce::jlimit (0, ObjectPaint::bendCount (w) - 1, canvas.activeBend - 1);
+        canvas.edited();
+        canvas.repaint();
+        showFor (widget);
+    };
+
+    // Per corner: from its shape as it is (its lean goes into its corners); off, back to its box.
+    perCornerToggle.setTooltip ("Drag its four corners one at a time, each on its own, as Photoshop's Distort (Alt: off the grid). "
+                                "Off: its box's corners again");
+    perCornerToggle.onClick = [this]
+    {
+        if (updating || ! juce::isPositiveAndBelow (widget, (int) canvas.layout.widgets.size()))
+            return;
+
+        auto& w = canvas.layout.widgets[(size_t) widget];
+
+        if (w.type != GuiWidget::Type::shape || w.shapeKind() == "line")
+            return;
+
+        if (perCornerToggle.getToggleState())
+            ObjectPaint::startCorners (w);
+        else
+            ObjectPaint::stopCorners (w);
+
+        canvas.edited();
+        canvas.repaint();
+        showFor (widget);   // the lean sliders go (or come back)
+    };
 
     layerStyleButton.setButtonText (juce::String::fromUTF8 ("Layer style (fx)\xe2\x80\xa6"));
     layerStyleButton.setTooltip ("Photoshop's Layer Style: Bevel & Emboss with its Contour, Stroke, Inner Shadow, Color Overlay "
@@ -707,8 +891,8 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     lineCapBox.addItemList (lineCapNames, 1);
     lineCapBox.setTooltip ("How its ends finish where there's no arrowhead");
     lineCapBox.onChange = [this] { applyShape(); };
-    straightenButton.setTooltip ("Its bend point back on the straight way between its ends (or double-click the bend point). "
-                                 "Drag the line to bow it, drag its ends to move them, right-drag it to move it all");
+    straightenButton.setTooltip ("Its bend points back on the straight way between its ends, evenly. Drag a bend point's "
+                                 "handle to move it (double-click: arc or corner), drag its ends to move them, right-drag it to move it all");
     straightenButton.onClick = [this]
     {
         if (! canvas.isLine (widget))
@@ -810,7 +994,11 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
 
     addHeader (text, "Words");
     addRow (text, "Text", label);
-    addRow (text, "Text size, bold", textSize, &boldToggle, 0.4f);
+    addRow (text, "Text size", textSize);
+    addRow (text, "Style", textStyle, nullptr, 1.0f, 24);
+    addRow (text, "Text colour", textColour, nullptr, 1.0f, 22);
+    addRow (text, "Text shift (- up, + down)", textShift, nullptr, 1.0f, 24);
+    addRow (text, {}, textEffectsButton, nullptr, 1.0f, 28);
     addHeader (text, "Font");
     addRow (text, "Font", fontBox);
     addRow (text, {}, fontSample, nullptr, 1.0f, 40);
@@ -828,6 +1016,8 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     addRow (look, "Picture fit", pictureMode);
     addHeader (look, "Colour");
     addRow (look, "Colour", colour, nullptr, 1.0f, 22);
+    addRow (look, "White keys", whiteKeysSwatch, nullptr, 1.0f, 22);
+    addRow (look, "Black keys", blackKeysSwatch, nullptr, 1.0f, 22);
     addHeader (look, "Corners");
     addRow (look, "Rounding", presetRounding, nullptr, 1.0f, 24);
     addHeader (look, "Light");
@@ -837,6 +1027,9 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     addRow (shape, "Width", lineWidthSlider, nullptr, 1.0f, 24);
     addRow (shape, "Arrowheads", lineArrowBox);
     addRow (shape, "Ends", lineCapBox);
+    addRow (shape, "Bend point", bendPick);
+    addRow (shape, "Its bend", bendKind);
+    addRow (shape, {}, addBendButton, &removeBendButton, 0.62f, 28);
     addRow (shape, {}, straightenButton, nullptr, 1.0f, 28);
     addHeader (shape, "Corners");
     addRow (shape, "Rounding", cornerRadius, nullptr, 1.0f, 24);
@@ -847,6 +1040,7 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     addRow (shape, "Top point (left to right)", topPoint, nullptr, 1.0f, 24);
     addRow (shape, "Middle (sideways)", middleX, nullptr, 1.0f, 24);
     addRow (shape, "Middle (up and down)", middleY, nullptr, 1.0f, 24);
+    addRow (shape, {}, perCornerToggle, nullptr, 1.0f, 24);
     addRow (shape, "Lean (sideways)", leanX, nullptr, 1.0f, 24);
     addRow (shape, "Lean (up and down)", leanY, nullptr, 1.0f, 24);
     addHeader (shape, "Effects and light");
@@ -1168,8 +1362,22 @@ void PluginCanvas::ElementMenu::showFor (int widgetIndex)
 
         textSize.setText (w.fontSize > 0.0f ? juce::String (w.fontSize, 1).trimCharactersAtEnd ("0").trimCharactersAtEnd (".") : juce::String(),
                           juce::dontSendNotification);
-        boldToggle.setToggleState (w.bold, juce::dontSendNotification);
-        setShown (textSize, isText && t != GuiWidget::Type::registration);   // the badge's words fit its height
+        setShown (textSize, (isText && t != GuiWidget::Type::registration) || hasOwnCaption (w) || t == GuiWidget::Type::preset);   // the badge's words fit its height
+        textSize.setTooltip (hasOwnCaption (w) ? "Its caption's size in pixels (empty: the standard size). It's as big as you set it: "
+                                                 "the control stays as it is, and the caption can reach past it (Text shift moves it)"
+                                               : "Its words' size in pixels (empty: as standard)");
+
+        // Bold, italic, underlined; a caption's own colour (words have theirs as the element's colour).
+        textStyle.bold.setToggleState (w.bold, juce::dontSendNotification);
+        textStyle.italic.setToggleState (w.italic, juce::dontSendNotification);
+        textStyle.underline.setToggleState (w.underline, juce::dontSendNotification);
+        setShown (textStyle, takesTextStyle (w));
+        textColour.setColourValue (w.textColour, juce::dontSendNotification);
+        setShown (textColour, takesTextColour (w), hasOwnCaption (w) ? "Text colour (caption)" : "Text colour");
+        setShown (textEffectsButton, takesTextStyle (w));
+        textEffectsButton.setButtonText (juce::String::fromUTF8 (PanelParts::hasTextEffects (w) ? "Text effects (fx: on)\xe2\x80\xa6" : "Text effects (fx)\xe2\x80\xa6"));
+        textShift.value.setText (juce::String (w.textShift), juce::dontSendNotification);
+        setShown (textShift, hasOwnCaption (w));
 
         // Its text's font.
         int fontId = 1;
@@ -1263,6 +1471,19 @@ void PluginCanvas::ElementMenu::showFor (int widgetIndex)
             fillKeys (lowKey, w.lowNote, highestLowKey);
             fillKeys (highKey, w.highNote, highestKey);
             setShown (lowKey, true);
+
+            // Its keys' colours: the display's own shows while none is chosen.
+            const auto display = PanelParts::keyboardDisplayOf (w);
+            const auto standardWhite = display == "reverse" ? juce::Colour (0xff262224) : display == "graphite" ? juce::Colour (0xff2b2f34)
+                                     : display == "modern" ? juce::Colour (0xff3d4149) : juce::Colour (0xfff3f0ea);
+            const auto standardBlack = display == "reverse" ? juce::Colour (0xffe4ddcd) : display == "graphite" ? juce::Colour (0xffd4d8de)
+                                     : display == "modern" ? juce::Colour (0xff18191c) : juce::Colour (0xff1b1b1f);
+            whiteKeysSwatch.setColourValue (GuiLayout::colourFromString (w.settingText ("whiteKeys"), juce::Colours::transparentBlack), juce::dontSendNotification);
+            blackKeysSwatch.setColourValue (GuiLayout::colourFromString (w.settingText ("blackKeys"), juce::Colours::transparentBlack), juce::dontSendNotification);
+            whiteKeysSwatch.setStandardColour (standardWhite);
+            blackKeysSwatch.setStandardColour (standardBlack);
+            setShown (whiteKeysSwatch, true);
+            setShown (blackKeysSwatch, true);
         }
 
         if (t == GuiWidget::Type::image)
@@ -1356,7 +1577,7 @@ void PluginCanvas::ElementMenu::commitTyped()
     }
     else
     {
-        apply();   // a parameter, a role or the text size
+        apply();   // a parameter, a role, the text size or shift
     }
 }
 
@@ -1870,8 +2091,11 @@ void PluginCanvas::ElementMenu::showShape (const GuiWidget& w)
     setShown (topPoint, kind == "triangle");
     setShown (middleX, kind == "circle" || kind == "star" || kind == "drawn");
     setShown (middleY, kind == "circle" || kind == "star" || kind == "drawn");
-    setShown (leanX, kind != "line");
-    setShown (leanY, kind != "line");
+    const bool perCorner = ObjectPaint::hasCorners (w);
+    perCornerToggle.setToggleState (perCorner, juce::dontSendNotification);
+    setShown (perCornerToggle, kind != "line");
+    setShown (leanX, kind != "line" && ! perCorner);
+    setShown (leanY, kind != "line" && ! perCorner);
     setShown (layerStyleButton, true);
 
     // A line: its width, arrowheads and ends; straight again while it's bent.
@@ -1883,6 +2107,27 @@ void PluginCanvas::ElementMenu::showShape (const GuiWidget& w)
     setShown (lineArrowBox, line);
     setShown (lineCapBox, line);
     setShown (straightenButton, line && ObjectPaint::isBent (w));
+
+    // Its bend points: the one picked, its kind, more or fewer.
+    if (line)
+    {
+        const auto count = ObjectPaint::bendCount (w);
+        canvas.activeBend = juce::jlimit (0, count - 1, canvas.activeBend);
+        bendPick.clear (juce::dontSendNotification);
+
+        for (int k = 0; k < count; ++k)
+            bendPick.addItem ("Bend point " + juce::String (k + 1) + " of " + juce::String (count)
+                                  + (ObjectPaint::isCornerBend (w, k) ? " (corner)" : " (arc)"), k + 1);
+
+        bendPick.setSelectedId (canvas.activeBend + 1, juce::dontSendNotification);
+        bendKind.setSelectedId (ObjectPaint::isCornerBend (w, canvas.activeBend) ? 2 : 1, juce::dontSendNotification);
+        addBendButton.setEnabled (count < ObjectPaint::maxBends);
+        removeBendButton.setEnabled (count > 1);
+    }
+
+    setShown (bendPick, line);
+    setShown (bendKind, line);
+    setShown (addBendButton, line);
 
     // Its surface: a flat colour, or a material with its finish, colours, texture and pattern.
     auto* settings = new juce::DynamicObject();
@@ -1956,7 +2201,7 @@ void PluginCanvas::ElementMenu::applyShape()
         if (! w.isTurned())
             ObjectPaint::setLinePoints (w, ObjectPaint::linePoints (w), true);
     }
-    else
+    else if (! ObjectPaint::hasCorners (w))   // per corner, its lean is in its corners
     {
         put ("leanX", leanX.getValue(), 0.0, 0.01);
         put ("leanY", leanY.getValue(), 0.0, 0.01);
@@ -2023,6 +2268,16 @@ void PluginCanvas::ElementMenu::showActions (bool forElements)
     copyButton.setVisible (forElements);
     duplicateButton.setVisible (forElements);
 
+    // Copy style (one element) and Paste style (onto this one, or all those selected).
+    copyStyleButton.setVisible (forElements);
+    pasteStyleButton.setVisible (forElements);
+    copyStyleButton.setEnabled (several.empty());
+    pasteStyleButton.setEnabled (canvas.hasCopiedStyle());
+    pasteStyleButton.setTooltip (canvas.hasCopiedStyle()
+                                     ? "Paste the style copied from a " + canvas.copiedStyleKind() + " (Ctrl+Alt+V): this one looks like it, "
+                                       "keeping its place, size, words and what it works" + (several.empty() ? juce::String() : juce::String (" (all of them)"))
+                                     : juce::String ("Copy a style first (Copy style, or Ctrl+Alt+C)"));
+
     // One knob, slider or switch: the two yellow buttons under the row.
     const bool wearsALook = forElements && several.empty()
                          && juce::isPositiveAndBelow (widget, (int) canvas.layout.widgets.size())
@@ -2039,10 +2294,23 @@ void PluginCanvas::ElementMenu::showActions (bool forElements)
                         : Looks::kindOf (w) == Looks::Kind::button ? juce::String ("switch") : juce::String ("slider");
         const auto trying = canvas.isTryingSimilars (widget);
 
-        similarToggle.setButtonText ("Apply this " + kind + " on similars");
+        // Nothing to change (no other of its kind, or they all wear this look already): it says so.
+        const auto toChange = canvas.similarsToChange (widget);
+        int others = 0;
+
+        for (int i = 0; i < (int) canvas.layout.widgets.size(); ++i)
+            if (i != widget && Looks::takesLook (canvas.layout.widgets[(size_t) i]) && Looks::kindOf (canvas.layout.widgets[(size_t) i]) == Looks::kindOf (w))
+                ++others;
+
+        similarToggle.setButtonText ("Apply this " + kind + " on similars"
+                                     + (trying || toChange > 0 ? juce::String()
+                                        : others == 0 ? " (no other " + kind + "s)" : " (they all wear it)"));
         similarToggle.setToggleState (trying, juce::dontSendNotification);
-        similarToggle.setEnabled (trying || canvas.similarsToChange (widget) > 0);
-        similarToggle.setTooltip ("Ticked: every other " + kind + " here wears this one's look at once. Unticked: they wear their own looks again");
+        similarToggle.setEnabled (trying || toChange > 0);
+        similarToggle.setTooltip (trying || toChange > 0
+                                      ? "Ticked: every other " + kind + " here wears this one's look at once. Unticked: they wear their own looks again"
+                                      : others == 0 ? "There's no other " + kind + " on the panel to change"
+                                                    : "Every other " + kind + " here wears this look already: nothing to change");
         similarApplyButton.setTooltip ("Every other " + kind + " here wears this one's look for good (it asks first: there's no way back)");
         similarApplyButton.setEnabled (trying || canvas.similarsToChange (widget) > 0);
     }
@@ -2067,8 +2335,8 @@ void PluginCanvas::ElementMenu::showActions (bool forElements)
     {
         layerBox.addItem ("Bring forward", 2);
         layerBox.addItem ("Send backward", 3);
-        layerBox.setItemEnabled (2, widget < last);
-        layerBox.setItemEnabled (3, widget > 0);
+        layerBox.setItemEnabled (2, canvas.layerStep (widget, true) >= 0);    // something over it to pass
+        layerBox.setItemEnabled (3, canvas.layerStep (widget, false) >= 0);   // something under it
     }
 
     layerBox.addItem ("Send to back", 4);
@@ -2140,8 +2408,8 @@ int PluginCanvas::ElementMenu::getIdealHeight() const
 
 int PluginCanvas::ElementMenu::actionsSize() const
 {
-    return actionsHeight + (galleryButton.isVisible() ? 34 : 0) + (knobStudioButton.isVisible() ? 34 : 0)
-                         + (similarToggle.isVisible() ? 34 : 0);
+    return actionsHeight + (copyStyleButton.isVisible() ? 34 : 0) + (galleryButton.isVisible() ? 34 : 0)
+                         + (knobStudioButton.isVisible() ? 34 : 0) + (similarToggle.isVisible() ? 34 : 0);
 }
 
 void PluginCanvas::ElementMenu::resized()
@@ -2176,6 +2444,16 @@ void PluginCanvas::ElementMenu::resized()
     if (galleryButton.isVisible())
     {
         galleryButton.setBounds (strip.removeFromBottom (28));
+        strip.removeFromBottom (6);
+    }
+
+    // Right under the row: Copy style, Paste style.
+    if (copyStyleButton.isVisible())
+    {
+        auto line = strip.removeFromBottom (28);
+        copyStyleButton.setBounds (line.removeFromLeft ((line.getWidth() - 6) / 2));
+        line.removeFromLeft (6);
+        pasteStyleButton.setBounds (line);
         strip.removeFromBottom (6);
     }
 
@@ -2383,6 +2661,16 @@ void PluginCanvas::ElementMenu::apply()
 
     if (w.type == GuiWidget::Type::keyboard)
     {
+        // Its keys' colours (see-through: the display's own).
+        for (const auto& [swatch, key] : { std::pair<ColourSwatchButton*, const char*> { &whiteKeysSwatch, "whiteKeys" }, { &blackKeysSwatch, "blackKeys" } })
+        {
+            if (swatch->getColourValue().isTransparent()) w.settings.erase (key);
+            else                                          w.settings[key] = hexOf (swatch->getColourValue());
+        }
+    }
+
+    if (w.type == GuiWidget::Type::keyboard)
+    {
         // A key picked in the lists (one not picked stays as it is); the highest stays above the
         // lowest, at least an octave up.
         const auto low = lowKey.getSelectedId() - 1, high = highKey.getSelectedId() - 1;
@@ -2427,10 +2715,26 @@ void PluginCanvas::ElementMenu::apply()
         w.options.removeEmptyStrings();
     }
 
-    if (w.type == GuiWidget::Type::label || w.type == GuiWidget::Type::group || w.type == GuiWidget::Type::tabs)
+    if (w.type == GuiWidget::Type::label || w.type == GuiWidget::Type::group || w.type == GuiWidget::Type::tabs || hasOwnCaption (w)
+        || w.type == GuiWidget::Type::preset)
     {
         w.fontSize = juce::jlimit (0.0f, 200.0f, textSize.getText().getFloatValue());
-        w.bold = boldToggle.getToggleState();
+    }
+
+    if (takesTextStyle (w))
+    {
+        w.bold = textStyle.bold.getToggleState();
+        w.italic = textStyle.italic.getToggleState();
+        w.underline = textStyle.underline.getToggleState();
+    }
+
+    if (takesTextColour (w))
+        w.textColour = textColour.getColourValue();
+
+    if (hasOwnCaption (w))
+    {
+        w.textShift = juce::jlimit (-GuiWidget::maxTextShift, GuiWidget::maxTextShift, textShift.value.getText().getIntValue());
+        textShift.value.setText (juce::String (w.textShift), juce::dontSendNotification);   // what's kept
     }
 
     if (takesColour (w) && w.type != GuiWidget::Type::shape)   // a shape's colours are its surface's
@@ -2714,7 +3018,11 @@ void PluginCanvas::selectMany (const std::set<int>& indexes, int primary)
 
 void PluginCanvas::select (int index)
 {
+    const auto was = selected;
     selected = design && juce::isPositiveAndBelow (index, (int) layout.widgets.size()) ? index : -1;
+
+    if (selected != was)
+        activeBend = 0;   // another line's bend points
     panelSelected = false;
     manySelected.clear();
 

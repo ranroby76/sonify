@@ -259,6 +259,23 @@ namespace
         if (w.style.isNotEmpty())
             line << " style=\"" << w.style << "\"";
 
+        // Its text: font, style, a caption's colour and shift (the edit menu's Text tab).
+        if (w.font.isNotEmpty())
+            line << " font=\"" << w.font << "\"";
+
+        if (w.bold)      line << " bold";
+        if (w.italic)    line << " italic";
+        if (w.underline) line << " underline";
+
+        if (! w.textColour.isTransparent())
+            line << " textColor=#" << w.textColour.toDisplayString (true);
+
+        if (w.textShift != 0)
+            line << " textShift=" << w.textShift;
+
+        if (w.fontSize > 0.0f && w.type != GuiWidget::Type::label && w.type != GuiWidget::Type::group && w.type != GuiWidget::Type::tabs)
+            line << " textSize=" << juce::String (w.fontSize, 1).trimCharactersAtEnd ("0").trimCharactersAtEnd (".");
+
         // A shape's material and its layer style (read gui/layout.json for their settings).
         if (w.type == GuiWidget::Type::shape)
         {
@@ -1014,6 +1031,24 @@ juce::String ProjectTools::describeProject() const
                     "beside Send, so it's exactly what you build (never another type). " + kindRole (*chosenKind)
                   + "\nCreate it with create_project (a short name from the request), then build it as the guide says.";
 
+        // A GUI the user designed first, chosen for this plugin: create_project brings it in.
+        if (GuiLayout draft; userGui.isDirectory() && GuiLayout::load (userGui.getChildFile (GuiLayout::fileName), draft).wasOk()
+                             && ! draft.widgets.empty())
+        {
+            text << "\n\nThe user designed this plugin's GUI themselves before starting it, and chose to build the plugin on it: "
+                    "create_project brings it in as the plugin's GUI (" << draft.width << " x " << draft.height << ", "
+                 << (int) draft.widgets.size() << " elements). Their captions, and the parameter ids typed into their controls, say "
+                    "what each control is for: build the parameters for them. Their elements:\n";
+
+            const auto listed = juce::jmin ((int) draft.widgets.size(), maxListedElements);
+
+            for (int i = 0; i < listed; ++i)
+                text << elementLine (i, draft.widgets[(size_t) i], {}) << "\n";
+
+            if (listed < (int) draft.widgets.size())
+                text << "... and " << ((int) draft.widgets.size() - listed) << " more.\n";
+        }
+
         if (const auto code = getReference().listing (maxListedReference); code.isNotEmpty())
             text << "\n\nThe user brought their own code (reference/, read only; it goes into the project you create). Read it "
                     "(read_file, search_reference) and port it as the guide's \"The user's own code\" says:\n" << code;
@@ -1028,6 +1063,12 @@ juce::String ProjectTools::describeProject() const
          << kindRole (info.kind) << "\n"
          << "Its type is the user's choice: never change it. If they ask for something of another type (a MIDI FX while an "
             "instrument is open, say), tell them in one sentence to start a new plugin and choose its type beside Send.\n";
+
+    // The user's own GUI design: kept as it is (the guide's "The user's own GUI").
+    if (isUserGui())
+        text << "\nThe GUI is the user's own design (they drew it before the plugin existed): follow the guide's \"The user's own GUI\". "
+                "Keep their elements exactly as they are; wire their controls; for a new feature with no control of theirs, ask "
+                "before you style one.\n";
 
     // The design brief: the plugin's memory, since conversations aren't kept.
     if (const auto design = project.getFolder().getChildFile (designFileName); design.existsAsFile())
@@ -1292,6 +1333,11 @@ juce::String ProjectTools::describeProject() const
 bool ProjectTools::hasDesign() const
 {
     return project.isOpen() && project.getFolder().getChildFile (designFileName).existsAsFile();
+}
+
+bool ProjectTools::isUserGui() const
+{
+    return project.isOpen() && project.getGuiFolder().getChildFile (userGuiMarker).existsAsFile();
 }
 
 juce::File ProjectTools::waitingReferenceFolder()
@@ -1968,8 +2014,28 @@ void ProjectTools::run (const juce::String& name, const juce::var& input, Done d
         if (const auto created = onCreateProject (projectName, kind); created.failed())
             return fail (created.getErrorMessage());
 
+        // The GUI the user designed first: it's this plugin's now, marked as theirs.
+        juce::String takenGui;
+
+        if (GuiLayout draft; userGui.isDirectory() && GuiLayout::load (userGui.getChildFile (GuiLayout::fileName), draft).wasOk()
+                             && ! draft.widgets.empty())
+        {
+            const auto gui = project.getGuiFolder();
+
+            if (userGui.copyDirectoryTo (gui))
+            {
+                gui.getChildFile (userGuiMarker).replaceWithText ("The user designed this GUI before the plugin existed: Fanan AI keeps it.\n");
+                takenGui = " The user's own GUI design is its GUI: keep it, and wire it as the guide's \"The user's own GUI\" says.";
+
+                if (onUserGuiTaken != nullptr)
+                    onUserGuiTaken();
+            }
+        }
+
+        userGui = juce::File();
+
         done ("Created and opened the project \"" + projectName + "\" (" + Project::kindDisplayName (kind)
-                  + "). It's empty: write its modules, wire them with set_graph, then build.\n\n"
+                  + "). It's empty: write its modules, wire them with set_graph, then build." + takenGui + "\n\n"
                   + describeProject(),
               false);
         return;

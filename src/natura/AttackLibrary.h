@@ -1,4 +1,4 @@
-// C:\workspace\SONIFY PLUGIN natura\src\AttackLibrary.h
+// D:\workspace\Fanan_web_hub\src\natura\AttackLibrary.h
 #pragma once
 //==============================================================================
 //  AttackLibrary.h  -  the sampled attacks (the D-50 way): the first 180 ms of
@@ -117,6 +117,50 @@ namespace natura
         static std::uint32_t u32 (const unsigned char* p) { std::uint32_t v; std::memcpy (&v, p, 4); return v; }
         static float f32 (const unsigned char* p) { float v; std::memcpy (&v, p, 4); return v; }
 
+        /** Sets whose recording should carry more of the note than the file says. */
+        static void applyOverrides (int set, Set& st)
+        {
+            if (set == (int) AttackSet::Piano)
+            {
+                st.headMs = std::max (st.headMs, 110.0f);   // the real hammer, and the first ring, from the recording
+                st.fadeMs = 50.0f;                          // then over to the string (the recordings run 180 ms)
+            }
+        }
+
+        /** The piano recordings, retuned to the model's string. Each one's root in the file
+            is a little sharp of where its partials lie (-5 .. -12 cents through the middle,
+            more in the bass, where a stiff wound string's partials run sharp of its
+            fundamental), so the attack sounded flat against the note it hands over to.
+            The cents here put each recording's first partials on the model's: measured on
+            every recording against the model's own stretched partials at its root. */
+        void tuneSamples()
+        {
+            struct Fix { float rootHz; int layer; float cents; };
+            static const Fix piano[] = {
+                {    29.1f, 0,  -21.3f }, {    29.1f, 1,  -20.2f }, {    29.1f, 2,  -17.4f },
+                {    46.2f, 0,  -10.8f }, {    46.2f, 1,   -9.0f }, {    46.2f, 2,   -7.7f },
+                {    73.3f, 0,    4.1f }, {    73.3f, 1,    3.5f }, {    73.5f, 2,    1.0f },
+                {   116.5f, 0,   -2.3f }, {   116.6f, 1,   -4.4f }, {   116.8f, 2,   -5.4f },
+                {   185.5f, 0,   -8.5f }, {   186.0f, 1,  -11.8f }, {   186.0f, 2,   -9.6f },
+                {   294.0f, 0,   -4.6f }, {   294.5f, 1,   -6.8f }, {   295.0f, 2,   -8.0f },
+                {   466.9f, 0,   -3.1f }, {   467.3f, 1,   -3.9f }, {   467.4f, 2,   -3.7f },
+                {   739.5f, 0,   -4.9f }, {   741.4f, 1,   -9.4f }, {   745.0f, 2,  -16.2f },
+                {  1176.7f, 0,   -0.2f }, {  1176.4f, 1,   -1.1f }, {  1176.7f, 2,   -1.0f },
+                {  1860.4f, 0,    0.6f }, {  1863.4f, 1,   -2.5f }, {  1869.6f, 2,   -1.9f },
+                {  2975.0f, 0,   -4.9f }, {  2974.4f, 1,   -4.9f }, {  2974.2f, 2,   -6.1f },
+            };
+            for (auto& sm : samples)
+            {
+                if (sm.set != (int) AttackSet::Piano) continue;
+                for (const auto& f : piano)
+                    if (f.layer == sm.layer && std::abs (sm.rootHz - f.rootHz) < 0.002f * f.rootHz + 0.06f)
+                    {
+                        sm.rootHz *= std::pow (2.0f, f.cents / 1200.0f);
+                        break;
+                    }
+            }
+        }
+
         void load (const unsigned char* b, size_t size)
         {
             static const char* ids[kNumAttackSets] = {
@@ -147,6 +191,7 @@ namespace natura
                 auto& st = sets[(size_t) k];
                 st.headMs = f32 (p + 48);
                 st.fadeMs = f32 (p + 52);
+                applyOverrides (k, st);
             }
 
             const size_t pcmCount = (size - head) / 2;
@@ -169,6 +214,7 @@ namespace natura
 
             // group by set (the file keeps them grouped already; this keeps it so whatever the order)
             std::stable_sort (samples.begin(), samples.end(), [] (const Sample& a, const Sample& c) { return a.set < c.set; });
+            tuneSamples();
             for (int i = 0; i < (int) samples.size(); ++i)
             {
                 auto& st = sets[(size_t) samples[(size_t) i].set];

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "GuiLayout.h"
+#include "LayerDoc.h"   // LayerStyle: Photoshop's layer style, on words too
 
 #include <functional>
 
@@ -96,6 +97,30 @@ namespace PanelParts
 
     /** Its words (a readout's: its value) in its box. ink: the words' colour; size 0: the standard. */
     void paintLabel (juce::Graphics&, const GuiWidget& label, const juce::String& text, juce::Colour ink, float size);
+
+    /** Words on one line, as the element has its text: italic (leaning, drawn so even where the
+        font has no italic of its own) and underlined when it says, with its text effects
+        (Photoshop's layer style on its words: textEffectsOf) round them. Too long, they end in
+        dots; fitted: squeezed (then shrunk) to fit, as drawFittedText does. Bold is the font's. */
+    void drawStyledText (juce::Graphics&, const GuiWidget&, const juce::String& text, juce::Rectangle<float> area,
+                         juce::Justification, const juce::Font&, juce::Colour colour, bool fitted = false);
+
+    /** Its words' layer style ("textEffects": bevel and emboss, stroke, inner shadow, colour
+        overlay, drop shadow), for every text it shows: its words, its caption, its positions'
+        names, its readout. */
+    LayerStyle textEffectsOf (const GuiWidget&);
+    bool hasTextEffects (const GuiWidget&);
+    void setTextEffects (GuiWidget&, const LayerStyle&);
+
+    /** The global light text effects are lit by (the panel's: the canvas keeps it up to date). */
+    void setTextLight (float angle, float altitude);
+
+    /** Whether it shows words a text style can reach (labels, titles, tabs, captions, a
+        selector's names, the preset manager's name, readouts). */
+    bool hasText (const GuiWidget&);
+
+    /** A control's or display's caption with no colour of its own. */
+    juce::Colour standardCaptionColour();
 
     /** The displays one kind takes, by id and by name (empty for kinds without them). */
     const juce::StringArray& displaysFor (GuiWidget::Type type);

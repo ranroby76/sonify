@@ -545,6 +545,18 @@ juce::Point<float> PluginCanvas::handleCentre (int handle) const
     {
         at = { box.getCentreX(), box.getY() - 26.0f };
     }
+    else if (isBendHandle (handle))
+    {
+        // A line's bend point, where it is in its box.
+        const auto points = ObjectPaint::linePoints (w);
+        const auto k = (size_t) (handle - bendHandle);
+        at = toView (w.bounds).getPosition() + (k < points.bends.size() ? points.bends[k] : points.start) * zoom;
+    }
+    else if (isCornerHandle (handle))
+    {
+        // A shape's corner, per corner: where it is in its box.
+        at = toView (w.bounds).getPosition() + ObjectPaint::cornerPoints (w)[(size_t) (handle - cornerHandle)] * zoom;
+    }
     else if (handle == lineStartHandle || handle == lineEndHandle)
     {
         // A line's ends, where they are in its box.
@@ -576,6 +588,8 @@ juce::Point<float> PluginCanvas::handleCentre (int handle) const
 
 juce::Rectangle<float> PluginCanvas::handleArea (int handle) const
 {
+    static_assert (maxBendHandles == ObjectPaint::maxBends, "a handle for every bend point a line can have");
+
     if (! juce::isPositiveAndBelow (selected, (int) layout.widgets.size()) || ! juce::isPositiveAndBelow (handle, numHandles) || ! manySelected.empty())
         return {};
 
@@ -591,6 +605,24 @@ juce::Rectangle<float> PluginCanvas::handleArea (int handle) const
 
     if (handle == lineStartHandle || handle == lineEndHandle)
         return line ? juce::Rectangle<float> (handleSize + 2.0f, handleSize + 2.0f).withCentre (handleCentre (handle)) : juce::Rectangle<float>();
+
+    // A line's bend points: one handle each (in place of the shape's own).
+    if (isBendHandle (handle))
+        return line && handle - bendHandle < ObjectPaint::bendCount (w) ? juce::Rectangle<float> (handleSize, handleSize).withCentre (handleCentre (handle)).expanded (1.0f)
+                                                                          : juce::Rectangle<float>();
+
+    if (line && handle == shapeHandle)
+        return {};
+
+    // Per corner: its four corners take the place of the box's corner handles (the sides still
+    // resize it).
+    const bool perCorner = ObjectPaint::hasCorners (w);
+
+    if (isCornerHandle (handle))
+        return perCorner ? juce::Rectangle<float> (handleSize + 2.0f, handleSize + 2.0f).withCentre (handleCentre (handle)) : juce::Rectangle<float>();
+
+    if (perCorner && handle < 8 && (handle % 2) == 0)
+        return {};
 
     if (line)
         return handle < 8 ? juce::Rectangle<float>()
@@ -614,7 +646,19 @@ int PluginCanvas::handleAt (juce::Point<float> view) const
 {
     // A line's ends first, then the shape's own (it lies inside), then corners: they win where
     // they meet the sides.
-    for (const auto handle : { lineStartHandle, lineEndHandle, shapeHandle, 0, 2, 4, 6, 1, 3, 5, 7, turnHandle })
+    for (const auto handle : { cornerHandle, cornerHandle + 1, cornerHandle + 2, cornerHandle + 3, lineStartHandle, lineEndHandle })
+        if (const auto area = handleArea (handle); ! area.isEmpty() && area.expanded (3.0f).contains (view))
+            return handle;
+
+    // A line's bend points: the one picked last first (it lies on top), then the rest.
+    if (const auto first = bendHandle + activeBend; ! handleArea (first).isEmpty() && handleArea (first).expanded (3.0f).contains (view))
+        return first;
+
+    for (int handle = bendHandle; handle < bendHandle + maxBendHandles; ++handle)
+        if (const auto area = handleArea (handle); ! area.isEmpty() && area.expanded (3.0f).contains (view))
+            return handle;
+
+    for (const auto handle : { shapeHandle, 0, 2, 4, 6, 1, 3, 5, 7, turnHandle })
         if (const auto area = handleArea (handle); ! area.isEmpty() && area.expanded (3.0f).contains (view))
             return handle;
 
@@ -650,6 +694,54 @@ int PluginCanvas::backBackdrop() const
     return found;
 }
 
+int PluginCanvas::layerStep (int index, bool up) const
+{
+    // One layer is what lies over (or under) this element where it overlaps it, the nearest
+    // first. Elements side by side that don't overlap one another (a row of buttons) are one
+    // layer together; the first that overlaps one of them (the background under the buttons)
+    // is the next layer, and the step stops before it. Only the page shown counts; elements
+    // that don't touch it never matter, whatever their place in the order.
+    if (! juce::isPositiveAndBelow (index, (int) layout.widgets.size()))
+        return -1;
+
+    // a line may have no height: it still covers its pixel row
+    const auto area = [] (const GuiWidget& w)
+    {
+        auto r = w.bounds;
+        return r.withSize (juce::jmax (1, r.getWidth()), juce::jmax (1, r.getHeight()));
+    };
+
+    const auto box = area (layout.widgets[(size_t) index]);
+    const int step = up ? 1 : -1;
+    std::vector<int> passed;
+
+    for (int i = index + step; juce::isPositiveAndBelow (i, (int) layout.widgets.size()); i += step)
+    {
+        const auto& w = layout.widgets[(size_t) i];
+
+        if (! isShown (w) || ! area (w).intersects (box))
+            continue;
+
+        bool deeper = false;
+
+        for (const auto p : passed)
+            if (area (layout.widgets[(size_t) p]).intersects (area (w)))
+            {
+                deeper = true;
+                break;
+            }
+
+        if (deeper)
+            break;
+
+        passed.push_back (i);
+    }
+
+    // backward: the lowest of that layer gives up its place (it and those over it move up one);
+    // forward: the element goes just over the highest of it
+    return passed.empty() ? -1 : passed.back();
+}
+
 void PluginCanvas::reorder (int index, Order order)
 {
     if (! juce::isPositiveAndBelow (index, (int) layout.widgets.size()))
@@ -658,10 +750,9 @@ void PluginCanvas::reorder (int index, Order order)
     const auto last = (int) layout.widgets.size() - 1;
     const auto target = order == Order::front    ? last
                       : order == Order::back     ? 0
-                      : order == Order::forward  ? juce::jmin (last, index + 1)
-                                                 : juce::jmax (0, index - 1);
+                      : layerStep (index, order == Order::forward);
 
-    if (target == index)
+    if (target < 0 || target == index)
         return;
 
     releaseKey();
@@ -673,6 +764,135 @@ void PluginCanvas::reorder (int index, Order order)
 
     select (target);
     edited();
+}
+
+//==============================================================================
+// Copy and paste style
+namespace
+{
+    /** The style copied: kept for the session, from project to project. */
+    std::optional<GuiWidget>& copiedStyle()
+    {
+        static std::optional<GuiWidget> style;
+        return style;
+    }
+
+    /** Settings that are its form, its content or what it does, not its look: never pasted. */
+    bool isFormSetting (const juce::String& key)
+    {
+        static const juce::StringArray form { "shape", "line", "bendKinds", "corners", "centerX", "centerY", "leanX", "leanY",
+                                              "points", "inner", "library" };
+        return form.contains (key);
+    }
+
+    bool hasWords (GuiWidget::Type t)
+    {
+        return t == GuiWidget::Type::label || t == GuiWidget::Type::group || t == GuiWidget::Type::tabs;
+    }
+}
+
+void PluginCanvas::applyStyle (const GuiWidget& from, GuiWidget& to)
+{
+    if (to.type == GuiWidget::Type::registration)
+        return;   // the badge looks as it must
+
+    // What every element has: its colour, its text's style and font, how see-through it is.
+    to.colour = from.colour;
+    to.textColour = from.textColour;
+    to.bold = from.bold;
+    to.italic = from.italic;
+    to.underline = from.underline;
+    to.font = from.font;
+    to.opacity = from.opacity;
+
+    // Its words' size: words onto words, a caption onto a caption.
+    if (hasWords (from.type) == hasWords (to.type) && from.type != GuiWidget::Type::shape && to.type != GuiWidget::Type::shape
+        && from.type != GuiWidget::Type::image && to.type != GuiWidget::Type::image)
+        to.fontSize = from.fontSize;
+
+    if (from.isControl() == to.isControl() || ! hasWords (to.type))
+        to.textShift = from.textShift;   // a caption's place under (or over) it
+
+    // A knob's look onto a knob (a slider's onto a slider, a switch's onto a switch).
+    if (Looks::takesLook (from) && Looks::takesLook (to) && Looks::kindOf (from) == Looks::kindOf (to) && from.style != to.style)
+    {
+        rememberOriginalLook (to);
+        to.style = from.style;
+    }
+
+    // Its words' effects: onto anything with words.
+    if (PanelParts::hasText (from) && PanelParts::hasText (to))
+    {
+        if (const auto found = from.settings.find ("textEffects"); found != from.settings.end())
+            to.settings["textEffects"] = found->second;
+        else
+            to.settings.erase ("textEffects");
+    }
+
+    // Its kind's own: the same kind, or shape onto shape (material, finish, patterns, layer
+    // style, rounding, a line's width, ends and arrowheads). Programmed elements' settings are
+    // what they do: theirs stay.
+    const bool sameKind = from.type == to.type && from.type != GuiWidget::Type::custom;
+
+    if (! sameKind)
+        return;
+
+    to.stroke = from.stroke;
+    to.strokeWidth = from.strokeWidth;
+    to.rounding = from.rounding;
+
+    if (to.type == GuiWidget::Type::image)
+        to.mode = from.mode;   // how the picture fills its box
+
+    for (auto it = to.settings.begin(); it != to.settings.end();)
+        it = ! isFormSetting (it->first) && from.settings.count (it->first) == 0 ? to.settings.erase (it) : std::next (it);
+
+    for (const auto& [key, value] : from.settings)
+        if (! isFormSetting (key))
+            to.settings[key] = value;
+}
+
+void PluginCanvas::copyStyle (int index)
+{
+    if (juce::isPositiveAndBelow (index, (int) layout.widgets.size()))
+        copiedStyle() = layout.widgets[(size_t) index];
+}
+
+bool PluginCanvas::hasCopiedStyle() const
+{
+    return copiedStyle().has_value();
+}
+
+juce::String PluginCanvas::copiedStyleKind() const
+{
+    if (! copiedStyle().has_value())
+        return {};
+
+    const auto& w = *copiedStyle();
+    return w.type == GuiWidget::Type::shape ? w.shapeKind() : GuiLayout::typeName (w.type);
+}
+
+void PluginCanvas::pasteStyle (const std::vector<int>& indexes)
+{
+    if (! copiedStyle().has_value())
+        return;
+
+    bool any = false;
+
+    for (const auto index : indexes)
+    {
+        if (! juce::isPositiveAndBelow (index, (int) layout.widgets.size()))
+            continue;
+
+        applyStyle (*copiedStyle(), layout.widgets[(size_t) index]);
+        any = true;
+    }
+
+    if (any)
+    {
+        edited();
+        repaint();
+    }
 }
 
 //==============================================================================
@@ -1109,8 +1329,22 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
         {
             drag = handle == turnHandle ? Drag::turnElement
                  : handle == shapeHandle ? Drag::adjustShape
-                 : (handle == lineStartHandle || handle == lineEndHandle) ? Drag::lineEnd : Drag::resizeElement;
+                 : (handle == lineStartHandle || handle == lineEndHandle) ? Drag::lineEnd
+                 : isCornerHandle (handle) ? Drag::corner
+                 : isBendHandle (handle) ? Drag::bendPoint : Drag::resizeElement;
             resizeHandle = handle;
+
+            // A bend point picked: the menu shows its kind.
+            if (isBendHandle (handle) && handle - bendHandle != activeBend)
+            {
+                activeBend = handle - bendHandle;
+
+                if (menuOpen)
+                    menu->showFor (selected);
+
+                repaint();
+            }
+
             startBounds = layout.widgets[(size_t) selected].bounds;
             startWidget = layout.widgets[(size_t) selected];
             return;   // its menu stays open, following it
@@ -1172,8 +1406,10 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
             else
                 select (index);
 
-            // A line alone: a left-drag bows it where it was grabbed (a right-drag moves it).
-            if (! many && isLine (index))
+            // A line alone, with one arc bend point: a left-drag bows it where it was grabbed (a
+            // right-drag moves it). With more, or a corner, its bend points' handles shape it and
+            // a drag moves it.
+            if (! many && isLine (index) && ObjectPaint::canPull (layout.widgets[(size_t) index]))
             {
                 drag = Drag::lineBend;
                 startBounds = layout.widgets[(size_t) selected].bounds;
@@ -1332,6 +1568,16 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
                                     safeThis->onPresetChosen (choice - presetIds);
                                 }
                             });
+        return;
+    }
+
+    // A command button: lit while it's held, run when it's let go over it.
+    if (w.command.isNotEmpty())
+    {
+        commandHeld = active;
+        active = -1;
+        drag = Drag::none;
+        repaint();
         return;
     }
 
@@ -1652,6 +1898,46 @@ void PluginCanvas::mouseDrag (const juce::MouseEvent& e)
             return;
         }
 
+        case Drag::bendPoint:
+        {
+            if (selected < 0 || ! dragMoved)
+                return;
+
+            // In the line's own frame, from its box as it was; it sticks to the design grid (Alt: free).
+            auto& w = layout.widgets[(size_t) selected];
+            auto plugin = toPlugin (e.position);
+
+            if (! e.mods.isAltDown())
+                plugin = { (float) snapped (plugin.x), (float) snapped (plugin.y) };
+
+            const auto local = intoWidget (startWidget, plugin) - startBounds.getPosition().toFloat();
+            ObjectPaint::moveBend (w, startWidget, resizeHandle - bendHandle, local);
+            changed = true;
+            followMenu();
+            repaint();
+            return;
+        }
+
+        case Drag::corner:
+        {
+            if (selected < 0 || ! dragMoved)
+                return;
+
+            // In the shape's own frame, from its box as it was; it sticks to the design grid (Alt: free).
+            auto& w = layout.widgets[(size_t) selected];
+            auto plugin = toPlugin (e.position);
+
+            if (! e.mods.isAltDown())
+                plugin = { (float) snapped (plugin.x), (float) snapped (plugin.y) };
+
+            const auto local = intoWidget (startWidget, plugin) - startBounds.getPosition().toFloat();
+            ObjectPaint::moveCorner (w, startWidget, resizeHandle - cornerHandle, local);
+            changed = true;
+            followMenu();
+            repaint();
+            return;
+        }
+
         case Drag::marquee:
         {
             marquee = juce::Rectangle<float> (toPlugin (dragStart), toPlugin (e.position)).toNearestInt();
@@ -1711,10 +1997,34 @@ void PluginCanvas::mouseDrag (const juce::MouseEvent& e)
     }
 }
 
+void PluginCanvas::runCommand (const juce::String& command)
+{
+    if (onPresetAction == nullptr)
+        return;
+
+    if (command == "presetSave")
+        onPresetAction (PresetAction::saveAs);
+    else if (command == "presetLoad")
+        onPresetAction (PresetAction::loadFile);
+    else if (command == "presetQuickSave")
+        onPresetAction (PresetAction::save);     // over the preset playing (a factory one: Save as)
+}
+
 void PluginCanvas::mouseUp (const juce::MouseEvent& e)
 {
     const auto was = drag;
     drag = Drag::none;
+
+    if (commandHeld >= 0)
+    {
+        const auto held = std::exchange (commandHeld, -1);
+        repaint();
+
+        if (juce::isPositiveAndBelow (held, (int) layout.widgets.size()) && widgetAt (toPlugin (e.position), true) == held)
+            runCommand (layout.widgets[(size_t) held].command);
+
+        return;
+    }
 
     if (was == Drag::crop)
     {
@@ -1726,11 +2036,15 @@ void PluginCanvas::mouseUp (const juce::MouseEvent& e)
         fitPaintedBackdrops();
 
     // A line reshaped: its box made snug round it again.
-    if (design && changed && (was == Drag::lineEnd || was == Drag::lineBend || was == Drag::adjustShape) && isLine (selected))
+    if (design && changed && (was == Drag::lineEnd || was == Drag::lineBend || was == Drag::adjustShape || was == Drag::bendPoint) && isLine (selected))
     {
         auto& w = layout.widgets[(size_t) selected];
         ObjectPaint::setLinePoints (w, ObjectPaint::linePoints (w), true);
     }
+
+    // A corner moved: its box made snug round its corners again.
+    if (design && changed && was == Drag::corner && juce::isPositiveAndBelow (selected, (int) layout.widgets.size()))
+        ObjectPaint::fitCornersBox (layout.widgets[(size_t) selected]);
 
     if (was == Drag::control && juce::isPositiveAndBelow (active, (int) layout.widgets.size())
         && layout.widgets[(size_t) active].type == GuiWidget::Type::custom)
@@ -1743,7 +2057,8 @@ void PluginCanvas::mouseUp (const juce::MouseEvent& e)
     setMouseCursor (juce::MouseCursor::NormalCursor);
 
     if (design && (was == Drag::element || was == Drag::resizeElement || was == Drag::turnElement || was == Drag::adjustShape
-                   || was == Drag::resizePanel || was == Drag::lineEnd || was == Drag::lineBend))
+                   || was == Drag::resizePanel || was == Drag::lineEnd || was == Drag::lineBend || was == Drag::corner
+                   || was == Drag::bendPoint))
         repaint();   // the alignment grid goes with the drag
 
     if (design && changed)
@@ -1789,7 +2104,8 @@ void PluginCanvas::mouseUp (const juce::MouseEvent& e)
                 select (selected);              // a click on one of several: just that one
         }
         else if (was == Drag::element || was == Drag::resizeElement || was == Drag::turnElement || was == Drag::adjustShape
-                 || was == Drag::resizePanel || was == Drag::lineEnd || was == Drag::lineBend)
+                 || was == Drag::resizePanel || was == Drag::lineEnd || was == Drag::lineBend || was == Drag::corner
+                 || was == Drag::bendPoint)
         {
             if (reopenMenu)
                 openMenu();                     // back where it was before the move
@@ -1850,11 +2166,18 @@ void PluginCanvas::mouseDoubleClick (const juce::MouseEvent& e)
         {
             choosePicture (index);
         }
-        else if (isLine (index) && index == selected && handleAt (e.position) == shapeHandle)
+        else if (const auto bend = isLine (index) && index == selected ? handleAt (e.position) : -1; isBendHandle (bend))
         {
-            // A line's bend point: straight again.
-            ObjectPaint::straighten (layout.widgets[(size_t) index]);
+            // A line's bend point: an arc becomes a corner, a corner an arc.
+            auto& line = layout.widgets[(size_t) index];
+            activeBend = bend - bendHandle;
+            ObjectPaint::setBendCorner (line, activeBend, ! ObjectPaint::isCornerBend (line, activeBend));
+            ObjectPaint::setLinePoints (line, ObjectPaint::linePoints (line), true);
             edited();
+
+            if (menuOpen)
+                menu->showFor (selected);
+
             repaint();
         }
         else if (w.type == GuiWidget::Type::shape)
@@ -2055,7 +2378,7 @@ bool PluginCanvas::keyPressed (const juce::KeyPress& key)
     };
 
     // Ctrl+V pastes under the mouse (or a step beside the copies, with the mouse elsewhere).
-    if (ctrlAnd ('V') && hasPanel())
+    if (ctrlAnd ('V') && ! mods.isAltDown() && hasPanel())
     {
         const auto mouse = getMouseXYRelative().toFloat();
         pasteElements (panelArea().contains (mouse) ? std::optional<juce::Point<float>> (toPlugin (mouse)) : std::nullopt);
@@ -2064,6 +2387,23 @@ bool PluginCanvas::keyPressed (const juce::KeyPress& key)
 
     if (selected < 0)
         return false;
+
+    // Ctrl+Alt+C and Ctrl+Alt+V: its style (how it looks) copied, and pasted onto those selected.
+    if (ctrlAnd ('C') && mods.isAltDown())
+    {
+        copyStyle (selected);
+        return true;
+    }
+
+    if (ctrlAnd ('V') && mods.isAltDown())
+    {
+        pasteStyle (selection());
+
+        if (menuOpen)
+            openMenu();   // the menu shows what it wears now
+
+        return true;
+    }
 
     if (ctrlAnd ('C'))
     {

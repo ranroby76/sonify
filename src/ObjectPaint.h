@@ -5,7 +5,9 @@
 #include "GuiLayout.h"
 #include "LayerDoc.h"   // LayerStyle: Photoshop's layer style
 
+#include <array>
 #include <string>
+#include <vector>
 
 //==============================================================================
 /**
@@ -34,23 +36,74 @@ namespace ObjectPaint
     juce::Path outline (const GuiWidget& shape, float width, float height);
 
     //==========================================================================
-    /** A line (shape kind "line"): from its start to its end, through its bend point. Straight
-        while the bend point lies on the way between them; moved off it, the line bows through
+    /** Per corner, Photoshop's Distort (every shape but a line): its box's four corners moved
+        one at a time, the rest staying put, and the shape mapped into the four-sided figure
+        they make (straight lines stay straight). Kept as fractions of its box, inside its
+        outline's inset ("corners": [x, y of the top-left, top-right, bottom-right,
+        bottom-left]), so resizing the box scales it. Its lean isn't used while it has them. */
+    bool hasCorners (const GuiWidget& shape);
+
+    /** Its four corners in its own box's pixels: top-left, top-right, bottom-right, bottom-left. */
+    std::array<juce::Point<float>, 4> cornerPoints (const GuiWidget& shape);
+
+    /** Per corner from now on, starting from its shape as it is (its lean taken into its corners). */
+    void startCorners (GuiWidget& shape);
+
+    /** Back to its box: its corners (and the lean they held) let go. */
+    void stopCorners (GuiWidget& shape);
+
+    /** One corner (0 top-left .. 3 bottom-left) moved to `local` (in its own box's pixels, its
+        box as it was when the drag began: atStart); the other three stay. Upright, it may go
+        past its box (fitCornersBox makes the box fit again); turned, it stays inside. */
+    void moveCorner (GuiWidget& shape, const GuiWidget& atStart, int corner, juce::Point<float> local);
+
+    /** Its box made snug round its corners, which stay where they are on the panel (upright only). */
+    void fitCornersBox (GuiWidget& shape);
+
+    //==========================================================================
+    /** A line (shape kind "line"): from its start to its end, through its bend points, in
+        order. Each bend point is an arc (the line curves smoothly through it) or a corner (it
+        turns sharply there, straight on either side). With one arc bend point, the line is
+        straight while it lies on the way between the ends; moved off it, the line bows through
         it, bulging most near it. Its points are kept in its box as fractions ("line": [x1, y1,
-        bendX, bendY, x2, y2]); "lineWidth" (pixels), "arrow" (none, start, end, both) and
-        "cap" (round, flat, square) shape its stroke. */
+        bendX, bendY, ... x2, y2], one bend point or more), their kinds in "bendKinds" ("arc" or
+        "corner" each; left out: arcs); "lineWidth" (pixels), "arrow" (none, start, end, both)
+        and "cap" (round, flat, square) shape its stroke. Graph art: a zigzag of corners, a wave
+        of arcs, or both. */
+    static constexpr int maxBends = 16;
+
     struct LinePoints
     {
-        juce::Point<float> start, bend, end;   // in its own box's pixels (0, 0: the box's top-left)
+        juce::Point<float> start, end;               // in its own box's pixels (0, 0: the box's top-left)
+        std::vector<juce::Point<float>> bends;       // start to end: one at least
+        std::vector<bool> corners;                   // each bend point's kind: a corner (else an arc)
     };
 
     LinePoints linePoints (const GuiWidget& line);
+
+    int  bendCount (const GuiWidget& line);
+    bool isCornerBend (const GuiWidget& line, int bend);
+    void setBendCorner (GuiWidget& line, int bend, bool corner);
+
+    /** A new bend point on the line, halfway along the part after bend point `after` (-1: the
+        longest part), an arc: the line looks as it did. Returns its index (-1: it has its most). */
+    int addBend (GuiWidget& line, int after);
+
+    /** One bend point gone (never the last one). */
+    void removeBend (GuiWidget& line, int bend);
+
+    /** One bend point moved to `local` (its own box's pixels, its box as it was when the drag
+        began: atStart); the rest stay where they are. */
+    void moveBend (GuiWidget& line, const GuiWidget& atStart, int bend, juce::Point<float> local);
+
+    /** Whether dragging the line itself bows it (one arc bend point); otherwise it moves it. */
+    bool canPull (const GuiWidget& line);
 
     /** Gives it these points (in its own box's pixels). fitBox: its box is made to hold the
         line snugly (an upright line only), its points staying where they are on the panel. */
     void setLinePoints (GuiWidget& line, LinePoints points, bool fitBox);
 
-    /** The bend point back between its ends: straight again. */
+    /** The bend points back on the way between its ends, evenly: straight again (their kinds kept). */
     void straighten (GuiWidget& line);
 
     /** How far along it (0 its start .. 1 its end) the point of it nearest to `local` lies (in
@@ -65,7 +118,7 @@ namespace ObjectPaint
     /** One end moved to `local` (its own box's pixels): the bow keeps its shape along the line. */
     void moveLineEnd (GuiWidget& line, const GuiWidget& atStart, bool start, juce::Point<float> local);
 
-    /** Whether its bend point is off the way between its ends. */
+    /** Whether a bend point is off the way between its ends. */
     bool isBent (const GuiWidget& line);
 
     /** Its stroke's width in pixels. */

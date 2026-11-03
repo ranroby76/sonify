@@ -1,4 +1,4 @@
-// C:\workspace\SONIFY PLUGIN natura\src\ModelsKeys.h
+// D:\workspace\Fanan_web_hub\src\natura\ModelsKeys.h
 #pragma once
 //==============================================================================
 //  ModelsKeys.h  -  the three "keyboard" archetypes.
@@ -62,6 +62,83 @@ namespace natura
         }
     };
 
+    /** The struck string's level, register by register: the long hammer contact puts
+        more of its energy in the bass, so the bass is brought back to the loudness the
+        piano always had (the treble is left as it was). */
+    inline float levelTrim (int note)
+    {
+        static constexpr float keys[] = {  36.0f, 48.0f, 60.0f, 72.0f, 84.0f, 96.0f };
+        static constexpr float dB[]   = {   3.6f,  2.0f,  1.0f, -0.4f, -2.4f, -6.7f };
+        const float n = dsp::clampv ((float) note, keys[0], keys[5]);
+        int k = 0;
+        while (k < 4 && n > keys[k + 1]) ++k;
+        const float t = (n - keys[k]) / (keys[k + 1] - keys[k]);
+        return std::pow (10.0f, (dB[k] + t * (dB[k + 1] - dB[k])) / 20.0f);
+    }
+
+    //==========================================================================
+    //  A piano's soundboard: the strings don't sound by themselves, the bridge
+    //  hands their vibration to a big spruce board whose hundreds of close, damped
+    //  modes ring along. Here, eight delay lines feeding each other (a feedback
+    //  delay network): a dense, wooden resonance under and between the partials -
+    //  the body a piano has and a plucked string doesn't. The highs die sooner
+    //  than the lows, as on a real board.
+    //==========================================================================
+    struct Soundboard
+    {
+        static constexpr int N = 8;
+        dsp::FracDelay d[N];
+        dsp::OnePoleLP lp[N];
+        int   len[N] = {};
+        float g[N] = {}, o[N] = {};
+        dsp::OnePoleLP inLp;
+        float inHpY = 0.0f, inHpA = 0.99f;
+
+        void prepare (double sr)
+        {
+            static constexpr int base[N] = { 241, 337, 491, 613, 797, 953, 1187, 1409 };   // at 48 kHz
+            for (int k = 0; k < N; ++k)
+            {
+                len[k] = std::max (8, (int) std::lround (base[k] * sr / 48000.0));
+                d[k].prepare (len[k] + 4);
+            }
+            set (1.1f, 12000.0f, sr);
+            inLp.setCutoff (5000.0, sr);
+            inHpA = (float) std::exp (-dsp::kTwoPi * 90.0 / sr);
+            reset();
+        }
+        void set (float t60, float cutHz, double sr)
+        {
+            for (int k = 0; k < N; ++k)
+            {
+                g[k] = (float) std::pow (10.0, -3.0 * len[k] / (sr * t60));
+                lp[k].setCutoff (cutHz, sr);
+            }
+        }
+        void reset()
+        {
+            for (int k = 0; k < N; ++k) { d[k].clear(); lp[k].reset(); o[k] = 0.0f; }
+            inLp.reset(); inHpY = 0.0f;
+        }
+        float process (float x)
+        {
+            // the board barely moves below ~90 Hz, and the bridge passes little above 5 kHz
+            inHpY = inHpA * inHpY + (1.0f - inHpA) * x;
+            x = inLp.process (x - inHpY);
+
+            float s = 0.0f;
+            for (int k = 0; k < N; ++k) { o[k] = lp[k].process (d[k].at (len[k])) * g[k]; s += o[k]; }
+            s *= 2.0f / (float) N;
+            float out = 0.0f;
+            for (int k = 0; k < N; ++k)
+            {
+                d[k].write (o[k] - s + ((k & 1) ? -x : x));
+                out += (k & 1) ? -o[k] : o[k];
+            }
+            return out * (1.0f / (float) N);
+        }
+    };
+
     //==========================================================================
     //  The knock of a strike: what the frame, the soundboard or the case says as
     //  the hammer lands (three short low resonances) and the click of the impact
@@ -117,6 +194,8 @@ namespace natura
             for (auto& l : line) l.prepare (maxLen);
             symp.prepare (maxLen);
             excBuf.prepare ((int) (sr / 20.0) + 64);
+            board.prepare (sr);
+            fitF0 = -1.0f;
             reset();
         }
 
@@ -125,6 +204,7 @@ namespace natura
             for (auto& l : line) l.clear();
             symp.clear();
             excBuf.clear();
+            board.reset();
             for (int s = 0; s < 3; ++s)
             {
                 lpY[s] = 0.0f;
@@ -157,14 +237,18 @@ namespace natura
             // stiffens as it's squeezed), so a hard blow is brighter, not only louder
             const float hard = dsp::clampv (in.hardness * 0.55f + in.velocity * 0.45f
                                             - in.soft * 0.25f + in.bright * 0.2f, 0.0f, 1.0f);
-            const float msFree = dsp::lerp (4.0f, 0.4f, std::pow (hard, 0.7f));
+            // Contact 5 ms (soft) .. 1.2 ms (hard): a long, round push that keeps the
+            // fundamental and 2nd partial on top, as a real grand's are; the felt's hard
+            // skin (the edge spike, below) adds the even upper series. Matched partial
+            // by partial, and in its decay, to a reference grand.
+            const float msFree = dsp::lerp (5.0f, 1.2f, std::pow (hard, 0.7f));
             const float ms     = std::min (msFree, 0.85f * 1000.0f / std::max (20.0f, in.freq));   // treble hammers are light and quick
             const float lenS   = (float) (ms * 0.001 * sr);
             const float treble = 1.0f + dsp::clampv ((float) (in.note - 72) / 36.0f, 0.0f, 1.0f);
-            const float amp    = std::pow (in.velocity, 1.4f) * (0.45f + in.strength) * treble * (legato ? 0.5f : 1.0f);
+            const float amp    = std::pow (in.velocity, 1.4f) * (0.45f + in.strength) * treble * levelTrim (in.note) * (legato ? 0.5f : 1.0f);
             hammer.trigger (lenS, amp * 24.0f * (float) (sr / 48000.0) / std::max (8.0f, (float) (msFree * 0.001 * sr)),
-                            dsp::lerp (1.4f, 3.0f, hard), std::pow (hard, 1.5f) * (0.4f + 0.6f * in.transient),
-                            std::pow (hard, 3.0f) * (0.3f + 0.7f * in.transient) * 1.4f, sr);
+                            dsp::lerp (1.4f, 3.0f, hard), 0.0f,
+                            std::pow (hard, 1.5f) * (0.3f + 0.7f * in.transient) * 2.5f * (ms / msFree), sr);
             hammerNoise = in.noise * 0.35f;
 
             // the knock: the frame and soundboard as the hammer lands, and the impact
@@ -183,7 +267,7 @@ namespace natura
                 const float reg = dsp::clampv ((float) (in.note - 21) / 87.0f, 0.0f, 1.0f);
                 prompt = 1.0f;
                 promptMul = dsp::sampleGainForT60 (dsp::lerp (2.6f, 0.55f, reg) * std::pow (2.0f, (in.decay - 0.5f) * 1.5f), sr);
-                after = dsp::lerp (0.62f, 0.72f, reg);
+                after = std::min (1.0f, 1.2f * dsp::lerp (0.62f, 0.72f, reg));
             }
         }
 
@@ -205,17 +289,22 @@ namespace natura
             }
 
             const float posD   = std::max (2.0f, period * dsp::lerp (0.04f, 0.22f, in.spec[0]));
+            const float combK  = 0.5f * in.spec[0] * in.spec[0];
             const float lid    = in.spec[6];
             const float sympLv = in.spec[3];
-            const float inv    = 1.0f / std::sqrt ((float) nStrings);
+            float w2 = 0.0f;
+            for (int s = 0; s < nStrings; ++s) w2 += unison[s] * unison[s];
+            const float inv    = 1.0f / std::sqrt (w2);
 
             for (int i = 0; i < n; ++i)
             {
-                // excitation: hammer pulse with a little felt noise, comb-filtered by position
+                // excitation: hammer pulse with a little felt noise. The strike point's
+                // reflection is light (0.06 at the default Hammer Pos, it was 0.9): a full
+                // one cancelled the low partials and left the hollow, plucked sound
                 float e = hammer.next();
                 if (e != 0.0f) e *= 1.0f + hammerNoise * noise.next();
                 excBuf.write (e);
-                const float ex = e - 0.9f * excBuf.tap (posD);
+                const float ex = e - combK * excBuf.tap (posD);
 
                 float sum = 0.0f;
                 for (int s = 0; s < nStrings; ++s)
@@ -226,7 +315,7 @@ namespace natura
                     for (int k = 0; k < nAp; ++k) y = ap[s][k].process (y);
                     y = loopDc[s].process (y);      // a string has no DC mode
                     line[s].write (y + ex);
-                    sum += v;
+                    sum += v * unison[s];
                 }
                 sum *= inv;
 
@@ -243,6 +332,9 @@ namespace natura
                 sum *= after + (1.0f - after) * prompt;
                 prompt *= promptMul;
 
+                // the soundboard rings with the strings
+                sum += 0.45f * board.process (sum);
+
                 // the knock of the strike, and the key-off thump
                 sum += knock.next (noise);
                 if (thump.running())
@@ -256,6 +348,61 @@ namespace natura
         }
 
     private:
+        /** Picks the dispersion allpasses (how many, and their coefficient) whose loop puts
+            the partials where a stiff string with this B has them: each candidate's loop
+            is solved for partials 2 .. 8 and the closest is kept. Kept until the pitch
+            moves by more than a few cents or B changes. */
+        void fitStiffness (float f0, float B)
+        {
+            if (std::abs (f0 - fitF0) < 0.002f * f0 && std::abs (B - fitB) <= 0.01f * B + 1.0e-8f) return;
+            fitF0 = f0;  fitB = B;
+            apC = 0.0f;  nAp = 0;
+            if (B < 1.0e-6f) return;
+
+            const double P  = sr / f0;
+            const double w0 = dsp::kTwoPi * f0 / sr;
+            const double lp0 = dsp::OnePoleLP::phaseDelay (lpA, w0);
+            int K = 8;
+            while (K > 2 && K * f0 > 0.42 * sr) --K;
+            const double t1 = 600.0 * std::log2 (1.0 + (double) B);
+
+            auto error = [&] (float c, int& mOut) -> double
+            {
+                const double d0 = dsp::Allpass1::phaseDelay (c, w0);
+                int m = kMaxAp;
+                while (m > 0 && P - lp0 - d0 * m < 3.0) --m;
+                mOut = m;
+                if (m == 0) return 1.0e30;
+                const double L = P - lp0 - d0 * m;
+                double e = 0.0;
+                for (int k = 2; k <= K; ++k)
+                {
+                    double f = k * (double) f0;
+                    for (int it = 0; it < 2; ++it)
+                    {
+                        const double wk = dsp::kTwoPi * f / sr;
+                        f = k * sr / (L + dsp::OnePoleLP::phaseDelay (lpA, wk) + m * dsp::Allpass1::phaseDelay (c, wk));
+                    }
+                    const double got  = 1200.0 * std::log2 (f / (k * (double) f0));
+                    const double want = 600.0 * std::log2 (1.0 + (double) B * k * k) - t1;
+                    e += (got - want) * (got - want);
+                }
+                return e;
+            };
+
+            double best = 1.0e30;  float bestC = 0.0f;  int bestM = 0;
+            auto tryC = [&] (float c)
+            {
+                int m = 0;
+                const double e = error (c, m);
+                if (e < best) { best = e; bestC = c; bestM = m; }
+            };
+            for (int i = 1; i <= 16; ++i) tryC (-0.95f * (float) i / 16.0f);
+            const float around = bestC;
+            for (int i = -4; i <= 4; ++i) tryC (dsp::clampv (around + 0.0075f * (float) i, -0.95f, 0.0f));
+            apC = bestC;  nAp = bestM;
+        }
+
         void configure (const ModelIn& in, bool fresh)
         {
             lastFreq = in.freq;  lastPedal = in.pedal;  lastDamp = in.damping;  lastDecay = in.decay;
@@ -291,17 +438,20 @@ namespace natura
             a += 0.3f * in.dampAdd;
             lpA = dsp::clampv (a - in.bright * 0.1f, 0.0f, 0.9f);
 
-            // stiffness: allpass dispersion, strongest at the extremes of the keyboard
-            const float regF = 0.45f + 0.55f * std::min (1.0f, std::abs ((float) in.note - 62.0f) / 46.0f);
-            float c = -(0.08f + 0.62f * in.inharm) * regF;
+            // stiffness: a piano string's partials run sharp, more and more up the series
+            // (f_k = k f0 sqrt (1 + B k^2)). B as measured on a real grand (the piano the
+            // sampled attacks come from): ~1e-4 around C3, 4e-4 at D4, rising to ~1e-2 in
+            // the top octave, a little higher again in the wound bass. Inharmonicity 25%
+            // is that piano; 0% a harmonic string, 100% four times as stiff.
             const double w = dsp::kTwoPi * f0 / sr;
-            const float lpD = dsp::OnePoleLP::phaseDelay (lpA, w);
-
-            nAp = 4;
-            float apD = dsp::Allpass1::phaseDelay (c, w);
-            while (nAp > 0 && period - lpD - apD * (float) nAp < 3.0f) --nAp;
-            if (nAp == 0) c = 0.0f;
-            for (int s = 0; s < 3; ++s) for (auto& f : ap[s]) f.c = c;
+            {
+                const float n = (float) in.note;
+                const float B = (4.0e-4f * std::pow (10.0f, 0.0425f * (n - 62.0f))
+                                 + std::min (3.0e-4f, 3.0e-4f * std::pow (10.0f, -0.05f * (n - 30.0f))))
+                                * 4.0f * in.inharm;
+                fitStiffness (f0, B);
+            }
+            for (int s = 0; s < 3; ++s) for (auto& f : ap[s]) f.c = apC;
 
             // in the treble the loop runs thousands of times a second: never let
             // the loss filter alone take more per pass than the decay allows
@@ -312,7 +462,9 @@ namespace natura
                     lpA *= 0.6f;
             }
 
-            const float spread = in.spec[2] * 8.0f;           // cents
+            // cents: a fine unison at the default (a real grand's strings are tuned within
+            // a fraction of a cent), up to a honky-tonk's 8 cents at the top
+            const float spread = in.spec[2] * in.spec[2] * in.spec[2] * 8.0f;
             const float cents[3] = { 0.0f, spread, -spread * 0.6f };
             for (int s = 0; s < 3; ++s)
             {
@@ -320,7 +472,7 @@ namespace natura
                 const double ws = dsp::kTwoPi * fs / sr;
                 const float  ps = (float) (sr / fs);
                 const float  dLp = dsp::OnePoleLP::phaseDelay (lpA, ws);
-                const float  dAp = nAp > 0 ? dsp::Allpass1::phaseDelay (c, ws) * (float) nAp : 0.0f;
+                const float  dAp = nAp > 0 ? dsp::Allpass1::phaseDelay (apC, ws) * (float) nAp : 0.0f;
                 // the in-loop DC blocker (1 Hz) only leads the lowest fundamentals by a
                 // few cents; compensating it would detune every upper partial instead
                 len[s] = std::max (2.0f, ps - dLp - dAp);
@@ -340,7 +492,9 @@ namespace natura
         }
 
         dsp::FracDelay line[3], symp, excBuf;
-        dsp::Allpass1  ap[3][4];
+        static constexpr int kMaxAp = 8;
+        dsp::Allpass1  ap[3][kMaxAp];
+        float apC = 0.0f, fitF0 = -1.0f, fitB = -1.0f;
         float lpY[3] = {}, len[3] = { 100, 100, 100 }, g[3] = { 0.99f, 0.99f, 0.99f };
         float lpA = 0.2f, period = 100.0f, sympLen = 50.0f, sympG = 0.99f, sympY = 0.0f;
         int   nStrings = 1, nAp = 0, note = 60;
@@ -350,6 +504,10 @@ namespace natura
         HammerForce hammer;
         StrikeKnock knock;
         float prompt = 0.0f, promptMul = 0.9999f, after = 0.5f;
+        Soundboard board;
+        // a unison's strings don't sound equally (the hammer meets them unevenly):
+        // their beating rolls the tone instead of cancelling it
+        static constexpr float unison[3] = { 1.0f, 0.6f, 0.5f };
         dsp::Burst thump;
         dsp::DCBlocker loopDc[3], outDc;
         dsp::OnePoleLP thumpLp, toneLp;

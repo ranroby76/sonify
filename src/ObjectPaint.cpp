@@ -135,6 +135,126 @@ namespace
 
     float clamp01 (float v) noexcept    { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
 
+    //==========================================================================
+    // Per corner: the box's corners as fractions of its inset box.
+    using CornerFractions = std::array<float, 8>;   // x, y of top-left, top-right, bottom-right, bottom-left
+
+    constexpr CornerFractions boxCorners { 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f };
+
+    bool readCorners (const GuiWidget& w, CornerFractions& out)
+    {
+        const auto found = w.settings.find ("corners");
+
+        if (found == w.settings.end() || w.shapeKind() == "line")
+            return false;
+
+        const auto* list = found->second.getArray();
+
+        if (list == nullptr || list->size() != 8)
+            return false;
+
+        for (int i = 0; i < 8; ++i)
+        {
+            const auto v = (double) list->getReference (i);
+
+            if (! std::isfinite (v))
+                return false;
+
+            out[(size_t) i] = juce::jlimit (-4.0f, 5.0f, (float) v);
+        }
+
+        return true;
+    }
+
+    void writeCorners (GuiWidget& w, const CornerFractions& f)
+    {
+        juce::Array<juce::var> list;
+
+        for (const auto v : f)
+            list.add (juce::roundToInt (v * 10000.0f) / 10000.0);
+
+        w.settings["corners"] = list;
+    }
+
+    /** The box its outline lies in: inset by half its outline's width (as outline() has it). */
+    juce::Rectangle<float> insetBox (const GuiWidget& w, float width, float height)
+    {
+        const float inset = juce::jmax (0.0f, w.strokeWidth * 0.5f);
+        return juce::Rectangle<float> (0.0f, 0.0f, width, height).reduced (juce::jmin (inset, width * 0.25f), juce::jmin (inset, height * 0.25f));
+    }
+
+    /** Every point of the path taken from the rectangle `from` into the four-sided figure `to`
+        (top-left, top-right, bottom-right, bottom-left): a perspective map, as Photoshop's Distort,
+        so straight lines stay straight; a figure folded over itself is mapped bilinearly instead. */
+    juce::Path warpInto (const juce::Path& path, juce::Rectangle<float> from, const std::array<juce::Point<float>, 4>& to)
+    {
+        if (from.getWidth() <= 0.0f || from.getHeight() <= 0.0f)
+            return path;
+
+        const auto x0 = (double) to[0].x, y0 = (double) to[0].y, x1 = (double) to[1].x, y1 = (double) to[1].y;
+        const auto x2 = (double) to[2].x, y2 = (double) to[2].y, x3 = (double) to[3].x, y3 = (double) to[3].y;
+
+        // The unit square onto the figure (Heckbert): x = (a u + b v + c) / (g u + h v + 1), ...
+        double a = x1 - x0, b = x3 - x0, c = x0, d = y1 - y0, e = y3 - y0, f = y0, g = 0.0, h = 0.0;
+        const double sx = x0 - x1 + x2 - x3, sy = y0 - y1 + y2 - y3;
+        bool perspective = true;
+
+        if (std::abs (sx) > 1.0e-9 || std::abs (sy) > 1.0e-9)
+        {
+            const double dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2;
+            const double det = dx1 * dy2 - dx2 * dy1;
+
+            if (std::abs (det) < 1.0e-9)
+            {
+                perspective = false;
+            }
+            else
+            {
+                g = (sx * dy2 - dx2 * sy) / det;
+                h = (dx1 * sy - sx * dy1) / det;
+                a = x1 - x0 + g * x1;  b = x3 - x0 + h * x3;
+                d = y1 - y0 + g * y1;  e = y3 - y0 + h * y3;
+            }
+
+            // Its divisor must stay clear of zero over the square: it's linear, so its corners say.
+            for (const auto& [u, v] : { std::pair<double, double> { 0.0, 0.0 }, { 1.0, 0.0 }, { 1.0, 1.0 }, { 0.0, 1.0 } })
+                perspective = perspective && g * u + h * v + 1.0 > 0.05;
+        }
+
+        auto map = [&] (float px, float py)
+        {
+            const double u = (px - from.getX()) / from.getWidth(), v = (py - from.getY()) / from.getHeight();
+
+            if (perspective)
+            {
+                const double w = g * u + h * v + 1.0;
+                return juce::Point<float> ((float) ((a * u + b * v + c) / w), (float) ((d * u + e * v + f) / w));
+            }
+
+            const double x = (1 - u) * (1 - v) * x0 + u * (1 - v) * x1 + u * v * x2 + (1 - u) * v * x3;
+            const double y = (1 - u) * (1 - v) * y0 + u * (1 - v) * y1 + u * v * y2 + (1 - u) * v * y3;
+            return juce::Point<float> ((float) x, (float) y);
+        };
+
+        juce::Path out;
+        juce::Path::Iterator it (path);
+
+        while (it.next())
+        {
+            switch (it.elementType)
+            {
+                case juce::Path::Iterator::startNewSubPath: out.startNewSubPath (map (it.x1, it.y1)); break;
+                case juce::Path::Iterator::lineTo:          out.lineTo (map (it.x1, it.y1)); break;
+                case juce::Path::Iterator::quadraticTo:     out.quadraticTo (map (it.x1, it.y1), map (it.x2, it.y2)); break;
+                case juce::Path::Iterator::cubicTo:         out.cubicTo (map (it.x1, it.y1), map (it.x2, it.y2), map (it.x3, it.y3)); break;
+                case juce::Path::Iterator::closePath:       out.closeSubPath(); break;
+                default: break;
+            }
+        }
+
+        return out;
+    }
+
     float smoothstep (float e0, float e1, float v) noexcept
     {
         const float t = clamp01 ((v - e0) / (e1 - e0));
@@ -164,51 +284,52 @@ namespace
     /** A bend point closer than this (in pixels) to the straight way between the ends is straight. */
     constexpr float straightWithin = 3.0f;
 
-    /** Its points as fractions of its box: start, bend, end (a straight line across the box's
-        middle when it has none, or they're broken). */
-    std::array<float, 6> lineFractions (const GuiWidget& w)
+    /** Its points as fractions of its box: start, its bend points, end (a straight line across
+        the box's middle when it has none, or they're broken). Four numbers: its ends only, with
+        one bend point halfway. */
+    std::vector<float> lineFractions (const GuiWidget& w)
     {
-        std::array<float, 6> f { 0.06f, 0.5f, 0.5f, 0.5f, 0.94f, 0.5f };
+        std::vector<float> f { 0.06f, 0.5f, 0.5f, 0.5f, 0.94f, 0.5f };
         const auto found = w.settings.find ("line");
 
         if (found == w.settings.end())
             return f;
 
-        if (const auto* list = found->second.getArray(); list != nullptr && list->size() >= 4)
+        const auto* list = found->second.getArray();
+
+        if (list == nullptr || list->size() < 4 || (list->size() % 2) != 0 || list->size() > 4 + ObjectPaint::maxBends * 2)
+            return f;
+
+        std::vector<float> read;
+
+        for (const auto& v : *list)
         {
-            std::array<float, 6> read {};
-            bool ok = true;
+            const bool number = v.isInt() || v.isInt64() || v.isDouble() || v.isBool() || v.toString().containsOnly ("-0123456789.e");
+            const auto value = (float) (double) v;
 
-            for (int i = 0; i < 6 && ok; ++i)
-            {
-                // Four numbers: its ends only, straight; six: with the bend point between.
-                const int from = list->size() >= 6 ? i : (i < 2 ? i : (i >= 4 ? i - 2 : -1));
+            if (! number || ! std::isfinite (value))
+                return f;
 
-                if (from < 0)
-                    continue;
-
-                const auto& v = list->getReference (from);
-                ok = v.isInt() || v.isInt64() || v.isDouble() || v.isBool() || v.toString().containsOnly ("-0123456789.e");
-                read[(size_t) i] = (float) (double) v;
-                ok = ok && std::isfinite (read[(size_t) i]);
-            }
-
-            if (ok)
-            {
-                if (list->size() < 6)
-                {
-                    read[2] = (read[0] + read[4]) * 0.5f;
-                    read[3] = (read[1] + read[5]) * 0.5f;
-                }
-
-                for (auto& v : read)
-                    v = juce::jlimit (-lineReach, lineReach, v);
-
-                f = read;
-            }
+            read.push_back (juce::jlimit (-lineReach, lineReach, value));
         }
 
-        return f;
+        if (read.size() == 4)
+            read.insert (read.begin() + 2, { (read[0] + read[2]) * 0.5f, (read[1] + read[3]) * 0.5f });
+
+        return read;
+    }
+
+    /** Each bend point's kind: a corner, or an arc ("bendKinds": "arc" / "corner" each; left out: arcs). */
+    std::vector<bool> lineCorners (const GuiWidget& w, size_t count)
+    {
+        std::vector<bool> corners (count, false);
+
+        if (const auto found = w.settings.find ("bendKinds"); found != w.settings.end())
+            if (const auto* list = found->second.getArray())
+                for (size_t k = 0; k < count && (int) k < list->size(); ++k)
+                    corners[k] = list->getReference ((int) k).toString().trim().equalsIgnoreCase ("corner");
+
+        return corners;
     }
 
     float lineHalfWidth (const GuiWidget& w)
@@ -261,6 +382,76 @@ namespace
         }
 
         return points;
+    }
+
+    /** The line through all its points, sampled. One arc bend point: the quadratic through it
+        (as lines always were). Otherwise piece by piece between neighbouring points, each a cubic
+        whose ends leave and arrive along the line through an arc's neighbours (smooth through
+        it), or straight at a corner and at the line's ends: two corners side by side make a
+        straight piece. */
+    std::vector<juce::Point<float>> curveOf (const ObjectPaint::LinePoints& p)
+    {
+        if (p.bends.size() == 1 && (p.corners.empty() || ! p.corners.front()))
+            return lineSamples (p.start, p.bends.front(), p.end);
+
+        std::vector<juce::Point<float>> q { p.start };
+        std::vector<bool> sharp { true };
+
+        for (size_t k = 0; k < p.bends.size(); ++k)
+        {
+            q.push_back (p.bends[k]);
+            sharp.push_back (k < p.corners.size() && p.corners[k]);
+        }
+
+        q.push_back (p.end);
+        sharp.push_back (true);
+
+        // An arc's way through: along the line from the point before it to the point after it.
+        auto through = [&] (size_t i)
+        {
+            const auto d = q[i + 1] - q[i - 1];
+            const float len = d.getDistanceFromOrigin();
+            return len > 1.0e-4f ? d / len : juce::Point<float>();
+        };
+
+        std::vector<juce::Point<float>> points;
+
+        for (size_t i = 0; i + 1 < q.size(); ++i)
+        {
+            const auto a = q[i], b = q[i + 1];
+            const float span = a.getDistanceFrom (b);
+            const auto out = sharp[i] ? (b - a) / 3.0f : through (i) * (span / 3.0f);
+            const auto in = sharp[i + 1] ? (b - a) / 3.0f : through (i + 1) * (span / 3.0f);
+
+            points.push_back (a);
+
+            if (sharp[i] && sharp[i + 1])
+                continue;   // straight
+
+            const auto c1 = a + out, c2 = b - in;
+            const float rough = span + c1.getDistanceFrom (a) + c2.getDistanceFrom (b);
+            const int count = juce::jlimit (2, 240, (int) (rough / 2.5f) + 2);
+
+            for (int s = 1; s < count - 1; ++s)
+            {
+                const float t = (float) s / (float) (count - 1), u = 1.0f - t;
+                points.push_back (a * (u * u * u) + c1 * (3.0f * u * u * t) + c2 * (3.0f * u * t * t) + b * (t * t * t));
+            }
+        }
+
+        points.push_back (q.back());
+
+        // Points on top of each other (a bend point dropped on its neighbour) would have no way.
+        std::vector<juce::Point<float>> kept;
+
+        for (const auto& pt : points)
+            if (kept.empty() || kept.back().getDistanceFrom (pt) > 1.0e-3f)
+                kept.push_back (pt);
+
+        if (kept.size() < 2)
+            kept.push_back (kept.front());
+
+        return kept;
     }
 
     /** The samples cut back by `length` from one end (the start when fromStart). */
@@ -322,18 +513,31 @@ namespace
     juce::Path lineOutline (const GuiWidget& w, float width, float height)
     {
         const auto f = lineFractions (w);
-        const juce::Point<float> a (f[0] * width, f[1] * height), m (f[2] * width, f[3] * height), b (f[4] * width, f[5] * height);
+        ObjectPaint::LinePoints points;
+        points.start = { f[0] * width, f[1] * height };
+        points.end = { f[f.size() - 2] * width, f[f.size() - 1] * height };
+
+        for (size_t k = 2; k + 2 < f.size(); k += 2)
+            points.bends.push_back ({ f[k] * width, f[k + 1] * height });
+
+        points.corners = lineCorners (w, points.bends.size());
+
         const float half = lineHalfWidth (w);
         const auto arrows = lineArrows (w);
         const auto cap = lineCap (w);
         const bool arrowStart = arrows == "start" || arrows == "both", arrowEnd = arrows == "end" || arrows == "both";
 
-        auto samples = lineSamples (a, m, b);
+        auto samples = curveOf (points);
         juce::Path path;
 
-        if (a.getDistanceFrom (b) < 0.5f && a.getDistanceFrom (m) < 0.5f)
+        float spread = 0.0f;
+
+        for (const auto& s : samples)
+            spread = juce::jmax (spread, s.getDistanceFrom (points.start));
+
+        if (spread < 0.5f)
         {
-            path.addEllipse (juce::Rectangle<float> (half * 2.0f, half * 2.0f).withCentre (a));
+            path.addEllipse (juce::Rectangle<float> (half * 2.0f, half * 2.0f).withCentre (points.start));
             return path;
         }
 
@@ -350,19 +554,52 @@ namespace
         if (arrowEnd)   cutBack (samples, headLength * 0.98f, false);
         if (arrowStart) cutBack (samples, headLength * 0.98f, true);
 
-        // Each sample's normal (to the left going start to end), from its neighbours.
+        // Each sample's normal (to the left going start to end), from its neighbours: at a corner
+        // the two ways' normals meet halfway, lengthened so the stroke keeps its width round it
+        // (a mitre, held in at the sharpest).
         std::vector<juce::Point<float>> normals (samples.size());
+
+        auto unitNormal = [] (juce::Point<float> from, juce::Point<float> to, juce::Point<float>& n)
+        {
+            const auto t = to - from;
+            const float len = t.getDistanceFromOrigin();
+
+            if (len <= 1.0e-5f)
+                return false;
+
+            n = { t.y / len, -t.x / len };
+            return true;
+        };
 
         for (size_t k = 0; k < samples.size(); ++k)
         {
-            const auto before = samples[k > 0 ? k - 1 : k], after = samples[k + 1 < samples.size() ? k + 1 : k];
-            const auto t = after - before;
-            const float len = t.getDistanceFromOrigin();
+            juce::Point<float> n1, n2;
+            const bool hasIn = k > 0 && unitNormal (samples[k - 1], samples[k], n1);
+            const bool hasOut = k + 1 < samples.size() && unitNormal (samples[k], samples[k + 1], n2);
 
-            if (len > 1.0e-5f)
-                normals[k] = { t.y / len, -t.x / len };
+            if (hasIn && hasOut)
+            {
+                auto n = n1 + n2;
+                const float len = n.getDistanceFromOrigin();
+
+                if (len > 1.0e-4f)
+                {
+                    n /= len;
+                    normals[k] = n / juce::jmax (0.35f, n.x * n1.x + n.y * n1.y);
+                }
+                else
+                {
+                    normals[k] = n1;   // turned right back on itself
+                }
+            }
+            else if (hasIn || hasOut)
+            {
+                normals[k] = hasIn ? n1 : n2;
+            }
             else
+            {
                 normals[k] = k > 0 ? normals[k - 1] : juce::Point<float> (0.0f, -1.0f);
+            }
         }
 
         auto capRound = [&] (juce::Point<float> centre, juce::Point<float> from, float sweep)
@@ -382,7 +619,8 @@ namespace
         {
             const auto centre = atStart ? samples.front() : samples.back();
             const auto out = atStart ? startOut : endOut;
-            const auto n = atStart ? normals.front() : normals.back();
+            auto n = atStart ? normals.front() : normals.back();
+            n /= juce::jmax (1.0e-4f, n.getDistanceFromOrigin());   // an end's own: no mitre
             // Going round the end from the side we came along to the other side.
             const auto fromSide = atStart ? -n : n;
             const auto toSide = -fromSide;
@@ -435,13 +673,17 @@ juce::Path ObjectPaint::outline (const GuiWidget& w, float width, float height)
     if (kind == "line")
         return lineOutline (w, width, height);
 
-    const float inset = juce::jmax (0.0f, w.strokeWidth * 0.5f);
-    const auto box = juce::Rectangle<float> (0.0f, 0.0f, width, height).reduced (juce::jmin (inset, width * 0.25f), juce::jmin (inset, height * 0.25f));
+    const auto box = insetBox (w, width, height);
+
+    // Per corner, its lean is in its corners.
+    CornerFractions corners {};
+    const bool perCorner = readCorners (w, corners);
 
     auto path = lopsided (unitShape (w, kind, box.getWidth(), box.getHeight()),
                           kind == "rectangle" ? 0.0f : juce::jlimit (-0.95f, 0.95f, w.number ("centerX", 0.0f)),
                           kind == "rectangle" || kind == "triangle" ? 0.0f : juce::jlimit (-0.95f, 0.95f, w.number ("centerY", 0.0f)),
-                          juce::jlimit (-1.0f, 1.0f, w.number ("leanX", 0.0f)), juce::jlimit (-1.0f, 1.0f, w.number ("leanY", 0.0f)));
+                          perCorner ? 0.0f : juce::jlimit (-1.0f, 1.0f, w.number ("leanX", 0.0f)),
+                          perCorner ? 0.0f : juce::jlimit (-1.0f, 1.0f, w.number ("leanY", 0.0f)));
 
     // Stretched to fill its box (a star in a wide box is a wide star).
     if (const auto b = path.getBounds(); b.getWidth() > 0.0f && b.getHeight() > 0.0f && ! box.isEmpty())
@@ -476,25 +718,180 @@ juce::Path ObjectPaint::outline (const GuiWidget& w, float width, float height)
         }
     }
 
+    // Per corner: the whole of it taken into the figure its corners make.
+    if (perCorner)
+    {
+        std::array<juce::Point<float>, 4> to;
+
+        for (size_t k = 0; k < 4; ++k)
+            to[k] = { box.getX() + corners[k * 2] * box.getWidth(), box.getY() + corners[k * 2 + 1] * box.getHeight() };
+
+        path = warpInto (path, box, to);
+    }
+
     return path;
+}
+
+//==============================================================================
+bool ObjectPaint::hasCorners (const GuiWidget& w)
+{
+    CornerFractions f {};
+    return w.type == GuiWidget::Type::shape && readCorners (w, f);
+}
+
+std::array<juce::Point<float>, 4> ObjectPaint::cornerPoints (const GuiWidget& w)
+{
+    CornerFractions f = boxCorners;
+    readCorners (w, f);
+
+    const auto box = insetBox (w, (float) w.bounds.getWidth(), (float) w.bounds.getHeight());
+    std::array<juce::Point<float>, 4> points;
+
+    for (size_t k = 0; k < 4; ++k)
+        points[k] = { box.getX() + f[k * 2] * box.getWidth(), box.getY() + f[k * 2 + 1] * box.getHeight() };
+
+    return points;
+}
+
+void ObjectPaint::startCorners (GuiWidget& w)
+{
+    if (w.type != GuiWidget::Type::shape || w.shapeKind() == "line" || hasCorners (w))
+        return;
+
+    // Its lean, as outline() draws it: the unleant shape's bounds, leant, then stretched back
+    // into its box. Its box's corners go where that takes them, so it looks just as it did.
+    const auto kind = w.shapeKind();
+    const float width = (float) juce::jmax (1, w.bounds.getWidth()), height = (float) juce::jmax (1, w.bounds.getHeight());
+    const auto box = insetBox (w, width, height);
+    const float leanX = juce::jlimit (-1.0f, 1.0f, w.number ("leanX", 0.0f)), leanY = juce::jlimit (-1.0f, 1.0f, w.number ("leanY", 0.0f));
+    auto fractions = boxCorners;
+
+    if ((leanX != 0.0f || leanY != 0.0f) && ! box.isEmpty())
+    {
+        const auto cx = kind == "rectangle" ? 0.0f : juce::jlimit (-0.95f, 0.95f, w.number ("centerX", 0.0f));
+        const auto cy = kind == "rectangle" || kind == "triangle" ? 0.0f : juce::jlimit (-0.95f, 0.95f, w.number ("centerY", 0.0f));
+        const auto unit = unitShape (w, kind, box.getWidth(), box.getHeight());
+        const auto upright = lopsided (unit, cx, cy, 0.0f, 0.0f).getBounds();
+        const auto leant = lopsided (unit, cx, cy, leanX, leanY).getBounds();
+
+        if (upright.getWidth() > 0.0f && upright.getHeight() > 0.0f && leant.getWidth() > 0.0f && leant.getHeight() > 0.0f)
+        {
+            const juce::Point<float> from[] { upright.getTopLeft(), upright.getTopRight(), upright.getBottomRight(), upright.getBottomLeft() };
+
+            for (size_t k = 0; k < 4; ++k)
+            {
+                const auto p = from[k];
+                const juce::Point<float> sheared (p.x - leanX * p.y * 0.5f, p.y - leanY * p.x * 0.5f);
+                fractions[k * 2]     = (sheared.x - leant.getX()) / leant.getWidth();
+                fractions[k * 2 + 1] = (sheared.y - leant.getY()) / leant.getHeight();
+            }
+        }
+    }
+
+    writeCorners (w, fractions);
+    w.settings.erase ("leanX");
+    w.settings.erase ("leanY");
+}
+
+void ObjectPaint::stopCorners (GuiWidget& w)
+{
+    w.settings.erase ("corners");
+}
+
+void ObjectPaint::moveCorner (GuiWidget& w, const GuiWidget& atStart, int corner, juce::Point<float> local)
+{
+    if (! juce::isPositiveAndBelow (corner, 4) || ! hasCorners (atStart))
+        return;
+
+    CornerFractions f {};
+    readCorners (atStart, f);
+
+    const auto box = insetBox (atStart, (float) atStart.bounds.getWidth(), (float) atStart.bounds.getHeight());
+
+    if (box.getWidth() <= 0.0f || box.getHeight() <= 0.0f)
+        return;
+
+    // Upright, past its box too (the box fits it again when the drag ends); turned, inside it.
+    const float low = atStart.isTurned() ? 0.0f : -3.0f, high = atStart.isTurned() ? 1.0f : 4.0f;
+    f[(size_t) corner * 2]     = juce::jlimit (low, high, (local.x - box.getX()) / box.getWidth());
+    f[(size_t) corner * 2 + 1] = juce::jlimit (low, high, (local.y - box.getY()) / box.getHeight());
+
+    w.bounds = atStart.bounds;
+    writeCorners (w, f);
+}
+
+void ObjectPaint::fitCornersBox (GuiWidget& w)
+{
+    if (! hasCorners (w) || w.isTurned())
+        return;
+
+    // Where its corners lie on the panel.
+    const auto points = cornerPoints (w);
+    const auto origin = w.bounds.getPosition().toFloat();
+    auto low = points[0], high = points[0];
+
+    for (const auto& p : points)
+    {
+        low = { juce::jmin (low.x, p.x), juce::jmin (low.y, p.y) };
+        high = { juce::jmax (high.x, p.x), juce::jmax (high.y, p.y) };
+    }
+
+    // The box round them, its outline's inset outside them; then they're fractions of it again.
+    const float inset = juce::jmax (0.0f, w.strokeWidth * 0.5f);
+    auto fitted = juce::Rectangle<float> (low, high).translated (origin.x, origin.y).expanded (inset).getSmallestIntegerContainer();
+    fitted = fitted.withSizeKeepingCentre (juce::jmax (8, fitted.getWidth()), juce::jmax (8, fitted.getHeight()));
+
+    if (fitted == w.bounds)
+        return;
+
+    w.bounds = fitted;
+    const auto box = insetBox (w, (float) fitted.getWidth(), (float) fitted.getHeight());
+    const auto shift = origin - fitted.getPosition().toFloat();
+    CornerFractions f {};
+
+    for (size_t k = 0; k < 4; ++k)
+    {
+        const auto p = points[k] + shift;
+        f[k * 2]     = (p.x - box.getX()) / juce::jmax (1.0f, box.getWidth());
+        f[k * 2 + 1] = (p.y - box.getY()) / juce::jmax (1.0f, box.getHeight());
+    }
+
+    writeCorners (w, f);
 }
 
 ObjectPaint::LinePoints ObjectPaint::linePoints (const GuiWidget& w)
 {
     const auto f = lineFractions (w);
     const float bw = (float) w.bounds.getWidth(), bh = (float) w.bounds.getHeight();
-    return { { f[0] * bw, f[1] * bh }, { f[2] * bw, f[3] * bh }, { f[4] * bw, f[5] * bh } };
+    LinePoints p;
+    p.start = { f[0] * bw, f[1] * bh };
+    p.end = { f[f.size() - 2] * bw, f[f.size() - 1] * bh };
+
+    for (size_t k = 2; k + 2 < f.size(); k += 2)
+        p.bends.push_back ({ f[k] * bw, f[k + 1] * bh });
+
+    p.corners = lineCorners (w, p.bends.size());
+    return p;
 }
 
 void ObjectPaint::setLinePoints (GuiWidget& w, LinePoints p, bool fitBox)
 {
+    if (p.bends.empty())
+        p.bends.push_back ((p.start + p.end) * 0.5f);
+
+    if ((int) p.bends.size() > maxBends)
+        p.bends.resize ((size_t) maxBends);
+
+    p.corners.resize (p.bends.size(), false);
     auto box = w.bounds.toFloat();
 
     if (fitBox && ! w.isTurned())
     {
-        // Snug round the curve and its stroke (arrowheads included), with a little room to pick it by.
+        // Snug round the curve and its stroke (arrowheads included), with a little room to pick it
+        // by; its bend points inside too, so their handles are on it.
         // (By hand: a rectangle's union skips empty ones, and a point's is empty.)
-        const auto samples = lineSamples (p.start, p.bend, p.end);
+        auto samples = curveOf (p);
+        samples.insert (samples.end(), p.bends.begin(), p.bends.end());
         auto low = samples.front(), high = samples.front();
 
         for (const auto& s : samples)
@@ -516,39 +913,184 @@ void ObjectPaint::setLinePoints (GuiWidget& w, LinePoints p, bool fitBox)
 
         const auto shift = oldOrigin - box.getPosition();
         p.start += shift;
-        p.bend += shift;
         p.end += shift;
+
+        for (auto& b : p.bends)
+            b += shift;
     }
 
     const float bw = juce::jmax (1.0f, box.getWidth()), bh = juce::jmax (1.0f, box.getHeight());
     auto fraction = [] (float v) { return juce::roundToInt (juce::jlimit (-lineReach, lineReach, std::isfinite (v) ? v : 0.5f) * 10000.0f) / 10000.0; };
-    w.settings["line"] = juce::Array<juce::var> { fraction (p.start.x / bw), fraction (p.start.y / bh), fraction (p.bend.x / bw),
-                                                  fraction (p.bend.y / bh), fraction (p.end.x / bw), fraction (p.end.y / bh) };
+
+    juce::Array<juce::var> list { fraction (p.start.x / bw), fraction (p.start.y / bh) };
+
+    for (const auto& b : p.bends)
+    {
+        list.add (fraction (b.x / bw));
+        list.add (fraction (b.y / bh));
+    }
+
+    list.add (fraction (p.end.x / bw));
+    list.add (fraction (p.end.y / bh));
+    w.settings["line"] = list;
+
+    // Their kinds: only when there's a corner (arcs are what's left out).
+    if (std::find (p.corners.begin(), p.corners.end(), true) == p.corners.end())
+    {
+        w.settings.erase ("bendKinds");
+    }
+    else
+    {
+        juce::Array<juce::var> kinds;
+
+        for (const auto corner : p.corners)
+            kinds.add (corner ? "corner" : "arc");
+
+        w.settings["bendKinds"] = kinds;
+    }
 }
 
 void ObjectPaint::straighten (GuiWidget& w)
 {
     auto p = linePoints (w);
-    p.bend = (p.start + p.end) * 0.5f;
+    const auto n = (float) p.bends.size();
+
+    for (size_t k = 0; k < p.bends.size(); ++k)
+        p.bends[k] = p.start + (p.end - p.start) * ((float) (k + 1) / (n + 1.0f));
+
     setLinePoints (w, p, true);
+}
+
+int ObjectPaint::bendCount (const GuiWidget& w)
+{
+    return (int) linePoints (w).bends.size();
+}
+
+bool ObjectPaint::isCornerBend (const GuiWidget& w, int bend)
+{
+    const auto p = linePoints (w);
+    return juce::isPositiveAndBelow (bend, (int) p.corners.size()) && p.corners[(size_t) bend];
+}
+
+void ObjectPaint::setBendCorner (GuiWidget& w, int bend, bool corner)
+{
+    auto p = linePoints (w);
+
+    if (! juce::isPositiveAndBelow (bend, (int) p.bends.size()))
+        return;
+
+    p.corners[(size_t) bend] = corner;
+    setLinePoints (w, p, false);
+}
+
+int ObjectPaint::addBend (GuiWidget& w, int after)
+{
+    auto p = linePoints (w);
+
+    if ((int) p.bends.size() >= maxBends)
+        return -1;
+
+    // The points in order; the part to split: the one after `after`, or the longest.
+    std::vector<juce::Point<float>> q { p.start };
+    q.insert (q.end(), p.bends.begin(), p.bends.end());
+    q.push_back (p.end);
+
+    int part = after + 1;   // part i runs from q[i] to q[i + 1]
+
+    if (! juce::isPositiveAndBelow (part, (int) q.size() - 1))
+    {
+        part = 0;
+
+        for (int i = 1; i + 1 < (int) q.size(); ++i)
+            if (q[(size_t) i].getDistanceFrom (q[(size_t) i + 1]) > q[(size_t) part].getDistanceFrom (q[(size_t) part + 1]))
+                part = i;
+    }
+
+    // Halfway along that part of the curve as it's drawn now, so the line keeps its look.
+    const auto samples = curveOf (p);
+    const auto a = q[(size_t) part], b = q[(size_t) part + 1];
+    auto nearestTo = [&samples] (juce::Point<float> target)
+    {
+        size_t best = 0;
+
+        for (size_t s = 1; s < samples.size(); ++s)
+            if (samples[s].getDistanceSquaredFrom (target) < samples[best].getDistanceSquaredFrom (target))
+                best = s;
+
+        return best;
+    };
+
+    const auto from = nearestTo (a), to = nearestTo (b);
+    auto at = (a + b) * 0.5f;
+
+    if (to > from + 1)
+    {
+        // Halfway by length.
+        float total = 0.0f;
+
+        for (size_t s = from + 1; s <= to; ++s)
+            total += samples[s].getDistanceFrom (samples[s - 1]);
+
+        float walked = 0.0f;
+
+        for (size_t s = from + 1; s <= to; ++s)
+        {
+            const float step = samples[s].getDistanceFrom (samples[s - 1]);
+
+            if (walked + step >= total * 0.5f && step > 0.0f)
+            {
+                at = samples[s - 1] + (samples[s] - samples[s - 1]) * ((total * 0.5f - walked) / step);
+                break;
+            }
+
+            walked += step;
+        }
+    }
+
+    p.bends.insert (p.bends.begin() + part, at);
+    p.corners.insert (p.corners.begin() + part, false);
+    setLinePoints (w, p, false);
+    return part;
+}
+
+void ObjectPaint::removeBend (GuiWidget& w, int bend)
+{
+    auto p = linePoints (w);
+
+    if (p.bends.size() <= 1 || ! juce::isPositiveAndBelow (bend, (int) p.bends.size()))
+        return;
+
+    p.bends.erase (p.bends.begin() + bend);
+    p.corners.erase (p.corners.begin() + bend);
+    setLinePoints (w, p, true);
+}
+
+bool ObjectPaint::canPull (const GuiWidget& w)
+{
+    const auto p = linePoints (w);
+    return p.bends.size() == 1 && ! p.corners.front();
 }
 
 namespace
 {
-    /** The bend point snapped onto the straight way between the ends when it's within a few pixels of it. */
+    /** One arc bend point snapped onto the straight way between the ends when it's within a few pixels of it. */
     void snapStraight (ObjectPaint::LinePoints& p)
     {
+        if (p.bends.size() != 1 || (! p.corners.empty() && p.corners.front()))
+            return;
+
         const auto chord = p.end - p.start;
         const float length = chord.getDistanceFromOrigin();
 
         if (length <= 1.0f)
             return;
 
-        const auto off = p.bend - p.start;
+        auto& bend = p.bends.front();
+        const auto off = bend - p.start;
         const float across = std::abs (chord.x * off.y - chord.y * off.x) / length;
 
         if (across < straightWithin)
-            p.bend = p.start + chord * ((off.x * chord.x + off.y * chord.y) / (length * length));
+            bend = p.start + chord * ((off.x * chord.x + off.y * chord.y) / (length * length));
     }
 
     juce::Point<float> quadraticAt (juce::Point<float> a, juce::Point<float> control, juce::Point<float> b, float t)
@@ -557,10 +1099,25 @@ namespace
     }
 }
 
+void ObjectPaint::moveBend (GuiWidget& w, const GuiWidget& atStart, int bend, juce::Point<float> local)
+{
+    auto p = linePoints (atStart);
+
+    if (! juce::isPositiveAndBelow (bend, (int) p.bends.size()))
+        return;
+
+    // The box keeps its place until the drag ends (the canvas fits it then), so the line stays
+    // put under the mouse.
+    p.bends[(size_t) bend] = local;
+    snapStraight (p);   // one arc, near the straight way between the ends: it snaps straight
+    w.bounds = atStart.bounds;
+    setLinePoints (w, p, false);
+}
+
 float ObjectPaint::lineParameterAt (const GuiWidget& w, juce::Point<float> local)
 {
     const auto p = linePoints (w);
-    const auto control = p.bend * 2.0f - (p.start + p.end) * 0.5f;
+    const auto control = p.bends.front() * 2.0f - (p.start + p.end) * 0.5f;
     float best = 0.5f, nearest = std::numeric_limits<float>::max();
 
     for (int i = 0; i <= 200; ++i)
@@ -580,12 +1137,16 @@ float ObjectPaint::lineParameterAt (const GuiWidget& w, juce::Point<float> local
 
 void ObjectPaint::pullLine (GuiWidget& w, const GuiWidget& atStart, float along, juce::Point<float> local)
 {
-    // The curve passes `local` at `along`: solve for its control point, then its bend point (the
-    // curve's middle). Too near an end, it would fly off: held a little way in.
+    // One arc bend point: the curve passes `local` at `along`: solve for its control point, then
+    // its bend point (the curve's middle). Too near an end, it would fly off: held a little way in.
     auto p = linePoints (atStart);
+
+    if (p.bends.size() != 1)
+        return;
+
     const float t = juce::jlimit (0.12f, 0.88f, along);
     const auto control = (local - p.start * ((1.0f - t) * (1.0f - t)) - p.end * (t * t)) / (2.0f * t * (1.0f - t));
-    p.bend = (control + (p.start + p.end) * 0.5f) * 0.5f;
+    p.bends.front() = (control + (p.start + p.end) * 0.5f) * 0.5f;
     snapStraight (p);
     setLinePoints (w, p, false);
 }
@@ -596,21 +1157,24 @@ void ObjectPaint::moveLineEnd (GuiWidget& w, const GuiWidget& atStart, bool star
     auto p = before;
     (start ? p.start : p.end) = local;
 
-    // The bow follows its ends as a whole: turned and stretched with the line (as complex numbers,
-    // the old ends mapped onto the new ones).
+    // The bend points follow the ends as a whole: turned and stretched with the line (as complex
+    // numbers, the old ends mapped onto the new ones).
     const auto oldChord = before.end - before.start, newChord = p.end - p.start;
     const float oldLength = oldChord.x * oldChord.x + oldChord.y * oldChord.y;
 
-    if (oldLength > 1.0e-3f)
+    for (size_t k = 0; k < p.bends.size(); ++k)
     {
-        const auto rel = before.bend - before.start;
-        const juce::Point<float> ratio ((newChord.x * oldChord.x + newChord.y * oldChord.y) / oldLength,
-                                        (newChord.y * oldChord.x - newChord.x * oldChord.y) / oldLength);
-        p.bend = p.start + juce::Point<float> (rel.x * ratio.x - rel.y * ratio.y, rel.x * ratio.y + rel.y * ratio.x);
-    }
-    else
-    {
-        p.bend = (p.start + p.end) * 0.5f;
+        if (oldLength > 1.0e-3f)
+        {
+            const auto rel = before.bends[k] - before.start;
+            const juce::Point<float> ratio ((newChord.x * oldChord.x + newChord.y * oldChord.y) / oldLength,
+                                            (newChord.y * oldChord.x - newChord.x * oldChord.y) / oldLength);
+            p.bends[k] = p.start + juce::Point<float> (rel.x * ratio.x - rel.y * ratio.y, rel.x * ratio.y + rel.y * ratio.x);
+        }
+        else
+        {
+            p.bends[k] = p.start + (p.end - p.start) * ((float) (k + 1) / (float) (p.bends.size() + 1));
+        }
     }
 
     setLinePoints (w, p, false);
@@ -619,7 +1183,19 @@ void ObjectPaint::moveLineEnd (GuiWidget& w, const GuiWidget& atStart, bool star
 bool ObjectPaint::isBent (const GuiWidget& w)
 {
     const auto p = linePoints (w);
-    return lineSamples (p.start, p.bend, p.end).size() > 2;
+    const auto chord = p.end - p.start;
+    const float length = chord.getDistanceFromOrigin();
+
+    for (const auto& b : p.bends)
+    {
+        const auto off = b - p.start;
+        const float across = length > 1.0f ? std::abs (chord.x * off.y - chord.y * off.x) / length : off.getDistanceFromOrigin();
+
+        if (across >= straightWithin)
+            return true;
+    }
+
+    return false;
 }
 
 float ObjectPaint::lineWidthOf (const GuiWidget& w)
@@ -633,7 +1209,7 @@ juce::Point<float> ObjectPaint::adjustPoint (const GuiWidget& w)
     const float bw = (float) w.bounds.getWidth(), bh = (float) w.bounds.getHeight();
 
     if (kind == "line")
-        return linePoints (w).bend;
+        return linePoints (w).bends.front();
 
     if (kind == "rectangle")
     {
@@ -660,7 +1236,7 @@ void ObjectPaint::adjust (GuiWidget& w, const GuiWidget& atStart, juce::Point<fl
         // The bend point follows the mouse; the box keeps its place until the drag ends (the
         // canvas fits it then), so the line stays put under the mouse.
         auto p = linePoints (atStart);
-        p.bend += moved;
+        p.bends.front() += moved;
         snapStraight (p);   // near the straight way between the ends, it snaps straight
         setLinePoints (w, p, false);
         return;

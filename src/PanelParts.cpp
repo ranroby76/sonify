@@ -2,6 +2,8 @@
 
 #include "PanelParts.h"
 #include "FontLibrary.h"
+#include "LayerRender.h"   // the text effects: Photoshop's layer style
+#include <map>
 #include "stella_keys.h"
 
 #include <cmath>
@@ -477,12 +479,12 @@ namespace
         return true;
     }
 
-    void drawName (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> box, juce::Colour colour, const juce::Font& font,
-                   juce::Justification justification = juce::Justification::centred)
+    /** A position's name, fitted to its box, in the element's text style (italic, underlined,
+        its text effects). */
+    void drawName (juce::Graphics& g, const GuiWidget& w, const juce::String& text, juce::Rectangle<float> box, juce::Colour colour,
+                   const juce::Font& font, juce::Justification justification = juce::Justification::centred)
     {
-        g.setColour (colour);
-        g.setFont (font);
-        g.drawFittedText (text, box.toNearestInt(), justification, 1, 0.75f);
+        PanelParts::drawStyledText (g, w, text, box, justification, font, colour, true);
     }
 
     //==========================================================================
@@ -605,12 +607,39 @@ namespace
         return { k.x, k.y, k.w, k.h };
     }
 
+    /** A key's colour in the user's own colour, keeping its shading: the display's colour at
+        that spot, as bright against its main colour (reference) as the user's is lit. No
+        colour of the user's (see-through): the display's own. */
+    juce::Colour keyShade (juce::Colour original, juce::Colour wanted, juce::Colour reference)
+    {
+        if (wanted.isTransparent())
+            return original;
+
+        const float k = juce::jlimit (0.2f, 2.5f, original.getBrightness() / juce::jmax (0.03f, reference.getBrightness()));
+        juce::Colour c = wanted;
+
+        if (k <= 1.0f)
+            c = wanted.withMultipliedBrightness (k);
+        else
+            c = wanted.withMultipliedBrightness (k).interpolatedWith (juce::Colours::white, juce::jlimit (0.0f, 0.5f, (k - 1.0f) * 0.25f));
+
+        return c.withAlpha (original.getFloatAlpha() * wanted.getFloatAlpha());
+    }
+
+    /** The user's white-key and black-key colours (see-through: the display's own). */
+    juce::Colour whiteKeysOf (const GuiWidget& w)    { return colourSetting (w, "whiteKeys", juce::Colours::transparentBlack); }
+    juce::Colour blackKeysOf (const GuiWidget& w)    { return colourSetting (w, "blackKeys", juce::Colours::transparentBlack); }
+
     void paintClassicKeys (juce::Graphics& g, const GuiWidget& w)
     {
+        // The user's key colours, in the display's own shading.
+        const auto whites = whiteKeysOf (w), blacks = blackKeysOf (w);
+        auto W = [whites] (juce::uint32 argb) { return keyShade (juce::Colour (argb), whites, juce::Colour ((juce::uint32) 0xffefece5)); };
+        auto B = [blacks] (juce::uint32 argb) { return keyShade (juce::Colour (argb), blacks, juce::Colour ((juce::uint32) 0xff2c2c31)); };
         const auto b = w.bounds.toFloat();
 
         // The gaps between the white keys show the dark bed they sit in.
-        g.setColour (juce::Colour (0xff111113));
+        g.setColour (juce::Colour (0xff111113));   // the bed they sit in
         g.fillRect (b);
 
         for (int note = w.lowNote; note <= w.highNote; ++note)
@@ -619,13 +648,13 @@ namespace
                 continue;
 
             const auto key = keyArea (w, note).reduced (0.5f, 0.0f);
-            juce::ColourGradient ivory (juce::Colour (0xffcfcac0), key.getX(), key.getY(), juce::Colour (0xfffbfaf6), key.getX(), key.getBottom(), false);
-            ivory.addColour (0.18, juce::Colour (0xffefece5));
+            juce::ColourGradient ivory (W (0xffcfcac0), key.getX(), key.getY(), W (0xfffbfaf6), key.getX(), key.getBottom(), false);
+            ivory.addColour (0.18, W (0xffefece5));
             g.setGradientFill (ivory);
             g.fillRoundedRectangle (key.withTrimmedBottom (1.0f), 2.0f);
 
             // The front lip, a shade darker.
-            g.setColour (juce::Colour (0xffd8d3c9));
+            g.setColour (W (0xffd8d3c9));
             g.fillRect (key.withTop (key.getBottom() - juce::jmax (2.0f, key.getHeight() * 0.05f)).withTrimmedBottom (1.0f));
         }
 
@@ -635,20 +664,24 @@ namespace
                 continue;
 
             const auto key = keyArea (w, note);
-            g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2c2c31), key.getX(), key.getY(), juce::Colour (0xff09090b), key.getX(), key.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (B (0xff2c2c31), key.getX(), key.getY(), B (0xff09090b), key.getX(), key.getBottom(), false));
             g.fillRoundedRectangle (key, 1.5f);
 
             // Its top face, lit from above.
             const auto face = key.reduced (key.getWidth() * 0.14f, 0.0f).withTrimmedBottom (key.getHeight() * 0.12f);
-            g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1b1b1f), face.getX(), face.getY(), juce::Colour (0xff3d3d44), face.getX(), face.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (B (0xff1b1b1f), face.getX(), face.getY(), B (0xff3d3d44), face.getX(), face.getBottom(), false));
             g.fillRoundedRectangle (face, 1.0f);
         }
     }
 
     void paintReverseKeys (juce::Graphics& g, const GuiWidget& w)
     {
+        // The user's key colours, in the display's own shading.
+        const auto whites = whiteKeysOf (w), blacks = blackKeysOf (w);
+        auto W = [whites] (juce::uint32 argb) { return keyShade (juce::Colour (argb), whites, juce::Colour ((juce::uint32) 0xff262224)); };
+        auto B = [blacks] (juce::uint32 argb) { return keyShade (juce::Colour (argb), blacks, juce::Colour ((juce::uint32) 0xffbfb8a8)); };
         const auto b = w.bounds.toFloat();
-        g.setColour (juce::Colour (0xff050506));
+        g.setColour (juce::Colour (0xff050506));   // the bed they sit in
         g.fillRect (b);
 
         // Ebony naturals, a brown-black with a sheen near the front.
@@ -658,8 +691,8 @@ namespace
                 continue;
 
             const auto key = keyArea (w, note).reduced (0.5f, 0.0f);
-            juce::ColourGradient ebony (juce::Colour (0xff141214), key.getX(), key.getY(), juce::Colour (0xff2e2a2b), key.getX(), key.getBottom(), false);
-            ebony.addColour (0.85, juce::Colour (0xff262224));
+            juce::ColourGradient ebony (W (0xff141214), key.getX(), key.getY(), W (0xff2e2a2b), key.getX(), key.getBottom(), false);
+            ebony.addColour (0.85, W (0xff262224));
             g.setGradientFill (ebony);
             g.fillRoundedRectangle (key.withTrimmedBottom (1.0f), 2.0f);
             g.setColour (juce::Colours::white.withAlpha (0.08f));
@@ -677,11 +710,11 @@ namespace
             const auto key = keyArea (w, note);
             g.setColour (juce::Colours::black.withAlpha (0.6f));
             g.fillRoundedRectangle (key.translated (0.0f, 1.0f), 1.5f);
-            g.setGradientFill (juce::ColourGradient (juce::Colour (0xffbfb8a8), key.getX(), key.getY(), juce::Colour (0xff8f897c), key.getX(), key.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (B (0xffbfb8a8), key.getX(), key.getY(), B (0xff8f897c), key.getX(), key.getBottom(), false));
             g.fillRoundedRectangle (key, 1.5f);
 
             const auto face = key.reduced (key.getWidth() * 0.14f, 0.0f).withTrimmedBottom (key.getHeight() * 0.12f);
-            g.setGradientFill (juce::ColourGradient (juce::Colour (0xffe4ddcd), face.getX(), face.getY(), juce::Colour (0xfff6f1e6), face.getX(), face.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (B (0xffe4ddcd), face.getX(), face.getY(), B (0xfff6f1e6), face.getX(), face.getBottom(), false));
             g.fillRoundedRectangle (face, 1.0f);
         }
 
@@ -694,8 +727,12 @@ namespace
     /** Dark naturals under light grey sharps: the sharps carry the contrast. */
     void paintGraphiteKeys (juce::Graphics& g, const GuiWidget& w)
     {
+        // The user's key colours, in the display's own shading.
+        const auto whites = whiteKeysOf (w), blacks = blackKeysOf (w);
+        auto W = [whites] (juce::uint32 argb) { return keyShade (juce::Colour (argb), whites, juce::Colour ((juce::uint32) 0xff2b2f34)); };
+        auto B = [blacks] (juce::uint32 argb) { return keyShade (juce::Colour (argb), blacks, juce::Colour ((juce::uint32) 0xffc9ccd2)); };
         const auto b = w.bounds.toFloat();
-        g.setColour (juce::Colour (0xff0a0b0d));
+        g.setColour (juce::Colour (0xff0a0b0d));   // the bed they sit in
         g.fillRect (b);
 
         for (int note = w.lowNote; note <= w.highNote; ++note)
@@ -707,9 +744,9 @@ namespace
             const auto r = juce::jmin (4.0f, key.getWidth() * 0.18f);
             juce::Path shape;
             shape.addRoundedRectangle (key.getX(), key.getY(), key.getWidth(), key.getHeight(), r, r, false, false, true, true);
-            g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1c1f22), key.getX(), key.getY(), juce::Colour (0xff2b2f34), key.getX(), key.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (W (0xff1c1f22), key.getX(), key.getY(), W (0xff2b2f34), key.getX(), key.getBottom(), false));
             g.fillPath (shape);
-            g.setColour (juce::Colour (0xff3a3f46));
+            g.setColour (W (0xff3a3f46));
             g.fillRect (key.withTop (key.getBottom() - juce::jmax (1.5f, key.getHeight() * 0.035f)).reduced (r * 0.5f, 0.0f));
         }
 
@@ -721,19 +758,23 @@ namespace
             const auto key = keyArea (w, note).reduced (0.5f, 0.0f);
             g.setColour (juce::Colours::black.withAlpha (0.7f));
             g.fillRoundedRectangle (key.expanded (1.0f, 0.0f).translated (0.0f, 1.5f), 2.5f);
-            g.setGradientFill (juce::ColourGradient (juce::Colour (0xffc9ccd2), key.getX(), key.getY(), juce::Colour (0xff8e939b), key.getX(), key.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (B (0xffc9ccd2), key.getX(), key.getY(), B (0xff8e939b), key.getX(), key.getBottom(), false));
             g.fillRoundedRectangle (key, 2.0f);
 
             const auto face = key.reduced (key.getWidth() * 0.16f, 0.0f).withTrimmedBottom (key.getHeight() * 0.14f).withTrimmedTop (2.0f);
-            g.setGradientFill (juce::ColourGradient (juce::Colour (0xffe6e9ee), face.getX(), face.getY(), juce::Colour (0xffd4d8de), face.getX(), face.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (B (0xffe6e9ee), face.getX(), face.getY(), B (0xffd4d8de), face.getX(), face.getBottom(), false));
             g.fillRoundedRectangle (face, 1.5f);
         }
     }
 
     void paintModernKeys (juce::Graphics& g, const GuiWidget& w)
     {
+        // The user's key colours, in the display's own shading.
+        const auto whites = whiteKeysOf (w), blacks = blackKeysOf (w);
+        auto W = [whites] (juce::uint32 argb) { return keyShade (juce::Colour (argb), whites, juce::Colour ((juce::uint32) 0xff3d4149)); };
+        auto B = [blacks] (juce::uint32 argb) { return keyShade (juce::Colour (argb), blacks, juce::Colour ((juce::uint32) 0xff18191c)); };
         const auto b = w.bounds.toFloat();
-        g.setColour (juce::Colour (0xff09090b));
+        g.setColour (juce::Colour (0xff09090b));   // the bed they sit in
         g.fillRect (b);
 
         for (int note = w.lowNote; note <= w.highNote; ++note)
@@ -745,11 +786,11 @@ namespace
             const auto r = juce::jmin (4.0f, key.getWidth() * 0.18f);
             juce::Path shape;
             shape.addRoundedRectangle (key.getX(), key.getY(), key.getWidth(), key.getHeight(), r, r, false, false, true, true);
-            g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2a2d33), key.getX(), key.getY(), juce::Colour (0xff3d4149), key.getX(), key.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (W (0xff2a2d33), key.getX(), key.getY(), W (0xff3d4149), key.getX(), key.getBottom(), false));
             g.fillPath (shape);
 
             // A soft front edge.
-            g.setColour (juce::Colour (0xff4b505a));
+            g.setColour (W (0xff4b505a));
             g.fillRect (key.withTop (key.getBottom() - juce::jmax (1.5f, key.getHeight() * 0.035f)).reduced (r * 0.5f, 0.0f));
         }
 
@@ -761,7 +802,7 @@ namespace
             const auto key = keyArea (w, note).reduced (0.5f, 0.0f);
             g.setColour (juce::Colours::black.withAlpha (0.7f));
             g.fillRoundedRectangle (key.expanded (1.0f, 0.0f).translated (0.0f, 1.5f), 2.5f);
-            g.setGradientFill (juce::ColourGradient (juce::Colour (0xff18191c), key.getX(), key.getY(), juce::Colour (0xff050506), key.getX(), key.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (B (0xff18191c), key.getX(), key.getY(), B (0xff050506), key.getX(), key.getBottom(), false));
             g.fillRoundedRectangle (key, 2.0f);
             g.setColour (juce::Colours::white.withAlpha (0.09f));
             g.fillRoundedRectangle (key.reduced (key.getWidth() * 0.2f, 0.0f).withTrimmedBottom (key.getHeight() * 0.15f).withTrimmedTop (2.0f), 1.5f);
@@ -888,7 +929,7 @@ void PanelParts::paintSelector (juce::Graphics& g, juce::Rectangle<float> area, 
         {
             const auto cell = cellOf (track, vertical, i, count);
             const auto size = juce::jlimit (9.0f, 14.0f, (vertical ? cell.getHeight() : track.getHeight()) * 0.42f);
-            drawName (g, nameOf (i), cell.reduced (radius * 0.35f, 0.0f), i == chosen ? inkOn (accent) : ink.withAlpha (0.72f),
+            drawName (g, w, nameOf (i), cell.reduced (radius * 0.35f, 0.0f), i == chosen ? inkOn (accent) : ink.withAlpha (0.72f),
                       FontLibrary::font (w.font, size, i == chosen || w.bold));
         }
 
@@ -933,7 +974,7 @@ void PanelParts::paintSelector (juce::Graphics& g, juce::Rectangle<float> area, 
             const auto inkHere = on ? inkOn (accent) : ink.withAlpha (0.82f);
 
             if (! (icons && drawGlyph (g, nameOf (i), key.reduced (juce::jmax (4.0f, key.getWidth() * 0.18f), juce::jmax (3.0f, key.getHeight() * 0.22f)), inkHere)))
-                drawName (g, nameOf (i), key.reduced (3.0f, 1.0f), inkHere, FontLibrary::font (w.font, size, true));
+                drawName (g, w, nameOf (i), key.reduced (3.0f, 1.0f), inkHere, FontLibrary::font (w.font, size, true));
         }
 
         return;
@@ -965,7 +1006,7 @@ void PanelParts::paintSelector (juce::Graphics& g, juce::Rectangle<float> area, 
 
             const auto size = juce::jlimit (9.0f, 14.0f, (vertical ? cell.getHeight() : cell.getHeight() * 0.5f) * 0.5f);
             const auto text = vertical ? cell.withTrimmedLeft (lampD * 2.1f) : cell.withTrimmedTop (lampD * 1.9f);
-            drawName (g, nameOf (i), text, ink.withAlpha (on ? 1.0f : 0.68f), FontLibrary::font (w.font, size, on || w.bold),
+            drawName (g, w, nameOf (i), text, ink.withAlpha (on ? 1.0f : 0.68f), FontLibrary::font (w.font, size, on || w.bold),
                       vertical ? juce::Justification::centredLeft : juce::Justification::centred);
         }
 
@@ -1000,8 +1041,7 @@ void PanelParts::paintSelector (juce::Graphics& g, juce::Rectangle<float> area, 
         for (const auto& [dx, dy] : { std::pair<int, int> { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } })
             g.drawFittedText (text, box.translated (dx, dy), juce::Justification::centred, 1, 0.7f);
 
-        g.setColour (glow.brighter (0.25f));
-        g.drawFittedText (text, box, juce::Justification::centred, 1, 0.7f);
+        drawStyledText (g, w, text, box.toFloat(), juce::Justification::centred, g.getCurrentFont(), glow.brighter (0.25f), true);
 
         g.setColour (juce::Colours::white.withAlpha (0.05f));
         g.fillRoundedRectangle (window.withHeight (window.getHeight() * 0.45f), 4.0f);
@@ -1038,7 +1078,7 @@ void PanelParts::paintSelector (juce::Graphics& g, juce::Rectangle<float> area, 
             }
 
             const auto size = juce::jlimit (9.0f, 14.0f, juce::jmin (tile.getHeight() * 0.42f, tile.getWidth() * 0.32f));
-            drawName (g, nameOf (i), (on ? tile.translated (0.0f, -1.0f) : tile).reduced (3.0f, 1.0f), inkOn (face).withAlpha (on ? 1.0f : 0.8f),
+            drawName (g, w, nameOf (i), (on ? tile.translated (0.0f, -1.0f) : tile).reduced (3.0f, 1.0f), inkOn (face).withAlpha (on ? 1.0f : 0.8f),
                       FontLibrary::font (w.font, size, on || w.bold));
         }
 
@@ -1051,7 +1091,7 @@ void PanelParts::paintSelector (juce::Graphics& g, juce::Rectangle<float> area, 
         const auto cell = cellOf (area, false, i, count).reduced (1.0f);
         g.setColour (i == chosen ? accent : juce::Colours::black.withAlpha (0.45f));
         g.fillRoundedRectangle (cell, 3.0f);
-        drawName (g, nameOf (i), cell, i == chosen ? juce::Colours::white : ink.withAlpha (0.8f), FontLibrary::font (w.font, 12.0f, i == chosen), juce::Justification::centred);
+        drawName (g, w, nameOf (i), cell, i == chosen ? inkOn (accent) : ink.withAlpha (0.8f), FontLibrary::font (w.font, 12.0f, i == chosen || w.bold), juce::Justification::centred);
     }
 }
 
@@ -1214,6 +1254,172 @@ bool PanelParts::labelMoves (const GuiWidget& w)
     return labelDisplayOf (w) == "readout" && w.param.isNotEmpty();
 }
 
+juce::Colour PanelParts::standardCaptionColour()
+{
+    return juce::Colour (0xffd8d4ca);
+}
+
+namespace
+{
+    juce::Point<float> textLight { 120.0f, 30.0f };   // the panel's global light: angle, altitude
+
+    /** Text with effects, painted once into a picture and kept (they're slow to paint). */
+    struct EffectsPicture
+    {
+        juce::Image image;
+        juce::Rectangle<float> where;   // from the text area's top-left, in plugin pixels
+    };
+
+    std::map<juce::String, EffectsPicture>& effectsPictures()
+    {
+        static std::map<juce::String, EffectsPicture> pictures;
+        return pictures;
+    }
+}
+
+LayerStyle PanelParts::textEffectsOf (const GuiWidget& w)
+{
+    if (const auto found = w.settings.find ("textEffects"); found != w.settings.end())
+        return LayerStyle::fromVar (found->second);
+
+    return LayerStyle::fromVar ({});
+}
+
+bool PanelParts::hasTextEffects (const GuiWidget& w)
+{
+    return w.settings.count ("textEffects") > 0 && textEffectsOf (w).any();
+}
+
+void PanelParts::setTextEffects (GuiWidget& w, const LayerStyle& style)
+{
+    // An effect switched off keeps its settings for next time; with nothing set at all, nothing's kept.
+    const auto effects = style.toVar();
+
+    if (const auto* o = effects.getDynamicObject(); o != nullptr && ! o->getProperties().isEmpty())
+        w.settings["textEffects"] = effects;
+    else
+        w.settings.erase ("textEffects");
+}
+
+void PanelParts::setTextLight (float angle, float altitude)
+{
+    textLight = { angle, altitude };
+}
+
+bool PanelParts::hasText (const GuiWidget& w)
+{
+    switch (w.type)
+    {
+        case GuiWidget::Type::image:
+        case GuiWidget::Type::shape:
+        case GuiWidget::Type::keyboard:
+        case GuiWidget::Type::custom:
+        case GuiWidget::Type::registration:
+            return false;
+
+        default:
+            return true;
+    }
+}
+
+void PanelParts::drawStyledText (juce::Graphics& g, const GuiWidget& w, const juce::String& text, juce::Rectangle<float> area,
+                                 juce::Justification justification, const juce::Font& font, juce::Colour colour, bool fitted)
+{
+    if (text.isEmpty() || area.isEmpty())
+        return;
+
+    const bool effects = hasTextEffects (w);
+
+    // Plain: as JUCE draws words.
+    if (! w.italic && ! w.underline && ! effects)
+    {
+        g.setColour (colour);
+        g.setFont (font);
+
+        if (fitted)
+            g.drawFittedText (text, area.toNearestInt(), justification, 1, 0.75f);
+        else
+            g.drawText (text, area, justification, true);
+
+        return;
+    }
+
+    // Laid out as JUCE lays them out (from the area's top-left), then leant about the baseline,
+    // the underline under them: one outline.
+    juce::GlyphArrangement glyphs;
+
+    if (fitted)
+    {
+        glyphs.addFittedText (font, text, 0.0f, 0.0f, area.getWidth(), area.getHeight(), justification, 1, 0.75f);
+    }
+    else
+    {
+        glyphs.addCurtailedLineOfText (font, text, 0.0f, 0.0f, area.getWidth(), true);
+        glyphs.justifyGlyphs (0, glyphs.getNumGlyphs(), 0.0f, 0.0f, area.getWidth(), area.getHeight(), justification);
+    }
+
+    if (glyphs.getNumGlyphs() == 0)
+        return;
+
+    juce::Path words;
+    glyphs.createPath (words);
+    const auto baseline = glyphs.getGlyph (0).getBaselineY();
+    const auto lean = w.italic ? 0.2f : 0.0f;
+
+    if (lean != 0.0f)
+        words.applyTransform (juce::AffineTransform::shear (-lean, 0.0f).translated (lean * baseline, 0.0f));
+
+    if (w.underline)
+    {
+        const auto box = glyphs.getBoundingBox (0, -1, true);
+        const auto thickness = juce::jmax (1.0f, font.getHeight() * 0.07f);
+        words.addRectangle (box.getX(), baseline + juce::jmax (1.0f, font.getDescent() * 0.45f), box.getWidth(), thickness);
+    }
+
+    if (! effects)
+    {
+        g.setColour (colour);
+        g.fillPath (words, juce::AffineTransform::translation (area.getX(), area.getY()));
+        return;
+    }
+
+    // With its effects: painted into a picture as sharp as the screen shows it (kept, by
+    // everything it depends on but where it lies).
+    const auto style = textEffectsOf (w);
+    const auto scale = juce::jlimit (1.0f, 4.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
+    const auto key = text + "|" + font.getTypefaceName() + "|" + font.getTypefaceStyle() + "|" + juce::String (font.getHeight(), 2)
+                   + "|" + colour.toString() + "|" + juce::String ((int) w.italic) + juce::String ((int) w.underline) + juce::String ((int) fitted)
+                   + "|" + juce::String (justification.getFlags()) + "|" + juce::String (area.getWidth(), 1) + "x" + juce::String (area.getHeight(), 1)
+                   + "|" + juce::String (scale, 2) + "|" + juce::String (textLight.x, 1) + "/" + juce::String (textLight.y, 1)
+                   + "|" + juce::JSON::toString (style.toVar(), true);
+
+    auto& pictures = effectsPictures();
+    auto found = pictures.find (key);
+
+    if (found == pictures.end())
+    {
+        if (pictures.size() > 400)
+            pictures.clear();   // a fresh start now and then: texts change as the panel's made
+
+        const auto where = words.getBounds().expanded (style.reach() + 3.0f);
+        const int pw = juce::jlimit (1, 8192, (int) std::ceil (where.getWidth() * scale));
+        const int ph = juce::jlimit (1, 8192, (int) std::ceil (where.getHeight() * scale));
+        juce::Image picture (juce::Image::ARGB, pw, ph, true);
+
+        {
+            juce::Graphics pg (picture);
+            pg.setColour (colour);
+            pg.fillPath (words, juce::AffineTransform::translation (-where.getX(), -where.getY()).scaled (scale));
+        }
+
+        LayerRender::applyLayerStyle (picture, style, scale, textLight.x, textLight.y);
+        found = pictures.emplace (key, EffectsPicture { picture, where }).first;
+    }
+
+    const auto& made = found->second;
+    g.drawImage (made.image, made.where.translated (area.getX(), area.getY()), juce::RectanglePlacement::stretchToFit);
+}
+
 void PanelParts::paintLabel (juce::Graphics& g, const GuiWidget& w, const juce::String& text, juce::Colour ink, float size)
 {
     const auto b = w.bounds.toFloat();
@@ -1251,8 +1457,7 @@ void PanelParts::paintLabel (juce::Graphics& g, const GuiWidget& w, const juce::
                 g.drawFittedText (text, box.translated (dx, dy), juce::Justification::centred, 1, 0.7f);
         }
 
-        g.setColour (vfd ? colour.brighter (0.25f) : colour);
-        g.drawFittedText (text, box, juce::Justification::centred, 1, 0.7f);
+        drawStyledText (g, w, text, box.toFloat(), juce::Justification::centred, font, vfd ? colour.brighter (0.25f) : colour, true);
 
         g.setColour (juce::Colours::white.withAlpha (0.045f));
         g.fillRoundedRectangle (frame.withHeight (frame.getHeight() * 0.45f), corner);
@@ -1370,9 +1575,7 @@ void PanelParts::paintLabel (juce::Graphics& g, const GuiWidget& w, const juce::
                              : align == "right" ? juce::Justification::centredRight
                              : juce::Justification::centredLeft;
 
-    g.setColour (ink);
-    g.setFont (font);
-    g.drawText (text, area, justification, true);
+    drawStyledText (g, w, text, area, justification, font, ink);
 }
 
 //==============================================================================

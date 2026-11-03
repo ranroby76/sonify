@@ -123,13 +123,20 @@ namespace Betel
             stage = Attack;
         }
 
+        // The shortest release: a 0 ms release stopped the note on the sample it
+        // was let go, mid-cycle, and that step is a click. 2 ms is below anything
+        // heard as a "release" yet long enough to take the edge off (the Sampler
+        // Arena player fix of 2026-11-01).
+        static constexpr float kMinReleaseMs = 2.0f;
+
         void noteOff (float releaseMs, double sr)
         {
+            releaseMs = releaseMs > kMinReleaseMs ? releaseMs : kMinReleaseMs;
             const double relSamples = releaseMs * 0.001 * sr;
             segStart = level;
             segEnd   = 0.0f;
             segPhase = 0.0;
-            segInc   = (releaseMs < 0.1f || relSamples < 1.0) ? 1.0e9 : (1.0 / relSamples);
+            segInc   = (relSamples < 1.0) ? 1.0e9 : (1.0 / relSamples);
             if (stage != Idle) stage = Release;
         }
 
@@ -205,6 +212,11 @@ namespace Betel
         float ic1eq = 0.0f, ic2eq = 0.0f;
 
         void reset() { ic1eq = 0.0f; ic2eq = 0.0f; }
+
+        /** While the filter is bypassed: its state follows the input, so engaging it
+            again (the cutoff pulled down from fully open, say) starts where the
+            signal is rather than from silence - no thump. */
+        void track (float input) noexcept { ic1eq = 0.0f; ic2eq = input; }
 
         float process(float input, float cutoffHz, float resonance, int type, double sr)
         {

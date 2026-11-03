@@ -84,6 +84,19 @@ public:
         create_project makes that type, and only that: the AI never picks it. */
     void setChosenKind (std::optional<PluginKind> kind)    { chosenKind = kind; }
 
+    /** The GUI the user designed before the plugin existed (the studio's draft gui folder), when
+        they chose, as they sent their request, to build the plugin on it; empty: none (or they
+        said no). create_project brings it into the project, marked as theirs (userGuiMarker). */
+    void setUserGui (const juce::File& draftGuiFolder)     { userGui = draftGuiFolder; }
+
+    /** Called on the message thread when create_project has taken the draft GUI in: the studio
+        shows the project's GUI and starts a new draft. */
+    std::function<void()> onUserGuiTaken;
+
+    /** In a project's gui folder: its GUI is the user's own design, which Fanan AI keeps. */
+    static constexpr const char* userGuiMarker = "user-designed.txt";
+    bool isUserGui() const;
+
 private:
     static juce::File waitingReferenceFolder();
     juce::Result resolve (const juce::String& path, juce::File& file, bool forWriting) const;
@@ -102,6 +115,7 @@ private:
     Project& project;
     LivePreview& preview;
     std::optional<PluginKind> chosenKind;
+    juce::File userGui;   // the draft gui folder the plugin is to be built on (empty: none)
 
     // analyze_sound and paint_picture work here, and answer on the message thread while the
     // tools are still alive.

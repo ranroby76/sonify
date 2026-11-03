@@ -627,6 +627,19 @@ namespace Betel
         v->looping          = region.hasLoop;
         v->loopStart        = region.loopStart;
         v->loopEnd          = region.loopEnd;
+
+        // A loop the sample can't hold (past its end, backwards, or under two
+        // frames) is trimmed to the sample, or dropped (Sampler Arena player fix,
+        // 2026-11-01).
+        if (v->looping)
+        {
+            const int64_t len = (int64_t) sample.buffer.getNumSamples();
+            v->loopStart = juce::jlimit ((int64_t) 0, juce::jmax ((int64_t) 0, len - 1), v->loopStart);
+            v->loopEnd   = juce::jlimit ((int64_t) 0, len, v->loopEnd);
+
+            if (v->loopEnd - v->loopStart < 2)
+                v->looping = false;
+        }
         v->pitchKeycenter   = region.pitchKeycenter;
         v->tuneCents        = region.tune;
         v->sourceSampleRate = sample.sampleRate;
@@ -3270,9 +3283,13 @@ namespace Betel
                 // toggled "bypass instrument audio chain" in Global Settings,
                 // we elide the SVF regardless of the per-channel filter
                 // settings.
+                //   • ...or type == HighPass (1) at its bottom stop (<= 20 Hz):
+                //     a 2-pole high-pass "at 20 Hz" still shaves the lowest bass,
+                //     so a fully open one is skipped too (Sampler Arena player
+                //     fix, 2026-11-01).
                 const bool filterBypass = chainBypass
-                                       || ((fType == 0)
-                                           && voiceFCutoff       >= 18000.0f
+                                       || (((fType == 0 && voiceFCutoff >= 18000.0f)
+                                            || (fType == 1 && voiceFCutoff <= 20.5f))
                                            && fReso              <= 0.01f
                                            && std::abs(fKeytrack) < 0.1f
                                            && std::abs(fAmount)   < 0.001f
@@ -3421,7 +3438,21 @@ namespace Betel
                             //   3) Boundary (start / end window too narrow for
                             //      cubic) → 2-point linear, same as before.
                             const bool exact    = (frac < 1.0e-6f);
-                            const bool cubicOk  = (pos0 >= 1) && (pos0 < (int64_t) sampleLen - 2);
+
+                            // AT A LOOP'S SEAM the taps ahead of the play position
+                            // are the loop's START, not the samples stored after its
+                            // end: those are what plays next. Reading past the end
+                            // put a step into every pass of the loop (Sampler Arena
+                            // player fix, 2026-11-01).
+                            const bool    seam    = voice.looping && voice.loopEnd > voice.loopStart
+                                                 && pos0 < voice.loopEnd && pos0 + 2 >= voice.loopEnd;
+                            const int64_t loopLen = voice.loopEnd - voice.loopStart;
+                            auto tap = [&] (int64_t idx) noexcept -> int
+                            {
+                                return (int) ((seam && idx >= voice.loopEnd) ? idx - loopLen : idx);
+                            };
+
+                            const bool cubicOk  = (pos0 >= 1) && (seam || pos0 < (int64_t) sampleLen - 2);
 
                             auto readCubic = [frac] (float y0, float y1,
                                                      float y2, float y3) noexcept -> float
@@ -3446,13 +3477,13 @@ namespace Betel
                                 if (cubicOk)
                                     return readCubic (sample.buffer.getSample (ch, (int)(pos0 - 1)),
                                                       sample.buffer.getSample (ch, (int)(pos0)),
-                                                      sample.buffer.getSample (ch, (int)(pos0 + 1)),
-                                                      sample.buffer.getSample (ch, (int)(pos0 + 2)));
+                                                      sample.buffer.getSample (ch, tap (pos0 + 1)),
+                                                      sample.buffer.getSample (ch, tap (pos0 + 2)));
 
                                 // Boundary fallback - pos0 == 0 or pos0 == sampleLen-2.
                                 // Linear interp avoids stepping outside the buffer.
                                 const float s0 = sample.buffer.getSample (ch, (int) pos0);
-                                const float s1 = sample.buffer.getSample (ch, (int)(pos0 + 1));
+                                const float s1 = sample.buffer.getSample (ch, tap (pos0 + 1));
                                 return s0 + (s1 - s0) * frac;
                             };
 
@@ -3652,6 +3683,13 @@ namespace Betel
                         sR = dualPath
                                ? voice.filterR.process (sR, modCutoff, fReso, fType, currentSampleRate)
                                : sL;   // mono (or fully narrowed): one filter, copied
+                    }
+                    else
+                    {
+                        // Bypassed: the filter's state follows the signal, so pulling
+                        // the cutoff in mid-note engages it without a thump.
+                        voice.filterL.track (sL);
+                        if (dualPath) voice.filterR.track (sR);
                     }
 
                     sL *= gain;

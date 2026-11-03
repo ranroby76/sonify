@@ -56,6 +56,50 @@ namespace
         }
     }
 
+    /** A built-in that took another's place keeps the presets saved under the old name: copied
+        into its own folder the first time (while it has none), with what the old one didn't have
+        set as it sounded (Space Lifter 4 took Sonify Reverb's place: its hall, no echo). */
+    void adoptFormerPresets (const juce::String& name)
+    {
+        struct Former { const char* now; const char* before; std::vector<std::pair<const char*, double>> asItWas; };
+        static const Former formers[] {
+            { "Space Lifter 4", "Sonify Reverb", { { "Voicing", 1.0 }, { "Echo On", 0.0 }, { "Routing", 3.0 }, { "Blend", 100.0 },
+                                                   { "Texture", 70.0 }, { "Mod", 20.0 } } }
+        };
+
+        for (const auto& former : formers)
+        {
+            if (name != former.now)
+                continue;
+
+            const auto from = PresetLibrary::root().getChildFile (juce::File::createLegalFileName (former.before));
+            const auto to = PresetLibrary::root().getChildFile (juce::File::createLegalFileName (former.now));
+
+            if (! from.isDirectory() || to.exists() || ! to.createDirectory())
+                return;
+
+            for (const auto& file : from.findChildFiles (juce::File::findFiles, false, juce::String ("*") + PresetLibrary::presetExtension))
+            {
+                auto json = juce::JSON::parse (file);
+                auto* fields = json.getDynamicObject();
+                auto* values = json.getProperty ("values", {}).getDynamicObject();
+
+                if (fields == nullptr || values == nullptr)
+                {
+                    file.copyFileTo (to.getChildFile (file.getFileName()));
+                    continue;
+                }
+
+                for (const auto& [key, value] : former.asItWas)
+                    if (! values->hasProperty (key))
+                        values->setProperty (key, value);
+
+                fields->setProperty ("plugin", juce::String (former.now));
+                to.getChildFile (file.getFileName()).replaceWithText (juce::JSON::toString (json));
+            }
+        }
+    }
+
     //==============================================================================
     class PanelWindow final : public juce::DocumentWindow,
                               private juce::Timer
@@ -194,7 +238,10 @@ namespace
                 file.replaceWithText (json);
             }
 
+            // Its own folder of presets, there from the start (Load opens it).
+            adoptFormerPresets (plugin.getDescriptor().name);
             presets.setPlugin (plugin.getDescriptor().name, file, false);
+            presets.getFolder().createDirectory();
 
             // A new one: on Default while its values are Default's.
             if (! plugin.presetChoice.known && ! presets.isEmpty())

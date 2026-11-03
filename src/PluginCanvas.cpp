@@ -21,7 +21,27 @@ namespace
 {
     constexpr int scopeSamples = 2048;
     const juce::Colour defaultAccent { 0xffe5484d };
-    const juce::Colour captionColour { 0xffd8d4ca };
+    const juce::Colour captionColour = PanelParts::standardCaptionColour();
+
+    /** A caption as its element has it: its own colour (else the standard one, as faint as given),
+        bold, italic, underlined; centred under (or over) it, moved up or down as far as it's shifted. */
+    void drawCaption (juce::Graphics& g, const GuiWidget& w, const juce::String& text, juce::Rectangle<float> area,
+                      float standardAlpha, bool strong = false, bool muted = false)
+    {
+        // Its own size: as big (or small) as it's set, whatever the control's size; wider than
+        // its strip, it spreads both ways from its middle rather than ending in dots.
+        const auto font = FontLibrary::font (w.font, w.fontSize > 0.0f ? w.fontSize : 12.5f, strong || w.bold);
+
+        if (w.fontSize > 0.0f)
+        {
+            const auto wide = juce::GlyphArrangement::getStringWidth (font, text) + 6.0f;
+            area = area.withSizeKeepingCentre (juce::jmax (area.getWidth(), wide), juce::jmax (area.getHeight(), font.getHeight() + 2.0f));
+        }
+
+        area = area.translated (0.0f, (float) w.textShift);
+        PanelParts::drawStyledText (g, w, text, area, juce::Justification::centred, font,
+                                    muted ? Theme::muted : (w.textColour.isTransparent() ? captionColour.withAlpha (standardAlpha) : w.textColour));
+    }
 
     /** A value as a caption or readout shows it: whole numbers on a wide range and on a
         percentage, never more than two decimals, its unit after it. */
@@ -230,6 +250,7 @@ void PluginCanvas::setLayout (const GuiLayout& newLayout)
     releaseKey();   // its keyboard may be gone, or elsewhere now
     menu->forgetTyped();   // words typed in the menu were for the layout before
     layout = newLayout;
+    PanelParts::setTextLight (layout.lightAngle, layout.lightAltitude);   // text effects are lit by it
     indexesChanged();
     manySelected.clear();   // the elements may be other ones now
     shownPage = juce::jlimit (0, juce::jmax (0, layout.pages.size() - 1), shownPage);
@@ -402,7 +423,8 @@ bool PluginCanvas::liesOutside (const GuiWidget& w, juce::Rectangle<float> paint
 
     // Turned about its middle, its look reaching past its box: a generous circle round it.
     const auto box = w.bounds.toFloat();
-    const auto reach = std::hypot (box.getWidth(), box.getHeight()) * 0.5f * 1.4f + 24.0f;
+    const auto reach = std::hypot (box.getWidth(), box.getHeight()) * 0.5f * 1.4f + 24.0f + (float) std::abs (w.textShift)   // a shifted caption too
+                     + (w.fontSize > 0.0f ? w.fontSize * (0.4f * (float) w.label.length() + 1.0f) : 0.0f);                     // ...and a big one
     return ! juce::Rectangle<float> (box.getCentreX() - reach, box.getCentreY() - reach, reach * 2.0f, reach * 2.0f).intersects (painted);
 }
 
@@ -950,6 +972,7 @@ void PluginCanvas::setGlobalLight (float angle, float altitude)
 
     layout.lightAngle = std::round (a * 10.0f) / 10.0f;
     layout.lightAltitude = std::round (juce::jlimit (0.0f, 90.0f, altitude) * 10.0f) / 10.0f;
+    PanelParts::setTextLight (layout.lightAngle, layout.lightAltitude);
     repaint();   // the looks and shapes are drawn in the new light
 }
 
@@ -1074,6 +1097,90 @@ void PluginCanvas::editLayerStyle (int widgetIndex)
     const auto kind = w.shapeKind();
     const auto name = w.label.isNotEmpty() ? w.label : kind.substring (0, 1).toUpperCase() + kind.substring (1);
     LayerStyleWindow::launch (ObjectPaint::styleOf (w), std::move (host), "Layer Style: " + name, this);
+}
+
+void PluginCanvas::editTextEffects (int widgetIndex)
+{
+    if (! hasPanel() || ! juce::isPositiveAndBelow (widgetIndex, (int) layout.widgets.size())
+          || ! PanelParts::hasText (layout.widgets[(size_t) widgetIndex]))
+        return;
+
+    const auto before = layout.widgets[(size_t) widgetIndex];
+    const juce::Point<float> lightBefore (layout.lightAngle, layout.lightAltitude);
+    const juce::Component::SafePointer<PluginCanvas> safeThis (this);
+
+    auto elementAt = [safeThis, widgetIndex]() -> GuiWidget*
+    {
+        if (safeThis == nullptr || ! juce::isPositiveAndBelow (widgetIndex, (int) safeThis->layout.widgets.size()))
+            return nullptr;
+
+        auto& w = safeThis->layout.widgets[(size_t) widgetIndex];
+        return PanelParts::hasText (w) ? &w : nullptr;
+    };
+
+    LayerStyleWindow::Host host;
+    host.alive = [elementAt] { return elementAt() != nullptr; };
+
+    host.apply = [safeThis, elementAt, before, lightBefore] (const LayerStyle& style, bool final)
+    {
+        auto* w = elementAt();
+
+        if (w == nullptr)
+            return;
+
+        w->settings = before.settings;
+        PanelParts::setTextEffects (*w, style);
+
+        if (final)
+        {
+            safeThis->edited();
+
+            if (juce::Point<float> (safeThis->layout.lightAngle, safeThis->layout.lightAltitude) != lightBefore)
+                safeThis->repaintBackgrounds();
+        }
+
+        safeThis->repaint();
+    };
+
+    host.cancel = [safeThis, elementAt, before, lightBefore]
+    {
+        if (auto* w = elementAt())
+            w->settings = before.settings;
+
+        if (safeThis != nullptr)
+            safeThis->setGlobalLight (lightBefore.x, lightBefore.y);
+    };
+
+    host.sample = [before] (const LayerStyle& style)
+    {
+        // Its words, big, wearing the style.
+        auto sample = before;
+        PanelParts::setTextEffects (sample, style);
+        const auto words = sample.label.isNotEmpty() && sample.type != GuiWidget::Type::tabs ? sample.label.substring (0, 18) : juce::String ("Text");
+        juce::Image picture (juce::Image::ARGB, 360, 120, true);
+        juce::Graphics g (picture);
+        const auto ink = ! sample.textColour.isTransparent() ? sample.textColour
+                       : (sample.type == GuiWidget::Type::label || sample.type == GuiWidget::Type::group) && ! sample.colour.isTransparent() ? sample.colour
+                       : captionColour;
+        PanelParts::drawStyledText (g, sample, words, { 0.0f, 0.0f, 360.0f, 120.0f }, juce::Justification::centred,
+                                    FontLibrary::font (sample.font, 44.0f, sample.bold), ink, true);
+        return picture;
+    };
+
+    host.globalLight = [safeThis]
+    {
+        return safeThis != nullptr ? juce::Point<float> (safeThis->layout.lightAngle, safeThis->layout.lightAltitude) : juce::Point<float> (120.0f, 30.0f);
+    };
+
+    host.setGlobalLight = [safeThis] (float angle, float altitude)
+    {
+        if (safeThis != nullptr)
+            safeThis->setGlobalLight (angle, altitude);
+    };
+
+    const auto& w = layout.widgets[(size_t) widgetIndex];
+    const auto name = w.label.isNotEmpty() ? w.label : GuiLayout::typeName (w.type);
+    LayerStyleWindow::launch (PanelParts::textEffectsOf (w), std::move (host), "Text Effects: " + name, this);
 }
 
 void PluginCanvas::choosePicture (int widgetIndex)
@@ -2063,9 +2170,7 @@ void PluginCanvas::drawLive (juce::Graphics& g, const GuiWidget& w, int index, P
         if (! still)
             return;
 
-        g.setColour (captionColour.withAlpha (0.85f));
-        g.setFont (FontLibrary::font (w.font, 12.5f));
-        g.drawText (w.label, area, juce::Justification::centred, true);
+        drawCaption (g, w, w.label, area, 0.85f);
     };
 
     if (w.type == GuiWidget::Type::meter)
@@ -2336,11 +2441,7 @@ void PluginCanvas::drawCurve (juce::Graphics& g, const GuiWidget& w, Part part)
     }
 
     if (w.label.isNotEmpty() && still)
-    {
-        g.setColour (captionColour.withAlpha (0.85f));
-        g.setFont (FontLibrary::font (w.font, 12.5f));
-        g.drawText (w.label, b.withTop (b.getBottom() - (float) GuiLayout::captionHeight), juce::Justification::centred, true);
-    }
+        drawCaption (g, w, w.label, b.withTop (b.getBottom() - (float) GuiLayout::captionHeight), 0.85f);
 }
 
 void PluginCanvas::drawWidget (juce::Graphics& g, int index, Part part, float override)
@@ -2511,7 +2612,9 @@ void PluginCanvas::drawUpright (juce::Graphics& g, int index, Part part, float o
     const auto value = p != nullptr ? currentValue (*p) : 0.0f;
     const auto proportion = override >= 0.0f ? override : (p != nullptr ? proportionOf (*p, value) : 0.0f);
     const auto accent = w.colour.isTransparent() ? defaultAccent : w.colour;
-    const bool missing = w.isControl() && p == nullptr;
+    // Faded: a control whose parameter the built plugin hasn't got (with nothing built yet, the
+    // draft GUI say, none is missing: it's being designed)
+    const bool missing = w.isControl() && p == nullptr && ! params.isEmpty() && w.command.isEmpty();
     const auto b = w.bounds.toFloat();
 
     auto caption = [&] (juce::Rectangle<float> area)
@@ -2528,9 +2631,7 @@ void PluginCanvas::drawUpright (juce::Graphics& g, int index, Part part, float o
             text = valueText (value, *p);
         }
 
-        g.setColour (missing ? Theme::muted : captionColour.withAlpha (showValue ? 1.0f : 0.85f));
-        g.setFont (FontLibrary::font (w.font, 12.5f, showValue));
-        g.drawText (text, area, juce::Justification::centred, true);
+        drawCaption (g, w, text, area, showValue ? 1.0f : 0.85f, showValue, missing);
     };
 
     switch (w.type)
@@ -2542,9 +2643,9 @@ void PluginCanvas::drawUpright (juce::Graphics& g, int index, Part part, float o
 
             g.setColour (juce::Colours::white.withAlpha (0.13f));
             g.drawRoundedRectangle (b.reduced (0.5f), 6.0f, 1.0f);
-            g.setColour (w.colour.isTransparent() ? captionColour.withAlpha (0.75f) : w.colour);
-            g.setFont (FontLibrary::font (w.font, w.fontSize > 0.0f ? w.fontSize : 11.5f, true));
-            g.drawText (w.label, b.reduced (10.0f, 4.0f).withHeight (16.0f), juce::Justification::centredLeft, true);
+            PanelParts::drawStyledText (g, w, w.label, b.reduced (10.0f, 4.0f).withHeight (16.0f), juce::Justification::centredLeft,
+                                        FontLibrary::font (w.font, w.fontSize > 0.0f ? w.fontSize : 11.5f, true),
+                                        w.colour.isTransparent() ? captionColour.withAlpha (0.75f) : w.colour);
             break;
         }
 
@@ -2581,9 +2682,12 @@ void PluginCanvas::drawUpright (juce::Graphics& g, int index, Part part, float o
                 g.fillRoundedRectangle (cell, 4.0f);
                 g.setColour (i == shown ? juce::Colours::white.withAlpha (0.25f) : juce::Colours::white.withAlpha (0.08f));
                 g.drawRoundedRectangle (cell.reduced (0.5f), 4.0f, 1.0f);
-                g.setColour (i == shown ? juce::Colours::white : captionColour.withAlpha (0.8f));
-                g.setFont (FontLibrary::font (w.font, size, i == shown || w.bold));
-                g.drawFittedText (names[i], cell.reduced (6.0f, 0.0f).toNearestInt(), juce::Justification::centred, 1, 0.75f);
+                PanelParts::drawStyledText (g, w, names[i], cell.reduced (6.0f, 0.0f), juce::Justification::centred,
+                                            FontLibrary::font (w.font, size, i == shown || w.bold),
+                                            // The shown tab's name reads on its colour: dark on a light one, white on a dark one.
+                                            i == shown ? (accent.withAlpha (1.0f).getPerceivedBrightness() > 0.62f ? juce::Colour (0xff141416) : juce::Colours::white)
+                                                       : (w.textColour.isTransparent() ? captionColour.withAlpha (0.8f) : w.textColour),
+                                            true);
             }
             break;
         }
@@ -2612,9 +2716,9 @@ void PluginCanvas::drawUpright (juce::Graphics& g, int index, Part part, float o
             g.fillPath (left);
             g.fillPath (right);
 
-            g.setColour (captionColour);
-            g.setFont (FontLibrary::font (w.font, juce::jmin (14.0f, b.getHeight() * 0.5f), true));
-            g.drawFittedText (name, b.reduced (14.0f + arrow * 2.0f, 0.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
+            PanelParts::drawStyledText (g, w, name, b.reduced (14.0f + arrow * 2.0f, 0.0f), juce::Justification::centred,
+                                        FontLibrary::font (w.font, w.fontSize > 0.0f ? w.fontSize : juce::jmin (14.0f, b.getHeight() * 0.5f), true),
+                                        w.textColour.isTransparent() ? captionColour : w.textColour, true);
             break;
         }
 
@@ -2643,9 +2747,7 @@ void PluginCanvas::drawUpright (juce::Graphics& g, int index, Part part, float o
                     g.drawHorizontalLine (juce::roundToInt (pad.getY() + pad.getHeight() * (float) i / 4.0f), pad.getX(), pad.getRight());
                 }
 
-                g.setColour (captionColour.withAlpha (0.85f));
-                g.setFont (FontLibrary::font (w.font, 12.5f));
-                g.drawText (w.label, b.withTop (pad.getBottom()), juce::Justification::centred, true);
+                drawCaption (g, w, w.label, b.withTop (pad.getBottom()), 0.85f);
             }
 
             if (moving)
@@ -2666,10 +2768,38 @@ void PluginCanvas::drawUpright (juce::Graphics& g, int index, Part part, float o
         case GuiWidget::Type::slider:
         case GuiWidget::Type::toggle:
         {
+            // A command button (Save, Load...): a key in its colour with its name on it, dark on
+            // a light colour and white on a dark one, brighter while it's held.
+            if (w.type == GuiWidget::Type::toggle && w.command.isNotEmpty())
+            {
+                if (moving)
+                {
+                    const auto held = commandHeld == index;
+                    const auto key = b.reduced (1.0f).translated (0.0f, held ? 1.0f : 0.0f);
+                    const auto face = held ? accent.brighter (0.25f) : accent;
+                    const auto corner = w.rounding >= 0.0f ? juce::jlimit (0.0f, 1.0f, w.rounding) * juce::jmin (key.getWidth(), key.getHeight()) * 0.5f : 5.0f;
+
+                    g.setColour (juce::Colours::black.withAlpha (0.45f));
+                    g.fillRoundedRectangle (key.translated (0.0f, held ? 0.5f : 1.5f), corner);
+                    g.setGradientFill (juce::ColourGradient (face.brighter (0.2f), key.getX(), key.getY(), face.darker (0.15f), key.getX(), key.getBottom(), false));
+                    g.fillRoundedRectangle (key, corner);
+                    g.setColour (juce::Colours::white.withAlpha (0.25f));
+                    g.drawRoundedRectangle (key.reduced (0.5f), corner, 1.0f);
+
+                    const auto ink = w.textColour.isTransparent() ? (face.withAlpha (1.0f).getPerceivedBrightness() > 0.62f ? juce::Colour (0xff141416) : juce::Colours::white)
+                                                                  : w.textColour;
+                    PanelParts::drawStyledText (g, w, w.label, key.reduced (4.0f, 0.0f), juce::Justification::centred,
+                                                FontLibrary::font (w.font, w.fontSize > 0.0f ? w.fontSize : juce::jmin (13.0f, key.getHeight() * 0.48f), true), ink, true);
+                }
+
+                break;
+            }
+
             // Its look, at the frame for its value (a switch: off or on). Unbound, it's faded.
             if (moving)
             {
                 const auto position = w.type != GuiWidget::Type::toggle ? proportion
+                                    : w.command.isNotEmpty() ? (commandHeld == index ? 1.0f : 0.0f)
                                     : (override >= 0.0f ? (override >= 0.5f ? 1.0f : 0.0f) : (p != nullptr && proportion >= 0.5f ? 1.0f : 0.0f));
 
                 juce::Graphics::ScopedSaveState state (g);
@@ -2703,7 +2833,7 @@ void PluginCanvas::drawUpright (juce::Graphics& g, int index, Part part, float o
             for (int i = 0; i < count; ++i)
                 names.add (i < w.options.size() ? w.options[i] : juce::String (i + 1));
 
-            PanelParts::paintSelector (g, area, w, names, chosen, accent, captionColour);
+            PanelParts::paintSelector (g, area, w, names, chosen, accent, w.textColour.isTransparent() ? captionColour : w.textColour);
             caption (b.withTop (b.getBottom() - (float) GuiLayout::captionHeight));
             break;
         }
@@ -3287,6 +3417,60 @@ void PluginCanvas::paint (juce::Graphics& g)
                     g.setColour (Theme::accent);
                     g.drawEllipse (knob.reduced (0.75f), 1.5f);
                 }
+            }
+
+            // Per corner: its corners, round handles, joined by a faint outline of the figure.
+            if (const auto first = handleArea (cornerHandle); ! first.isEmpty())
+            {
+                juce::Path figure;
+
+                for (int k = 0; k < 4; ++k)
+                {
+                    const auto c = handleCentre (cornerHandle + k);
+
+                    if (k == 0) figure.startNewSubPath (c);
+                    else        figure.lineTo (c);
+                }
+
+                figure.closeSubPath();
+                const float dashes[] { 4.0f, 4.0f };
+                juce::Path dashed;
+                juce::PathStrokeType (1.0f).createDashedStroke (dashed, figure, dashes, 2);
+                g.setColour (Theme::accent.withAlpha (0.55f));
+                g.fillPath (dashed);
+
+                for (int k = 0; k < 4; ++k)
+                {
+                    const auto knob = handleArea (cornerHandle + k);
+                    g.setColour (juce::Colours::white);
+                    g.fillEllipse (knob);
+                    g.setColour (Theme::accent);
+                    g.drawEllipse (knob.reduced (0.75f), 1.5f);
+                }
+            }
+
+            // A line's bend points: a yellow diamond for an arc, a yellow square for a corner; the
+            // one the menu shows, ringed.
+            for (int k = 0; k < maxBendHandles; ++k)
+            {
+                const auto own = handleArea (bendHandle + k);
+
+                if (own.isEmpty())
+                    break;
+
+                const auto c = own.getCentre();
+                const auto r = own.getWidth() * 0.62f;
+                juce::Path mark;
+
+                if (ObjectPaint::isCornerBend (w, k))
+                    mark.addRectangle (own.reduced (own.getWidth() * 0.12f));
+                else
+                    mark.addQuadrilateral (c.x, c.y - r, c.x + r, c.y, c.x, c.y + r, c.x - r, c.y);
+
+                g.setColour (juce::Colour (0xffffcc00));
+                g.fillPath (mark);
+                g.setColour (k == activeBend ? juce::Colours::white : juce::Colours::black.withAlpha (0.6f));
+                g.strokePath (mark, juce::PathStrokeType (k == activeBend ? 1.6f : 1.0f));
             }
 
             // A shape's own: a yellow diamond.

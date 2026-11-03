@@ -147,6 +147,7 @@ private:
 
     // What it does, under the title.
     juce::TextButton copyButton { "Copy" }, pasteButton { "Paste" }, duplicateButton { "Duplicate" };
+    juce::TextButton copyStyleButton { "Copy style" }, pasteStyleButton { "Paste style" };   // under them: how it looks
     juce::ComboBox layerBox;
     // Knobs, sliders and switches: two long buttons under the row, one over the other.
     juce::TextButton galleryButton { "Replace this item with gallery item" };
@@ -161,10 +162,59 @@ private:
     juce::ComboBox type, source, mode, style, pictureMode, lowKey, highKey;
     juce::TextEditor param, roles[4];   // parameter ids, typed in
     juce::TextEditor label, options, textSize;
-    juce::ToggleButton boldToggle { "Bold" };
+
+    // Its text's style (labels, titles, controls' captions): three ticks side by side.
+    struct TextStyleTicks final : juce::Component
+    {
+        juce::ToggleButton bold { "Bold" }, italic { "Italic" }, underline { "Underline" };
+
+        TextStyleTicks()
+        {
+            for (auto* tick : { &bold, &italic, &underline })
+                addAndMakeVisible (*tick);
+        }
+
+        void resized() override
+        {
+            auto r = getLocalBounds();
+            const auto third = r.getWidth() / 3;
+            bold.setBounds (r.removeFromLeft (third));
+            italic.setBounds (r.removeFromLeft (third));
+            underline.setBounds (r);
+        }
+    };
+
+    TextStyleTicks textStyle;
+    ColourSwatchButton textColour { "Text colour" };   // a control's or display's caption
+
+    // ...and how far it's moved up or down: pixels, typed in or stepped with - and +.
+    struct ShiftBox final : juce::Component
+    {
+        juce::TextButton up { "-" }, down { "+" };
+        juce::TextEditor value;
+
+        ShiftBox()
+        {
+            for (auto* c : { (juce::Component*) &up, (juce::Component*) &value, (juce::Component*) &down })
+                addAndMakeVisible (*c);
+        }
+
+        void resized() override
+        {
+            auto r = getLocalBounds();
+            const auto button = juce::jmin (28, r.getHeight() + 6);
+            up.setBounds (r.removeFromLeft (button));
+            down.setBounds (r.removeFromRight (button));
+            value.setBounds (r.reduced (4, 0));
+        }
+    };
+
+    ShiftBox textShift;
+    juce::TextButton textEffectsButton;   // its words' layer style (Photoshop's), in a window of its own
     juce::ComboBox fontBox;     // its text's font (FontLibrary's)
     FontSample fontSample;
     ColourSwatchButton colour { "Colour" };
+    ColourSwatchButton whiteKeysSwatch { "White keys" }, blackKeysSwatch { "Black keys" };   // a keyboard's keys, any colour
     juce::TextButton pictureButton, removeButton { "Delete" }, windowButton { "Window size and colours" };
     juce::StringArray roleNames;
     juce::StringArray lookNames;   // the Look list's entries, by item id - 1
@@ -234,6 +284,11 @@ private:
     juce::Slider lineWidthSlider;
     juce::ComboBox lineArrowBox, lineCapBox;
     juce::TextButton straightenButton { "Straighten it" };
+    juce::ToggleButton perCornerToggle { "Per corner" };   // its corners dragged one by one (Photoshop's Distort)
+
+    // A line's bend points: which one (the canvas's activeBend), its kind, more or fewer.
+    juce::ComboBox bendPick, bendKind;
+    juce::TextButton addBendButton { "Add bend point" }, removeBendButton { "Remove it" };
 
     // The panel's one light, in Photoshop's Global Light window (a lit element's Look tab, a
     // shape's Shape tab, the window's Window tab).

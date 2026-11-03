@@ -52,7 +52,9 @@ class WasmElements;
 
     Elements lie in layers, in the layout's order: the first at the back. The menu's Layer
     list brings one to the front or forward, or sends it backward or to the back (also
-    Ctrl+Shift+], Ctrl+], Ctrl+[, Ctrl+Shift+[). Copy, Paste and Duplicate (Ctrl+C, Ctrl+V,
+    Ctrl+Shift+], Ctrl+], Ctrl+[, Ctrl+Shift+[). Forward and backward go one layer of what
+    overlaps it: a picture over a row of buttons and a background goes under the buttons,
+    still over the background; again, and it's behind the background. Copy, Paste and Duplicate (Ctrl+C, Ctrl+V,
     Ctrl+D): a copied frame takes what's inside it along, and a paste lands where the menu
     was opened (Ctrl+V: under the mouse). Copies go through the system clipboard, so they
     paste into another project too.
@@ -157,6 +159,10 @@ public:
 
     /** Photoshop's Layer Style window for a shape (its "effects"). */
     void editLayerStyle (int widgetIndex);
+
+    /** Text effects: Photoshop's Layer Style window on the element's words (its words, caption,
+        positions' names, readout), PanelParts::textEffectsOf. */
+    void editTextEffects (int widgetIndex);
 
     /** Edit mode: a primitive's element, centred on a point of the plugin window (in its
         pixels), or in the middle of what's showing. A background primitive asks for the
@@ -480,7 +486,13 @@ private:
         only; a small element, its corners only; a line, none: its points shape it); 8 turns it
         (the round one above it); 9 is a shape's own (see ObjectPaint::adjust: a line's bend
         point); 10 and 11 a line's ends. All turn with it. Empty: no such handle. */
-    static constexpr int turnHandle = 8, shapeHandle = 9, lineStartHandle = 10, lineEndHandle = 11, numHandles = 12;
+    static constexpr int turnHandle = 8, shapeHandle = 9, lineStartHandle = 10, lineEndHandle = 11,
+                         cornerHandle = 12,   // ...to 15: a shape's corners, per corner (top-left, top-right, bottom-right, bottom-left)
+                         bendHandle = 16,     // ...to 31: a line's bend points (ObjectPaint::maxBends of them)
+                         maxBendHandles = 16,
+                         numHandles = bendHandle + maxBendHandles;
+    static bool isCornerHandle (int handle) noexcept    { return handle >= cornerHandle && handle < cornerHandle + 4; }
+    static bool isBendHandle (int handle) noexcept      { return handle >= bendHandle && handle < bendHandle + maxBendHandles; }
 
     /** Whether the element at an index is a line (a shape of kind "line"). */
     bool isLine (int index) const;
@@ -507,6 +519,10 @@ private:
     bool isShown (const GuiWidget& w) const { return layout.isOnPage (w, shownPageName()); }
     void showPage (int index);
 
+    /** A command button's command (GuiWidget::command): the preset manager's Save as, Load or
+        Save in place. */
+    void runCommand (const juce::String& command);
+
     /** A new page, shown. The first time (no pages yet) there are two: "Main" with the window's
         controls on it, and the new one; withTabs: and a tabs element to switch them if there's none. */
     void addPage (bool withTabs = true);
@@ -531,6 +547,11 @@ private:
     enum class Order { front, forward, backward, back };
     void reorder (int index, Order order);
 
+    /** Where forward (up) or backward one layer takes an element: past the next layer of the
+        elements that overlap it (side by side ones are one layer: a row of buttons), not just
+        one place in the order. -1: nothing overlaps it that way. */
+    int layerStep (int index, bool up) const;
+
     // Several selected at once: `selected` is the one the mouse last picked, `manySelected` all of
     // them (empty when one or none is selected).
     std::vector<int> selection() const;                            // every selected element, back to front
@@ -540,6 +561,18 @@ private:
     void reorderSelection (bool toFront);                          // all of them, keeping their order
 
     // Copy and paste: elements as JSON on the system clipboard.
+    // Copy style and Paste style (Ctrl+Alt+C, Ctrl+Alt+V): how one element looks onto others,
+    // their place, size, words and what they work kept (see applyStyle).
+    void copyStyle (int index);
+    void pasteStyle (const std::vector<int>& indexes);
+    bool hasCopiedStyle() const;
+    juce::String copiedStyleKind() const;                          // "knob", "label"... (empty: none)
+
+    /** Its look onto `to`: colours, text style, font, opacity, and what its kind has of its own
+        (a knob's look onto a knob, a shape's material and layer style onto a shape...). Its
+        place, size, turn, words, parameter, picture, page and form stay its own. */
+    static void applyStyle (const GuiWidget& from, GuiWidget& to);
+
     void copyElements (const std::vector<int>& indexes);           // frames with what's inside them
     void copyElement (int index)                                   { copyElements ({ index }); }
     std::vector<GuiWidget> clipboardElements() const;              // empty: nothing of ours there
@@ -614,6 +647,7 @@ private:
     std::map<int, ElementView> elementViews;                       // by widget index
     juce::String elementsProblem;                                  // why the elements stopped
     bool pressedPopup = false;                                     // the press went to a popup
+    int commandHeld = -1;                                          // the command button held down (lit; it runs on release)
     int hoveredElement = -1;                                       // the element (or popup) the mouse is over
     bool hoveredPopup = false;
 
@@ -653,8 +687,11 @@ private:
     // A line: its end dragged (lineEnd, resizeHandle says which), or the line pulled where it was
     // grabbed (lineBend, at lineGrab along it); a right-press on it moves it, its menu opening
     // on release when it wasn't dragged (menuOnRelease).
+    // A shape per corner: one corner dragged (corner, resizeHandle says which); its box fits
+    // round its corners again when the drag ends. A line's bend point dragged: bendPoint.
     enum class Drag { none, element, resizeElement, turnElement, adjustShape, resizePanel, pan, minimap, hScroll, vScroll, control, marquee, crop,
-                      lineEnd, lineBend };
+                      lineEnd, lineBend, corner, bendPoint };
+    int activeBend = 0;   // the selected line's bend point its menu shows (the last one picked)
     Drag drag = Drag::none;
     float lineGrab = 0.5f;
     bool menuOnRelease = false;

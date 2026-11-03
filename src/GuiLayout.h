@@ -27,8 +27,14 @@ struct GuiWidget
     juce::String originalStyle;    // ...and the look it wore before the user first tried another (see originalKnown):
     bool originalKnown = false;    // the edit menu's "Back to the original look" puts it back
     juce::Colour colour;           // labels, frames, selectors and the like: their colour (transparent: the default)
-    float fontSize = 0.0f;         // labels and group titles (0: the default)
-    bool bold = false;
+    float fontSize = 0.0f;         // labels' and group titles' words, a control's or display's caption (0: the default)
+    bool bold = false;             // its text, a control's caption too: bold, italic, underlined
+    bool italic = false;
+    bool underline = false;
+    juce::Colour textColour;       // a control's or display's caption: its colour (transparent: the standard one;
+                                   // labels and frames have their words in `colour`)
+    int textShift = 0;             // ...and how far it's moved from its place: pixels down (minus: up)
+    static constexpr int maxTextShift = 200;
     juce::String font;             // its text's font (FontLibrary's; empty: the standard one)
     float rounding = -1.0f;        // the preset manager: its corners, 0 square .. 1 round ends (below 0: as standard);
                                    // shapes keep theirs in settings["rounding"]
@@ -60,6 +66,11 @@ struct GuiWidget
     float opacity = 1.0f;          // 0 invisible .. 1 solid
 
     juce::String page;             // the page it lies on (see GuiLayout::pages); empty: every page
+
+    /** A switch that runs a command when pressed instead of moving a parameter (lit while it's
+        held): "presetSave" (Save as: a name, into the plugin's presets folder), "presetLoad" (a
+        preset file, from that folder) or "presetQuickSave" (the preset playing, saved in place). */
+    juce::String command;
 
     bool isControl() const noexcept
     {
@@ -102,7 +113,8 @@ struct GuiWidget
     //==========================================================================
     // Shapes: a rectangle, circle, triangle or star (or a drawn SVG path), each in a flat colour
     // or a material with pattern layers, flat or raised, with its outline; stretched to its box,
-    // and made lopsided by moving its middle (centerX, centerY) or leaning it (leanX, leanY). A
+    // and made lopsided by moving its middle (centerX, centerY) or leaning it (leanX, leanY), or
+    // distorted per corner (corners: ObjectPaint::hasCorners). A
     // line runs from one point to another through its bend point (ObjectPaint::LinePoints).
 
     /** "rectangle", "circle", "triangle", "star", "line" or "drawn" (its path). */
@@ -133,8 +145,8 @@ struct GuiWidget
     /** The settings a shape keeps beside "type" in the layout. */
     static const juce::StringArray& shapeKeys()
     {
-        static const juce::StringArray keys { "shape", "radius", "rounding", "points", "inner", "centerX", "centerY", "leanX", "leanY",
-                                              "line", "lineWidth", "arrow", "cap",
+        static const juce::StringArray keys { "shape", "radius", "rounding", "points", "inner", "centerX", "centerY", "leanX", "leanY", "corners",
+                                              "line", "bendKinds", "lineWidth", "arrow", "cap",
                                               "material", "finish", "color2", "scale", "grain", "shine", "flow", "seed",
                                               "pattern", "patterns", "patternColor", "patternOpacity", "patternBlend", "patternSize",
                                               "patternAngle", "patternWidth", "patternDepth", "depth", "shadow", "light", "altitude",
@@ -147,7 +159,7 @@ struct GuiWidget
         label's window "background", a label's "arrows". */
     static const juce::StringArray& partKeys()
     {
-        static const juce::StringArray keys { "display", "follow", "bezel", "background", "arrows" };
+        static const juce::StringArray keys { "display", "follow", "bezel", "background", "arrows", "whiteKeys", "blackKeys" };
         return keys;
     }
 
