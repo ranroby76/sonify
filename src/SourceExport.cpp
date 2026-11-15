@@ -17,11 +17,14 @@
 #include "StellaPrimitives.h"
 #include "StellaRuntimeData.h"
 
-#include <charconv>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <cmath>
 #include <limits>
 #include <set>
+#include <string>
+#include <type_traits>
 
 namespace
 {
@@ -96,6 +99,36 @@ namespace
         return out + " })";
     }
 
+    /** The shortest %g text that reads back bit-for-bit as the same value.
+        Floating-point std::to_chars needs macOS 13.3, so this stays on snprintf/strtod. */
+    template <typename T>
+    std::string shortestDecimal (T value)
+    {
+        constexpr int maxDigits = std::numeric_limits<T>::max_digits10;
+        char buffer[64] = {};
+
+        for (int digits = 1; digits <= maxDigits; ++digits)
+        {
+            std::snprintf (buffer, sizeof (buffer), "%.*g", digits, (double) value);
+
+            for (auto* c = buffer; *c != 0; ++c)
+                if (*c == ',')
+                    *c = '.';
+
+            T back;
+
+            if constexpr (std::is_same_v<T, float>)
+                back = std::strtof (buffer, nullptr);
+            else
+                back = (T) std::strtod (buffer, nullptr);
+
+            if (std::memcmp (&back, &value, sizeof (T)) == 0)
+                break;
+        }
+
+        return buffer;
+    }
+
     /** The shortest decimal that reads back as exactly this float, as a float literal. */
     juce::String floatLiteral (float value)
     {
@@ -103,9 +136,7 @@ namespace
             return value != value ? juce::String ("std::numeric_limits<float>::quiet_NaN()")
                                   : (value > 0 ? juce::String ("std::numeric_limits<float>::infinity()") : juce::String ("-std::numeric_limits<float>::infinity()"));
 
-        char buffer[64];
-        const auto result = std::to_chars (buffer, buffer + sizeof (buffer), value);
-        juce::String s (buffer, (size_t) (result.ptr - buffer));
+        juce::String s (shortestDecimal (value));
 
         if (! s.containsAnyOf (".e"))
             s << ".0";
@@ -120,9 +151,7 @@ namespace
             return value != value ? juce::String ("std::numeric_limits<double>::quiet_NaN()")
                                   : (value > 0 ? juce::String ("std::numeric_limits<double>::infinity()") : juce::String ("-std::numeric_limits<double>::infinity()"));
 
-        char buffer[64];
-        const auto result = std::to_chars (buffer, buffer + sizeof (buffer), value);
-        juce::String s (buffer, (size_t) (result.ptr - buffer));
+        juce::String s (shortestDecimal (value));
 
         if (! s.containsAnyOf (".e"))
             s << ".0";
