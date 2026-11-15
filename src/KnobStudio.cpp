@@ -2,9 +2,14 @@
 
 #include "KnobStudio.h"
 #include "KnobFile.h"
+#include "Model3D.h"
 #include "Preferences.h"
 #include "Settings.h"
 #include "StellaLookAndFeel.h"
+
+#include <atomic>
+#include <mutex>
+#include <set>
 
 namespace
 {
@@ -82,13 +87,147 @@ namespace
     }
 
     //==========================================================================
+    // The galleries' folders, the same code in Sonify and KnobMaster 2: SettingsFolder::folder
+    // ("Knob Gallery", "Knob Gallery 3D", "Shapes Gallery"). In Sonify those are in AppData
+    // (Fanan\Sonify\...), filled from what's installed with it; in KnobMaster 2 they're the
+    // project's assets\knob_gallery, knob_gallery_3d and shapes_gallery, as they are.
+
+    /** What's installed with the app: folderName next to it (on a Mac, in its Resources). Read
+        only (Program Files): copied into the gallery it's for. */
+    juce::File installedFolder (const juce::String& folderName)
+    {
+        const auto exeFolder = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory();
+       #if JUCE_MAC
+        return exeFolder.getSiblingFile ("Resources").getChildFile (folderName);
+       #else
+        return exeFolder.getChildFile (folderName);
+       #endif
+    }
+
+    /** A gallery (SettingsFolder::folder (name)), what's installed for it (installedName, its
+        files of pattern) copied in, each once: a new install's new ones come in, and one deleted
+        from the gallery or changed there stays so (the ones copied before are listed in KnobMaker's
+        listName). A gallery that isn't in AppData (KnobMaster 2's, the project's assets) takes
+        nothing in by itself: it's what the project keeps. */
+    juce::File seededGallery (const juce::String& name, const juce::String& installedName,
+                              const juce::String& pattern, const juce::String& listName)
+    {
+        const auto gallery = SettingsFolder::folder (name);
+        const auto from = installedFolder (installedName);
+
+        if (! gallery.isAChildOf (juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)) || ! from.isDirectory())
+            return gallery;
+
+        const auto listFile = knobMakerSettings (listName);
+        juce::StringArray copied;
+        copied.addLines (listFile.loadFileAsString());
+        copied.removeEmptyStrings();
+        const auto before = copied.size();
+
+        for (const auto& file : from.findChildFiles (juce::File::findFiles, true, pattern))
+        {
+            const auto relative = file.getRelativePathFrom (from).replaceCharacter ('\\', '/');
+
+            if (copied.contains (relative))
+                continue;
+
+            const auto target = gallery.getChildFile (relative);
+
+            if (target.existsAsFile() || (target.getParentDirectory().createDirectory().wasOk() && file.copyFileTo (target)))
+                copied.add (relative);
+        }
+
+        if (copied.size() != before)
+            listFile.replaceWithText (copied.joinIntoString ("\n"));
+
+        return gallery;
+    }
+
+    /** The knob gallery (Sonify: AppData\Fanan\Sonify\Knob Gallery, from its knob_gallery). */
+    juce::File sonifyGallery()
+    {
+        return seededGallery ("Knob Gallery", "knob_gallery", "*.knob;*" + juce::String (Looks::fileExtension), "gallery installed.txt");
+    }
+
+    /** The 3D Gallery: 3D models (.fk3d; Sonify: AppData\...\Knob Gallery 3D, from its knob_gallery_3d). */
+    juce::File modelGallery()
+    {
+        return seededGallery ("Knob Gallery 3D", "knob_gallery_3d", "*" + juce::String (Looks::modelExtension), "gallery 3d installed.txt");
+    }
+
+    /** The Shapes Gallery: kept shapes (.fkshapes; Sonify: AppData\...\Shapes Gallery, from its shapes_gallery). */
+    juce::File shapesGallery()
+    {
+        return seededGallery ("Shapes Gallery", "shapes_gallery", "*" + juce::String (Looks::shapesExtension), "shapes gallery installed.txt");
+    }
+
+    //==========================================================================
+    // Export to PNG, the same in the studios and the galleries: a filmstrip of every frame (top
+    // to bottom), or one picture of it, at 1x or 2x.
+    namespace PngExport
+    {
+        enum Choice { strip = 1, strip2x, atRest, full, halfway, atRest2x };
+
+        void addChoices (juce::PopupMenu& menu, int frames, bool enabled, int offset = 0)
+        {
+            menu.addItem (offset + strip, frames > 0 ? "Filmstrip: all " + juce::String (frames) + " frames, top to bottom"
+                                                     : juce::String ("Filmstrip: every frame, top to bottom"), enabled);
+            menu.addItem (offset + strip2x, "Filmstrip at 2x", enabled);
+            menu.addSeparator();
+            menu.addItem (offset + atRest, "One picture: at rest (its first frame)", enabled);
+            menu.addItem (offset + full, juce::String::fromUTF8 ("One picture: turned all the way (its last frame \xe2\x80\x94 a switch on)"), enabled);
+            menu.addItem (offset + halfway, "One picture: halfway", enabled);
+            menu.addItem (offset + atRest2x, "One picture at 2x: at rest", enabled);
+        }
+
+        bool isStrip (int choice)   { return choice == strip || choice == strip2x; }
+
+        juce::String suffix (int choice)
+        {
+            return choice == strip2x ? juce::String (" @2x") : choice == atRest ? juce::String (" at rest")
+                 : choice == full ? juce::String (" full") : choice == halfway ? juce::String (" halfway")
+                 : choice == atRest2x ? juce::String (" at rest @2x") : juce::String();
+        }
+
+        /** Its picture (any thread). stop: asked between a filmstrip's frames (true: nothing). */
+        juce::Image render (const LayerDoc& doc, int choice, const std::function<bool()>& stop = {})
+        {
+            const auto scale = choice == strip2x || choice == atRest2x ? 2.0f : 1.0f;
+
+            // Top to bottom, every frame at the look's own size...
+            if (isStrip (choice))
+                return LayerRender::renderFilmstrip (doc, true, scale, stop);
+
+            // ...or one frame, with room for its shadows and glows round it.
+            const auto t = choice == full ? 1.0f : choice == halfway ? 0.5f : 0.0f;
+            const auto pad = std::ceil (LayerRender::overhangOf (doc) * scale);
+            return LayerRender::renderFrame (doc, t, scale, pad);
+        }
+
+        bool write (const juce::Image& image, const juce::File& file)
+        {
+            if (! image.isValid() || ! file.getParentDirectory().createDirectory().wasOk())
+                return false;
+
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            juce::PNGImageFormat png;
+            return out.openedOk() && png.writeImageToStream (image, out);
+        }
+    }
+
+    //==========================================================================
     /** KnobMaker's Gallery: every knob in a folder (KnobMan's .knob and Sonify's .fklayers, in
         its folders too) as a picture with its name; double-click one (or Open) to open it. The
-        folder is remembered; at first it's Sonify's gallery (in AppData, the knobs installed with
-        Sonify copied into it, so knobs can be added to it). Knob files dropped on it from the
+        folder is remembered; at first it's the knob gallery (sonifyGallery: KnobMaster 2's is the
+        project's assets\knob_gallery). Knob files dropped on it from the
         computer are copied into the folder shown, and so is a look dragged in from the Knob
         Studio's list. Its items can also be dragged out (dragOut): onto Edit UI's window, or onto
         the Knob Studio to replace the look being designed. */
+    /** What a gallery shows: knobs (.knob, .fklayers), 3D models (.fk3d), or the Knob Studio's
+        kept shapes (.fkshapes: layers, to put on another look). */
+    enum class GallerySort { knobs, models, shapes };
+
     class KnobGallery final : public juce::Component,
                               public juce::DragAndDropContainer,
                               public juce::DragAndDropTarget,
@@ -97,8 +236,9 @@ namespace
     {
     public:
         explicit KnobGallery (std::function<void (const juce::File&)> open, bool closeWhenOpened = true, bool canDragOut = false,
-                              const juce::String& pickText = {})
-            : onOpen (std::move (open)), closeOnOpen (closeWhenOpened), dragOut (canDragOut)
+                              const juce::String& pickText = {}, GallerySort sort = GallerySort::knobs)
+            : onOpen (std::move (open)), closeOnOpen (closeWhenOpened), dragOut (canDragOut),
+              threeD (sort == GallerySort::models), shapes (sort == GallerySort::shapes)
         {
             if (pickText.isNotEmpty())
                 openButton.setButtonText (pickText);
@@ -106,11 +246,12 @@ namespace
                 openButton.setButtonText ("Add");
 
             folderButton.onClick = [this] { chooseFolder(); };
-            sonifyButton.setTooltip ("Sonify's gallery: the knobs installed with Sonify, and the ones added to it");
+            sonifyButton.setTooltip ((threeD ? "The 3D gallery: " : shapes ? "The shapes gallery: " : "The knob gallery: ")
+                                     + ownGallery().getFullPathName());
             sonifyButton.onClick = [this]
             {
                 memoryFile().deleteFile();   // back to the gallery from now on
-                setFolder (sonifyGallery());
+                setFolder (ownGallery());
             };
             openButton.onClick = [this] { openSelected(); };
             exportButton.setTooltip ("Every KnobMan knob (.knob) in this folder saved as a Sonify knob (.fklayers) into a folder you choose");
@@ -121,6 +262,26 @@ namespace
             for (auto* c : std::initializer_list<juce::Component*> { &sonifyButton, &folderButton, &exportButton, &openButton, &search, &folderLabel, &viewport })
                 addAndMakeVisible (c);
 
+            // The Shapes Gallery: the Knob Studio's layers kept (Save), and put on a look again (Add).
+            if (shapes)
+            {
+                sonifyButton.setButtonText ("Shapes Gallery");
+                folderButton.setTooltip ("A folder of shapes (.fkshapes) to show instead");
+                exportButton.setVisible (false);
+                saveButton.setTooltip ("The layer selected in the Knob Studio (or the layers picked together with Shift+click), "
+                                       "kept here as a shape, with its colour, bevel and the rest");
+                saveButton.onClick = [this] { if (onSave != nullptr) onSave(); };
+                addAndMakeVisible (saveButton);
+            }
+
+            // The 3D Gallery: 3D models only (.fk3d), so nothing of KnobMan's to export.
+            if (threeD)
+            {
+                sonifyButton.setButtonText ("3D Gallery");
+                folderButton.setTooltip ("A folder of 3D models (.fk3d) to show instead");
+                exportButton.setVisible (false);
+            }
+
             folderLabel.setColour (juce::Label::textColourId, Theme::muted);
             folderLabel.setFont (Theme::font (12.5f));
             viewport.setViewedComponent (&grid, false);
@@ -129,10 +290,32 @@ namespace
             exporter.owner = this;
 
             setFolder (rememberedFolder());
-            setSize (1060, 680);
+            // Export as PNG (the knob and 3D galleries): the one selected, or every one shown.
+            if (! shapes)
+            {
+                pngButton.setTooltip ("The knob selected as a PNG (a filmstrip of its frames, or one picture of it), "
+                                      "or every one shown here, each as its own PNG, into a folder");
+                pngButton.onClick = [this] { showPngMenu(); };
+                addAndMakeVisible (pngButton);
+            }
+
+            pngTimer.owner = this;
+            setSize (1160, 680);
         }
 
-        ~KnobGallery() override   { stopTimer(); exporter.stopTimer(); }
+        ~KnobGallery() override
+        {
+            stopTimer();
+            exporter.stopTimer();
+            pngTimer.stopTimer();
+
+            if (pngRun != nullptr)
+                pngRun->cancelled = true;               // (a filmstrip stops at its next frame)
+
+            pngPainters.removeAllJobs (true, 10000);
+            pictures->generation = -1;              // anything still being drawn is for no one
+            painters.removeAllJobs (true, 4000);    // (those not started yet never start)
+        }
 
         /** Sonify's gallery folder (made, and the installed knobs copied in, when asked for). */
         static juce::File galleryFolder()   { return sonifyGallery(); }
@@ -148,8 +331,23 @@ namespace
             bar.removeFromLeft (8);
             folderButton.setBounds (bar.removeFromLeft (150));
             bar.removeFromLeft (8);
-            exportButton.setBounds (bar.removeFromLeft (300));
-            bar.removeFromLeft (8);
+            if (shapes)
+            {
+                saveButton.setBounds (bar.removeFromLeft (190));
+                bar.removeFromLeft (8);
+            }
+            else
+            {
+                if (! threeD)
+                {
+                    exportButton.setBounds (bar.removeFromLeft (300));
+                    bar.removeFromLeft (8);
+                }
+
+                pngButton.setBounds (bar.removeFromLeft (140));
+                bar.removeFromLeft (8);
+            }
+
             openButton.setBounds (bar.removeFromRight (90));
             bar.removeFromRight (8);
             search.setBounds (bar.removeFromRight (200));
@@ -178,15 +376,25 @@ namespace
         //======================================================================
         // Knob files dropped from the computer: copied into the folder shown (Sonify's gallery
         // when that one can't take them), a name already there kept by numbering the new one.
-        static bool isKnobFile (const juce::String& path)
+        /** What this gallery takes: knob files (.knob, .fklayers), or for the 3D Gallery, 3D models (.fk3d). */
+        bool isKnobFile (const juce::String& path) const
         {
             const juce::File f (path);
-            return f.existsAsFile() && (f.hasFileExtension ("knob") || f.hasFileExtension (Looks::fileExtension));
+            return f.existsAsFile() && (threeD ? f.hasFileExtension (Looks::modelExtension)
+                                      : shapes ? f.hasFileExtension (Looks::shapesExtension)
+                                               : f.hasFileExtension ("knob") || f.hasFileExtension (Looks::fileExtension));
+        }
+
+        juce::String filePattern() const
+        {
+            return threeD ? "*" + juce::String (Looks::modelExtension)
+                 : shapes ? "*" + juce::String (Looks::shapesExtension)
+                          : "*.knob;*" + juce::String (Looks::fileExtension);
         }
 
         bool isInterestedInFileDrag (const juce::StringArray& files) override
         {
-            return std::any_of (files.begin(), files.end(), [] (const juce::String& f) { return isKnobFile (f); });
+            return std::any_of (files.begin(), files.end(), [this] (const juce::String& f) { return isKnobFile (f); });
         }
 
         void fileDragEnter (const juce::StringArray&, int, int) override   { dropHover = true;  repaint(); }
@@ -199,7 +407,11 @@ namespace
         }
 
         // A look dragged in from the Knob Studio's list (saved as a knob file as it was picked up).
-        bool isInterestedInDragSource (const SourceDetails& details) override   { return knobFileOf (details.description) != juce::File(); }
+        bool isInterestedInDragSource (const SourceDetails& details) override
+        {
+            const auto file = knobFileOf (details.description);
+            return file != juce::File() && isKnobFile (file.getFullPathName());
+        }
         void itemDragEnter (const SourceDetails&) override                      { dropHover = true;  repaint(); }
         void itemDragExit (const SourceDetails&) override                       { dropHover = false; repaint(); }
 
@@ -207,7 +419,7 @@ namespace
         {
             dropHover = false;
 
-            if (const auto file = knobFileOf (details.description); file != juce::File())
+            if (const auto file = knobFileOf (details.description); file != juce::File() && isKnobFile (file.getFullPathName()))
                 addFiles ({ file.getFullPathName() });
         }
 
@@ -218,7 +430,7 @@ namespace
             auto into = folder;
 
             if (! into.isDirectory() || ! into.hasWriteAccess())
-                into = sonifyGallery();
+                into = ownGallery();
 
             int added = 0, failed = 0;
 
@@ -251,10 +463,12 @@ namespace
         {
             juce::File file;
             juce::String name;
+            juce::String group;   // its folder, inside the one shown
             juce::String about;   // what its file says about it
             bool commercialSafe = true;   // ...whether that licence allows selling
             juce::Image picture;
-            bool tried = false;
+            bool tried = false;     // its picture asked for
+            bool finished = false;  // ...and come (or not to be had)
         };
 
         struct Grid final : public juce::Component
@@ -269,8 +483,11 @@ namespace
                 {
                     g.setColour (Theme::muted);
                     g.setFont (Theme::font (14.0f));
-                    g.drawFittedText (owner->items.empty() ? "No knobs here (.knob or .fklayers). Drop knob files here, or choose the folder your knobs are in."
-                                                           : "No knob has that name.",
+                    g.drawFittedText (owner->items.empty() ? (owner->threeD ? "No 3D models here (.fk3d). Drop 3D models here, or choose the folder yours are in."
+                                                            : owner->shapes ? "No shapes here yet: select a layer in the Knob Studio (Shift+click for several) and press Save selected layers."
+                                                                            : "No knobs here (.knob or .fklayers). Drop knob files here, or choose the folder your knobs are in.")
+                                                           : juce::String (owner->threeD ? "No 3D model has that name."
+                                                                         : owner->shapes ? "No shape has that name." : "No knob has that name."),
                                       getLocalBounds().reduced (20).withHeight (60), juce::Justification::centred, 2);
                     return;
                 }
@@ -305,7 +522,7 @@ namespace
                     {
                         g.setColour (Theme::muted);
                         g.setFont (Theme::font (11.0f));
-                        g.drawText (item.tried ? "no picture" : juce::String::fromUTF8 ("\xe2\x80\xa6"), pictureArea, juce::Justification::centred);
+                        g.drawText (item.finished ? "no picture" : juce::String::fromUTF8 ("\xe2\x80\xa6"), pictureArea, juce::Justification::centred);
                     }
 
                     g.setColour (Theme::text);
@@ -360,77 +577,33 @@ namespace
             }
         };
 
-        static juce::File memoryFile()
+        juce::File memoryFile() const
         {
-            return knobMakerSettings ("gallery folder.txt");
+            return knobMakerSettings (threeD ? "gallery 3d folder.txt" : shapes ? "shapes gallery folder.txt" : "gallery folder.txt");
         }
 
-        /** The knobs installed with Sonify: "knob_gallery" next to Sonify (on a Mac, in the app's
-            Resources). Read only (Program Files): they're copied into Sonify's gallery. */
-        static juce::File installedKnobs()
-        {
-            const auto exeFolder = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory();
-           #if JUCE_MAC
-            return exeFolder.getSiblingFile ("Resources").getChildFile ("knob_gallery");
-           #else
-            return exeFolder.getChildFile ("knob_gallery");
-           #endif
-        }
+        juce::File ownGallery() const   { return threeD ? modelGallery() : shapes ? shapesGallery() : sonifyGallery(); }
 
-        /** Sonify's gallery, in AppData (Fanan\Sonify\Knob Gallery), where knobs can be added.
-            Each knob installed with Sonify is copied into it once: a new Sonify's new knobs come
-            in, and one deleted from the gallery or changed there stays so (the ones copied before
-            are listed in KnobMaker's "gallery installed.txt"). */
-        static juce::File sonifyGallery()
-        {
-            const auto gallery = SettingsFolder::folder ("Knob Gallery");
-            const auto listFile = knobMakerSettings ("gallery installed.txt");
-            juce::StringArray copied;
-            copied.addLines (listFile.loadFileAsString());
-            copied.removeEmptyStrings();
-            const auto before = copied.size();
-
-            if (const auto from = installedKnobs(); from.isDirectory())
-            {
-                for (const auto& file : from.findChildFiles (juce::File::findFiles, true, "*.knob;*" + juce::String (Looks::fileExtension)))
-                {
-                    const auto name = file.getRelativePathFrom (from).replaceCharacter ('\\', '/');
-
-                    if (copied.contains (name))
-                        continue;
-
-                    const auto target = gallery.getChildFile (name);
-
-                    if (target.existsAsFile() || (target.getParentDirectory().createDirectory().wasOk() && file.copyFileTo (target)))
-                        copied.add (name);
-                }
-            }
-
-            if (copied.size() != before)
-                listFile.replaceWithText (copied.joinIntoString ("\n"));
-
-            return gallery;
-        }
-
-        /** The folder chosen last; before one is chosen (or when it's gone), Sonify's gallery. */
-        static juce::File rememberedFolder()
+        /** The folder chosen last; before one is chosen (or when it's gone), its own gallery. */
+        juce::File rememberedFolder() const
         {
             if (const juce::File saved (memoryFile().loadFileAsString().trim()); saved.isDirectory())
                 return saved;
 
-            return sonifyGallery();
+            return ownGallery();
         }
 
         void chooseFolder()
         {
-            chooser = std::make_unique<juce::FileChooser> ("The folder your knobs are in", folder);
+            chooser = std::make_unique<juce::FileChooser> (threeD ? "The folder your 3D models are in"
+                                                         : shapes ? "The folder your shapes are in" : "The folder your knobs are in", folder);
             chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
                                   [safeThis = juce::Component::SafePointer<KnobGallery> (this)] (const juce::FileChooser& fc)
                                   {
                                       if (safeThis == nullptr || ! fc.getResult().isDirectory())
                                           return;
 
-                                      memoryFile().replaceWithText (fc.getResult().getFullPathName());
+                                      safeThis->memoryFile().replaceWithText (fc.getResult().getFullPathName());
                                       safeThis->setFolder (fc.getResult());
                                   });
         }
@@ -443,7 +616,7 @@ namespace
 
             if (folder.isDirectory())
             {
-                for (const auto& file : folder.findChildFiles (juce::File::findFiles, true, "*.knob;*" + juce::String (Looks::fileExtension)))
+                for (const auto& file : folder.findChildFiles (juce::File::findFiles, true, filePattern()))
                 {
                     if (items.size() >= 5000)
                         break;
@@ -451,19 +624,40 @@ namespace
                     Item item;
                     item.file = file;
                     item.name = file.getFileNameWithoutExtension();
+                    item.group = file.getParentDirectory().getRelativePathFrom (folder);
 
                     items.push_back (std::move (item));
                 }
             }
 
-            std::sort (items.begin(), items.end(), [] (const Item& a, const Item& b) { return a.name.compareNatural (b.name) < 0; });
-            folderLabel.setText (folder.isDirectory() ? folder.getFullPathName() + "  (" + juce::String ((int) items.size()) + " knobs)"
-                                                      : juce::String ("No folder yet: choose the one your knobs are in."),
-                                 juce::dontSendNotification);
+            // The 3D Gallery: its folders (Knobs, Buttons, Sliders...) together, then by name.
+            std::sort (items.begin(), items.end(), [this] (const Item& a, const Item& b)
+            {
+                if (threeD && a.group != b.group)
+                    return a.group.compareNatural (b.group) < 0;
+
+                return a.name.compareNatural (b.name) < 0;
+            });
+
+            const auto counted = juce::String ((int) items.size()) + (threeD ? (items.size() == 1 ? " 3D model" : " 3D models")
+                                                                    : shapes ? (items.size() == 1 ? " shape" : " shapes")
+                                                                             : juce::String (" knobs"));
+            folderText = folder.isDirectory() ? folder.getFullPathName() + "  (" + counted + ")"
+                                              : juce::String (threeD ? "No folder yet: choose the one your 3D models are in."
+                                                            : shapes ? "No folder yet: choose the one your shapes are in."
+                                                                     : "No folder yet: choose the one your knobs are in.");
+            folderLabel.setText (folderText, juce::dontSendNotification);
             next = 0;
+            inFlight = 0;
+
+            // Pictures still being drawn for the folder shown before: not waited for, and not used.
+            ++pictures->generation;
+            painters.removeAllJobs (false, 0);
+            cacheFolder = SettingsFolder::folder ("Gallery pictures");
+
             filter();
-            exportButton.setEnabled (std::any_of (items.begin(), items.end(), [] (const Item& i) { return i.file.hasFileExtension ("knob"); }));
-            startTimer (30);   // the pictures, a few at a time
+            exportButton.setEnabled (! threeD && ! shapes && std::any_of (items.begin(), items.end(), [] (const Item& i) { return i.file.hasFileExtension ("knob"); }));
+            startTimer (30);   // the pictures: handed to the threads, and taken in as they come
         }
 
         //======================================================================
@@ -496,6 +690,190 @@ namespace
             exportButton.setEnabled (false);
             folderButton.setEnabled (false);
             exporter.startTimer (10);
+        }
+
+        //======================================================================
+        // Export as PNG: the one selected (to a file), or every one shown (each into a folder, in
+        // the folders they're in here), drawn on threads of their own while the window stays in
+        // use; how far it got shows above the pictures.
+        void showPngMenu()
+        {
+            const auto* chosen = juce::isPositiveAndBelow (selected, (int) shown.size()) ? &items[(size_t) shown[(size_t) selected]] : nullptr;
+            const auto count = (int) shown.size();
+            constexpr int everyOne = 100;
+
+            juce::PopupMenu menu;
+            menu.addSectionHeader (chosen != nullptr ? "\"" + chosen->name + "\" as PNG" : juce::String ("The one selected as PNG (select one first)"));
+            PngExport::addChoices (menu, 0, chosen != nullptr);
+            menu.addSeparator();
+            menu.addSectionHeader ("Every one shown here (" + juce::String (count) + "), each its own PNG");
+            menu.addItem (everyOne + PngExport::strip, juce::String::fromUTF8 ("Filmstrips, into a folder\xe2\x80\xa6"), count > 0);
+            menu.addItem (everyOne + PngExport::strip2x, juce::String::fromUTF8 ("Filmstrips at 2x, into a folder\xe2\x80\xa6"), count > 0);
+            menu.addItem (everyOne + PngExport::atRest, juce::String::fromUTF8 ("One picture each (at rest), into a folder\xe2\x80\xa6"), count > 0);
+
+            menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&pngButton),
+                                [safeThis = juce::Component::SafePointer<KnobGallery> (this)] (int result)
+                                {
+                                    if (safeThis == nullptr || result <= 0)
+                                        return;
+
+                                    if (result > everyOne) safeThis->choosePngFolder (result - everyOne);
+                                    else                   safeThis->choosePngFile (result);
+                                });
+        }
+
+        void choosePngFile (int choice)
+        {
+            if (! juce::isPositiveAndBelow (selected, (int) shown.size()))
+                return;
+
+            const auto& item = items[(size_t) shown[(size_t) selected]];
+            const auto start = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                                   .getChildFile (juce::File::createLegalFileName (item.name + PngExport::suffix (choice)) + ".png");
+            chooser = std::make_unique<juce::FileChooser> (PngExport::isStrip (choice) ? "Export its frames as a PNG filmstrip" : "Export one picture of it as a PNG",
+                                                           start, "*.png");
+            chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                                      | juce::FileBrowserComponent::warnAboutOverwriting,
+                                  [safeThis = juce::Component::SafePointer<KnobGallery> (this), source = item.file, choice] (const juce::FileChooser& fc)
+                                  {
+                                      if (safeThis != nullptr && fc.getResult() != juce::File())
+                                          safeThis->startPng ({ { source, fc.getResult().withFileExtension (".png") } }, choice, fc.getResult().getParentDirectory());
+                                  });
+        }
+
+        void choosePngFolder (int choice)
+        {
+            chooser = std::make_unique<juce::FileChooser> ("The folder to save the PNGs in", juce::File::getSpecialLocation (juce::File::userDocumentsDirectory));
+            chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                                  [safeThis = juce::Component::SafePointer<KnobGallery> (this), choice] (const juce::FileChooser& fc)
+                                  {
+                                      if (safeThis == nullptr || ! fc.getResult().isDirectory())
+                                          return;
+
+                                      // Each named as it's shown, in the folder it's in here (Knobs, Buttons...); a name
+                                      // twice in one folder (a .knob and a .fklayers) numbered.
+                                      const auto destination = fc.getResult();
+                                      std::vector<std::pair<juce::File, juce::File>> jobs;
+                                      std::set<juce::String> used;
+
+                                      for (const auto index : safeThis->shown)
+                                      {
+                                          const auto& item = safeThis->items[(size_t) index];
+                                          const auto into = item.group.isEmpty() || item.group == "." ? destination : destination.getChildFile (item.group);
+                                          const auto base = juce::File::createLegalFileName (item.name + PngExport::suffix (choice));
+                                          auto target = into.getChildFile (base + ".png");
+
+                                          for (int copy = 2; used.count (target.getFullPathName().toLowerCase()) > 0; ++copy)
+                                              target = into.getChildFile (base + " (" + juce::String (copy) + ").png");
+
+                                          used.insert (target.getFullPathName().toLowerCase());
+                                          jobs.emplace_back (item.file, target);
+                                      }
+
+                                      safeThis->startPng (jobs, choice, destination);
+                                  });
+        }
+
+        /** What the PNG threads report (shared, so one finishing after the window closed has somewhere to). */
+        struct PngRun
+        {
+            std::atomic<bool> cancelled { false };
+            std::atomic<int> done { 0 }, failed { 0 };
+            std::mutex lock;
+            juce::StringArray failures;
+            juce::File lastWritten;
+        };
+
+        void startPng (const std::vector<std::pair<juce::File, juce::File>>& jobs, int choice, const juce::File& destination)
+        {
+            if (jobs.empty() || (pngRun != nullptr && pngTimer.isTimerRunning()))
+                return;
+
+            pngRun = std::make_shared<PngRun>();
+            pngTotal = (int) jobs.size();
+            pngDestination = destination;
+
+            for (const auto& [source, target] : jobs)
+            {
+                pngPainters.addJob ([run = pngRun, source = source, target = target, choice]
+                {
+                    if (run->cancelled)
+                        return;
+
+                    LayerDoc doc;
+                    Looks::Kind kind = Looks::Kind::knob;
+                    juce::String credits, error;
+                    bool commercialSafe = true;
+                    bool ok = KnobStudio::readGalleryItem (source, doc, kind, credits, commercialSafe, error);
+
+                    if (ok)
+                    {
+                        const auto image = PngExport::render (doc, choice, [run] { return run->cancelled.load(); });
+
+                        if (run->cancelled)
+                            return;
+
+                        ok = PngExport::write (image, target);
+
+                        if (! ok)
+                            error = "couldn't write " + target.getFullPathName();
+                    }
+
+                    const std::lock_guard<std::mutex> hold (run->lock);
+
+                    if (ok)
+                    {
+                        ++run->done;
+                        run->lastWritten = target;
+                    }
+                    else
+                    {
+                        ++run->failed;
+                        run->failures.add (source.getFileName() + ": " + error);
+                    }
+                });
+            }
+
+            pngButton.setEnabled (false);
+            pngProgress();
+            pngTimer.startTimer (200);
+        }
+
+        void pngProgress()
+        {
+            if (pngRun == nullptr)
+                return;
+
+            const int finished = pngRun->done + pngRun->failed;
+
+            if (finished < pngTotal)
+            {
+                folderLabel.setText ("Exporting PNGs: " + juce::String (finished) + " of " + juce::String (pngTotal), juce::dontSendNotification);
+                return;
+            }
+
+            pngTimer.stopTimer();
+            pngButton.setEnabled (true);
+            folderLabel.setText (folderText, juce::dontSendNotification);
+
+            const std::lock_guard<std::mutex> hold (pngRun->lock);
+            juce::String message;
+
+            if (pngTotal == 1 && pngRun->done == 1)
+                message = "Saved " + pngRun->lastWritten.getFullPathName() + ".";
+            else
+                message = juce::String (pngRun->done.load()) + (pngRun->done == 1 ? " PNG" : " PNGs") + " saved in " + pngDestination.getFullPathName() + ".";
+
+            if (pngRun->failed > 0)
+            {
+                message << "\n\n" << pngRun->failed.load() << " couldn't be:\n" << pngRun->failures.joinIntoString ("\n", 0, 20);
+
+                if (pngRun->failures.size() > 20)
+                    message << "\n...";
+            }
+
+            juce::AlertWindow::showMessageBoxAsync (pngRun->failed > 0 ? juce::MessageBoxIconType::WarningIcon : juce::MessageBoxIconType::InfoIcon,
+                                                    "Export as PNG", message);
         }
 
         /** A few knobs each time, so the window stays alive and shows how far it got. */
@@ -603,7 +981,8 @@ namespace
             grid.setSize (juce::jmax (1, viewport.getMaximumVisibleWidth()), juce::jmax (viewport.getMaximumVisibleHeight(), gap + rows * (tileH + gap)));
         }
 
-        /** Its picture: a KnobMan file's own preview (or its first frame drawn), a Sonify knob's first frame. */
+        /** Its picture: a KnobMan file's own preview (or its first frame drawn), a Sonify knob's
+            first frame. (Any thread: it only reads the file and draws.) */
         static juce::Image pictureOf (const juce::File& file)
         {
             LayerDoc doc;
@@ -633,41 +1012,122 @@ namespace
                 doc = look.doc;
             }
 
+            // With room round it for its shadow: a tall one's falls well past its canvas.
             const auto side = (float) juce::jmax (1, doc.canvasWidth, doc.canvasHeight);
-            return LayerRender::renderFrame (doc, 0.0f, juce::jlimit (0.25f, 4.0f, 120.0f / side));
+            const auto scale = juce::jlimit (0.25f, 4.0f, 120.0f / side);
+            return LayerRender::renderFrame (doc, 0.0f, scale, std::ceil (LayerRender::overhangOf (doc) * scale));
+        }
+
+        //======================================================================
+        // The pictures: drawn on threads of their own (one fewer than the computer has cores),
+        // those in view first, so the window opens at once and stays quick while they come in.
+        // Each one drawn is kept (AppData ... "Gallery pictures", by the file's path, size and
+        // time), so the next time the gallery opens it shows them straight away; a knob file
+        // changed is drawn again.
+        static constexpr int pictureVersion = 3;   // raised when knobs are drawn differently (2: a 3D button's off state, 3: shadows whole)
+
+        static juce::File cachedPictureFile (const juce::File& cacheFolder, const juce::File& file)
+        {
+            const auto key = file.getFullPathName() + "|" + juce::String (file.getSize())
+                           + "|" + juce::String (file.getLastModificationTime().toMilliseconds())
+                           + "|" + juce::String (pictureVersion);
+            return cacheFolder.getChildFile (juce::String::toHexString (key.hashCode64()) + ".png");
+        }
+
+        static juce::Image cachedPictureOf (const juce::File& cacheFolder, const juce::File& file)
+        {
+            const auto kept = cachedPictureFile (cacheFolder, file);
+
+            if (kept.existsAsFile())
+                if (auto image = juce::ImageFileFormat::loadFrom (kept); image.isValid())
+                    return image;
+
+            auto image = pictureOf (file);
+
+            if (image.isValid() && cacheFolder.isDirectory())
+            {
+                // Written beside it and then moved in, so a half-written one is never read.
+                juce::TemporaryFile temp (kept);
+
+                if (auto out = temp.getFile().createOutputStream())
+                {
+                    juce::PNGImageFormat png;
+                    const bool written = png.writeImageToStream (image, *out);
+                    out.reset();
+
+                    if (written)
+                        temp.overwriteTargetFileWithTemporary();
+                }
+            }
+
+            return image;
+        }
+
+        /** What the threads hand back (shared, so a thread finishing after the gallery closed
+            has somewhere to put it). */
+        struct Pictures
+        {
+            std::mutex lock;
+            std::vector<std::pair<size_t, juce::Image>> done;
+            std::atomic<int> generation { 0 };
+        };
+
+        void startPicture (size_t index)
+        {
+            auto& item = items[index];
+            item.tried = true;
+            ++inFlight;
+
+            painters.addJob ([shared = pictures, generation = pictures->generation.load(), index, file = item.file, cache = cacheFolder]
+            {
+                if (shared->generation != generation)
+                    return;   // the gallery moved on (another folder, or closed)
+
+                auto image = cachedPictureOf (cache, file);
+                const std::lock_guard<std::mutex> hold (shared->lock);
+
+                if (shared->generation == generation)
+                    shared->done.emplace_back (index, std::move (image));
+            });
         }
 
         void timerCallback() override
         {
-            // Those in view first, a few each time, so the window stays quick.
-            int done = 0;
+            // In: the pictures drawn since.
+            std::vector<std::pair<size_t, juce::Image>> arrived;
+            {
+                const std::lock_guard<std::mutex> hold (pictures->lock);
+                arrived.swap (pictures->done);
+            }
+
+            for (auto& [index, image] : arrived)
+            {
+                --inFlight;
+
+                if (index < items.size())
+                {
+                    items[index].picture = std::move (image);
+                    items[index].finished = true;
+                }
+            }
+
+            // Out: more to draw, those in view first, a few more than there are threads (so
+            // none waits, and a scroll still puts the ones then in view next).
+            const int most = painters.getNumThreads() * 2;
             const auto view = viewport.getViewArea();
 
-            for (size_t i = 0; i < shown.size() && done < 4; ++i)
-            {
-                auto& item = items[(size_t) shown[i]];
+            for (size_t i = 0; i < shown.size() && inFlight < most; ++i)
+                if (! items[(size_t) shown[i]].tried && tileBounds ((int) i).intersects (view))
+                    startPicture ((size_t) shown[i]);
 
-                if (! item.tried && tileBounds ((int) i).intersects (view))
-                {
-                    item.tried = true;
-                    item.picture = pictureOf (item.file);
-                    ++done;
-                }
-            }
-
-            for (; done < 4 && next < items.size(); ++next)
-            {
+            for (; inFlight < most && next < items.size(); ++next)
                 if (! items[next].tried)
-                {
-                    items[next].tried = true;
-                    items[next].picture = pictureOf (items[next].file);
-                    ++done;
-                }
-            }
+                    startPicture (next);
 
-            grid.repaint();
+            if (! arrived.empty())
+                grid.repaint();
 
-            if (done == 0)
+            if (inFlight <= 0 && next >= items.size())
                 stopTimer();
         }
 
@@ -688,11 +1148,42 @@ namespace
 
         std::function<void (const juce::File&)> onOpen;
         bool closeOnOpen = true, dragOut = false;
+        const bool threeD = false;   // the 3D Studio's gallery: 3D models (.fk3d) only
+        const bool shapes = false;   // the Shapes Gallery: the Knob Studio's kept shapes (.fkshapes)
+
+    public:
+        /** The Shapes Gallery's Save: the studio keeps the layers chosen there, then refresh(). */
+        std::function<void()> onSave;
+
+        /** The folder shown (to save into). */
+        juce::File getFolder() const   { return folder.isDirectory() ? folder : ownGallery(); }
+
+    private:
+        juce::TextButton saveButton { juce::String::fromUTF8 ("Save selected layers\xe2\x80\xa6") };
+        juce::TextButton pngButton { juce::String::fromUTF8 ("Export as PNG\xe2\x80\xa6") };
+        juce::String folderText;   // what the label above the pictures says (back after an export)
+
+        struct PngTimer final : public juce::Timer
+        {
+            KnobGallery* owner = nullptr;
+            void timerCallback() override   { owner->pngProgress(); }
+        };
+
+        PngTimer pngTimer;
+        std::shared_ptr<PngRun> pngRun;
+        int pngTotal = 0;
+        juce::File pngDestination;
+        juce::ThreadPool pngPainters { juce::ThreadPoolOptions{}.withThreadName ("Gallery PNGs")
+                                                                .withNumberOfThreads (juce::jmax (1, juce::SystemStats::getNumCpus() / 2)) };
         juce::File folder;
         std::vector<Item> items;
         std::vector<int> shown;
         size_t next = 0;
-        int selected = -1;
+        int selected = -1, inFlight = 0;
+        juce::File cacheFolder;
+        std::shared_ptr<Pictures> pictures = std::make_shared<Pictures>();
+        juce::ThreadPool painters { juce::ThreadPoolOptions{}.withThreadName ("Gallery pictures")
+                                                             .withNumberOfThreads (juce::jmax (1, juce::SystemStats::getNumCpus() - 1)) };
         juce::TextButton folderButton { juce::String::fromUTF8 ("Choose Folder\xe2\x80\xa6") }, openButton { "Open" };
         juce::TextButton sonifyButton { "Sonify Gallery" };
         bool dropHover = false;
@@ -770,7 +1261,7 @@ KnobStudio::KnobStudio (Looks& looksToEdit)
     // KnobMaker's buttons, on the look being designed.
     saveKnobButton.setTooltip ("Save this look as a Sonify knob file (.fklayers): into Sonify's gallery, or wherever you choose");
     saveKnobButton.onClick = [this] { saveKnobFile(); };
-    exportPngButton.setTooltip ("Its frames, top to bottom, as a PNG filmstrip");
+    exportPngButton.setTooltip ("Its frames, top to bottom, as a PNG filmstrip, or one picture of it (at rest, turned all the way, halfway)");
     exportPngButton.onClick = [this] { exportFilmstrip(); };
     loadKnobButton.setTooltip ("A Sonify knob file (.fklayers) replaces the look being designed (with none open: a new look)");
     loadKnobButton.onClick = [this] { chooseKnobFile (false); };
@@ -779,6 +1270,9 @@ KnobStudio::KnobStudio (Looks& looksToEdit)
     galleryButton.setTooltip ("Sonify's gallery, as pictures, in a window that stays open: double-click a knob (or drag it here) "
                               "to replace the look being designed; drag a look from the list into the gallery to keep it there");
     galleryButton.onClick = [this] { openGallery(); };
+    shapesGalleryButton.setTooltip ("The Shapes Gallery: keep the layer selected (or the layers picked "
+                                    "together with Shift+click) as a shape, with its look; double-click one there to add it to the look being designed");
+    shapesGalleryButton.onClick = [this] { openShapesGallery(); };
     newButton.onClick = [this] { showNewMenu(); };
 
     duplicateButton.setTooltip ("A copy of this look, to change on its own");
@@ -835,6 +1329,7 @@ KnobStudio::KnobStudio (Looks& looksToEdit)
 
     // The builder: every change goes into the plugin's own looks at once.
     layers.onDocumentChanged = [this] { builderChanged(); };
+    workspace3d.onDocumentChanged = [this] { builderChanged(); };
 
     layers.onImported = [this] (const LayerDoc& doc, const juce::String& name)
     {
@@ -869,10 +1364,10 @@ KnobStudio::KnobStudio (Looks& looksToEdit)
     };
 
     for (auto* c : std::initializer_list<juce::Component*> { &saveKnobButton, &exportPngButton, &loadKnobButton, &loadKnobManButton, &galleryButton,
-                                                             &list, &newButton, &duplicateButton, &mineButton, &deleteButton, &backButton })
+                                                             &newButton, &duplicateButton, &mineButton, &deleteButton, &backButton, &shapesGalleryButton })
         addAndMakeVisible (c);
 
-    for (auto* c : std::initializer_list<juce::Component*> { &useButton, &uniqueButton, &tabs })
+    for (auto* c : std::initializer_list<juce::Component*> { &useButton, &uniqueButton, &tabs, &workspace3d })
         addChildComponent (c);
 
     refreshList();
@@ -909,7 +1404,7 @@ void KnobStudio::builderChanged()
 
     {
         const juce::ScopedValueSetter<bool> quiet (saving, true);
-        looks.setProjectLook (target, kind, layers.getDocument());
+        looks.setProjectLook (target, kind, mode3d ? workspace3d.getDocument() : layers.getDocument());
     }
 
     if (target != current)
@@ -996,6 +1491,7 @@ void KnobStudio::clear()
     current.clear();
     list.deselectAllRows();
     tabs.setVisible (false);
+    workspace3d.setVisible (false);
     status ({});
     updateButtons();
     resized();
@@ -1043,8 +1539,11 @@ void KnobStudio::setWorkbench (bool isWorkbench)
     backButton.setVisible (! workbench);
 
     // KnobMaker: its menu in place of the list of looks.
-    for (auto* c : std::initializer_list<juce::Component*> { &list, &newButton, &duplicateButton, &mineButton, &deleteButton })
+    for (auto* c : std::initializer_list<juce::Component*> { &newButton, &duplicateButton, &mineButton, &deleteButton })
         c->setVisible (! workbench);
+
+    // (KnobMaster 2: no list of looks; the Knob Studio has its Shapes Gallery there instead.)
+    shapesGalleryButton.setVisible (! workbench && ! mode3d);
 
     if (workbench)
     {
@@ -1103,7 +1602,7 @@ void KnobStudio::openKnobFile (const juce::File& file)
 {
     if (! workbench)
     {
-        knobFolder = file.getParentDirectory();
+        (file.hasFileExtension (Looks::modelExtension) ? modelFolder : knobFolder) = file.getParentDirectory();
         replaceCurrentFrom (file);
         return;
     }
@@ -1140,9 +1639,14 @@ void KnobStudio::openKnobFile (const juce::File& file)
 
 void KnobStudio::chooseKnobFile (bool knobMan)
 {
-    chooser = std::make_unique<juce::FileChooser> (knobMan ? "Load a KnobMan knob (.knob)" : "Load a Sonify knob (.fklayers)",
-                                                   knobFolder.isDirectory() ? knobFolder : Looks::myLooksFolder(),
-                                                   knobMan ? juce::String ("*.knob") : juce::String ("*") + Looks::fileExtension);
+    // The 3D Studio: a 3D model (.fk3d; a 3D look kept as .fklayers too), from the 3D gallery at first.
+    const auto models = mode3d && ! knobMan;
+    chooser = std::make_unique<juce::FileChooser> (knobMan ? "Load a KnobMan knob (.knob)" : models ? "Load a 3D model (.fk3d)" : "Load a Sonify knob (.fklayers)",
+                                                   models ? (modelFolder.isDirectory() ? modelFolder : modelGalleryFolder())
+                                                          : knobFolder.isDirectory() ? knobFolder : Looks::myLooksFolder(),
+                                                   knobMan ? juce::String ("*.knob")
+                                                           : models ? "*" + juce::String (Looks::modelExtension) + ";*" + Looks::fileExtension
+                                                                    : juce::String ("*") + Looks::fileExtension);
 
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [safeThis = juce::Component::SafePointer<KnobStudio> (this)] (const juce::FileChooser& fc)
@@ -1157,10 +1661,15 @@ void KnobStudio::saveKnobFile()
     if (looks.find (current) == nullptr)
         return;
 
-    // Into Sonify's gallery at first, so it's there to pick; then where the last one went.
-    const auto start = (knobFolder.isDirectory() ? knobFolder : galleryFolder())
-                           .getChildFile (juce::File::createLegalFileName (workbench ? knobTitle : current) + Looks::fileExtension);
-    chooser = std::make_unique<juce::FileChooser> ("Save as a Sonify knob", start, juce::String ("*") + Looks::fileExtension);
+    // Into Sonify's gallery at first, so it's there to pick; then where the last one went. A 3D
+    // look: as a 3D model (.fk3d), into the 3D gallery at first, to share and to pick again.
+    const auto* toSave = looks.find (current);
+    const bool model = toSave->doc.model3d != nullptr;
+    const auto extension = juce::String (model ? Looks::modelExtension : Looks::fileExtension);
+    const auto& lastFolder = model ? modelFolder : knobFolder;
+    const auto start = (lastFolder.isDirectory() ? lastFolder : model ? modelGalleryFolder() : galleryFolder())
+                           .getChildFile (juce::File::createLegalFileName (workbench ? knobTitle : current) + extension);
+    chooser = std::make_unique<juce::FileChooser> (model ? "Save as a 3D model" : "Save as a Sonify knob", start, "*" + extension);
 
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
                               | juce::FileBrowserComponent::warnAboutOverwriting,
@@ -1175,7 +1684,8 @@ void KnobStudio::saveKnobFile()
                                   return;
 
                               // Named after its file.
-                              const auto file = fc.getResult().withFileExtension (Looks::fileExtension);
+                              const bool asModel = look->doc.model3d != nullptr;
+                              const auto file = fc.getResult().withFileExtension (asModel ? Looks::modelExtension : Looks::fileExtension);
                               auto saved = *look;
                               saved.name = file.getFileNameWithoutExtension();
 
@@ -1187,7 +1697,7 @@ void KnobStudio::saveKnobFile()
                                       knobTitleFile().replaceWithText (saved.name);
                                   }
 
-                                  safeThis->knobFolder = file.getParentDirectory();
+                                  (asModel ? safeThis->modelFolder : safeThis->knobFolder) = file.getParentDirectory();
                                   safeThis->refreshGallery();
                                   safeThis->status ("Saved " + file.getFullPathName() + ".");
                                   safeThis->repaint();
@@ -1201,21 +1711,164 @@ void KnobStudio::saveKnobFile()
 
 void KnobStudio::openGallery()
 {
-    // One Gallery at a time: open already, it comes to the front.
+    // One Gallery at a time: open already, it comes to the front (the other studio's: it goes,
+    // and this one's opens; the 3D Studio's shows only 3D models).
     if (galleryWindow != nullptr)
     {
-        galleryWindow->toFront (true);
-        return;
+        if (galleryIs3d == mode3d)
+        {
+            galleryWindow->toFront (true);
+            return;
+        }
+
+        closeGallery();
     }
+
+    galleryIs3d = mode3d;
 
     // It stays open beside the studio, both ways: a knob picked there (double-click, Use, or
     // dragged onto the studio) replaces the look being designed; a look dragged from the list
     // into it is kept there.
-    galleryWindow = showGallery ("Gallery", [safeThis = juce::Component::SafePointer<KnobStudio> (this)] (const juce::File& file)
+    galleryWindow = showGallery (mode3d ? "3D Gallery" : "Gallery", [safeThis = juce::Component::SafePointer<KnobStudio> (this)] (const juce::File& file)
     {
         if (safeThis != nullptr)
             safeThis->openKnobFile (file);
-    }, workbench, ! workbench, this, workbench ? juce::String() : juce::String ("Use"), workbench);
+    }, workbench, ! workbench, this, workbench ? juce::String() : juce::String ("Use"), workbench, mode3d);
+}
+
+void KnobStudio::closeGallery()
+{
+    // (KnobMaker's is modal, closed by its own buttons; the studio's stays beside it.)
+    if (galleryWindow != nullptr && ! galleryWindow->isCurrentlyModal())
+        delete galleryWindow.getComponent();
+}
+
+//==============================================================================
+// The Shapes Gallery: beside the Knob Studio, as the Gallery is. Save keeps the layers chosen in
+// the builder (the selected one, or those picked together) as one shape; a double-click (or Add)
+// puts a shape's layers on top of the look being designed, and it stays open for more.
+void KnobStudio::openShapesGallery()
+{
+    if (shapesWindow != nullptr)
+    {
+        shapesWindow->toFront (true);
+        return;
+    }
+
+    auto gallery = std::make_unique<KnobGallery> ([safeThis = juce::Component::SafePointer<KnobStudio> (this)] (const juce::File& file)
+    {
+        if (safeThis != nullptr)
+            safeThis->addShapesFromFile (file);
+    }, false, false, "Add", GallerySort::shapes);
+
+    gallery->onSave = [safeThis = juce::Component::SafePointer<KnobStudio> (this), safeGallery = juce::Component::SafePointer<KnobGallery> (gallery.get())]
+    {
+        if (safeThis != nullptr && safeGallery != nullptr)
+            safeThis->keepShapes (safeGallery->getFolder());
+    };
+
+    shapesWindow = new GalleryWindow ("Shapes Gallery", std::move (gallery), this);   // it deletes itself when closed
+}
+
+void KnobStudio::closeShapesGallery()
+{
+    if (shapesWindow != nullptr)
+        delete shapesWindow.getComponent();
+}
+
+void KnobStudio::keepShapes (const juce::File& intoFolder)
+{
+    const auto* look = looks.find (current);
+
+    if (look == nullptr || mode3d)
+    {
+        status ("Open a look first: the Shapes Gallery keeps the layers you choose in it.");
+        return;
+    }
+
+    const auto& source = layers.getDocument();
+    const auto chosen = layers.getChosenLayers();
+
+    if (chosen.empty())
+    {
+        status ("Select a layer first (Shift+click to pick several).");
+        return;
+    }
+
+    // Named after the top layer chosen, unless another name is given.
+    const auto suggested = source.layers[(size_t) chosen.back()].name;
+    auto* ask = new juce::AlertWindow ("Save to the Shapes Gallery",
+                                       chosen.size() == 1 ? juce::String ("The layer \"") + suggested + "\", as a shape, with its look."
+                                                          : juce::String ((int) chosen.size()) + " layers, kept together as one shape.",
+                                       juce::MessageBoxIconType::NoIcon, this);
+    ask->addTextEditor ("name", suggested.isNotEmpty() ? suggested : juce::String ("Shape"), "Name");
+    ask->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    ask->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    ask->enterModalState (true, juce::ModalCallbackFunction::create (
+        [safeThis = juce::Component::SafePointer<KnobStudio> (this), ask, chosen, intoFolder] (int result)
+        {
+            const auto name = juce::File::createLegalFileName (ask->getTextEditorContents ("name").trim());
+
+            if (safeThis == nullptr || result != 1 || name.isEmpty())
+                return;
+
+            // A document of just those layers, the look's canvas, frames and light: drawn as it was.
+            auto doc = safeThis->layers.getDocument();
+            std::vector<DocLayer> kept;
+
+            for (const auto index : chosen)
+                if (juce::isPositiveAndBelow (index, (int) doc.layers.size()))
+                    kept.push_back (doc.layers[(size_t) index]);
+
+            doc.layers = std::move (kept);
+            doc.knobman.reset();
+            doc.knobmanSonifyLight = false;
+            doc.model3d.reset();
+
+            Looks::Look shape;
+            shape.name = name;
+            shape.kind = Looks::Kind::knob;
+            shape.origin = Looks::Origin::mine;
+            shape.description = "Shape";
+            shape.doc = doc;
+
+            auto folder = intoFolder.isDirectory() ? intoFolder : shapesGallery();
+            const auto file = folder.getNonexistentChildFile (name, Looks::shapesExtension, false);
+
+            if (! Looks::writeFile (file, shape))
+            {
+                safeThis->status ("Couldn't write " + file.getFullPathName() + ".");
+                return;
+            }
+
+            safeThis->status ("Kept \"" + file.getFileNameWithoutExtension() + "\" in the Shapes Gallery.");
+
+            if (safeThis->shapesWindow != nullptr)
+                if (auto* gallery = dynamic_cast<KnobGallery*> (safeThis->shapesWindow->getContentComponent()))
+                    gallery->refresh();
+        }), true);
+}
+
+void KnobStudio::addShapesFromFile (const juce::File& file)
+{
+    if (looks.find (current) == nullptr || mode3d)
+    {
+        status ("Open a look first: a shape from the gallery goes on the look being designed.");
+        return;
+    }
+
+    Looks::Look shape;
+
+    if (! Looks::readFile (file, shape) || shape.doc.layers.empty())
+    {
+        status ("Couldn't read " + file.getFileName() + ": it isn't a kept shape.");
+        return;
+    }
+
+    layers.addLayers (shape.doc.layers);   // (a change made in the builder: shown, and saved as the look)
+    status ("Added \"" + file.getFileNameWithoutExtension() + "\" on top"
+            + (shape.doc.layers.size() > 1 ? " (" + juce::String ((int) shape.doc.layers.size()) + " layers)." : juce::String (".")));
 }
 
 void KnobStudio::refreshGallery()
@@ -1230,11 +1883,17 @@ juce::File KnobStudio::galleryFolder()
     return KnobGallery::galleryFolder();
 }
 
+juce::File KnobStudio::modelGalleryFolder()
+{
+    return modelGallery();
+}
+
 juce::ResizableWindow* KnobStudio::showGallery (const juce::String& title, std::function<void (const juce::File&)> onPick,
                                                 bool closeOnPick, bool dragOut, juce::Component* near, const juce::String& pickText,
-                                                bool modal)
+                                                bool modal, bool models3d)
 {
-    auto gallery = std::make_unique<KnobGallery> (std::move (onPick), closeOnPick, dragOut, pickText);
+    auto gallery = std::make_unique<KnobGallery> (std::move (onPick), closeOnPick, dragOut, pickText,
+                                                  models3d ? GallerySort::models : GallerySort::knobs);
 
     if (! modal)
         return new GalleryWindow (title, std::move (gallery), near);   // it deletes itself when closed
@@ -1248,6 +1907,22 @@ juce::ResizableWindow* KnobStudio::showGallery (const juce::String& title, std::
     options.resizable = true;
     options.componentToCentreAround = near;
     return options.launchAsync();
+}
+
+std::unique_ptr<juce::Component> KnobStudio::makeGallery (std::function<void (const juce::File&)> onPick, int sort)
+{
+    const auto kind = sort == 1 ? GallerySort::models : sort == 2 ? GallerySort::shapes : GallerySort::knobs;
+    auto gallery = std::make_unique<KnobGallery> (std::move (onPick), false, true, "Add", kind);   // dragged out onto the window
+
+    // Shapes are kept from the Knob Studio's layers (its Shapes Gallery's Save).
+    if (kind == GallerySort::shapes)
+        gallery->onSave = []
+        {
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Shapes Gallery",
+                                                    "Shapes are kept from the Knob Studio: pick a look's layers there, then Save in its Shapes Gallery.");
+        };
+
+    return gallery;
 }
 
 juce::var KnobStudio::galleryDrag (const juce::File& file)
@@ -1319,12 +1994,16 @@ void KnobStudio::refreshList()
     // What the plugin's controls wear, in the order they come, then its own looks.
     names.clear();
 
+    // KnobMaster 2: the looks of the studio's sort, layers or 3D.
+    auto ofThisSort = [this] (const Looks::Look& look) { return (look.doc.model3d != nullptr) == mode3d; };
+
     for (const auto& w : layout.widgets)
         if (Looks::takesLook (w))
-            names.addIfNotAlreadyThere (looks.lookFor (w).name);
+            if (const auto& worn = looks.lookFor (w); ofThisSort (worn))
+                names.addIfNotAlreadyThere (worn.name);
 
     for (const auto* look : looks.all())
-        if (look->origin == Looks::Origin::project)
+        if (look->origin == Looks::Origin::project && ofThisSort (*look))
             names.addIfNotAlreadyThere (look->name);
 
     list.updateContent();
@@ -1345,14 +2024,19 @@ void KnobStudio::select (const juce::String& name)
     else
         list.deselectAllRows();
 
-    // Into the builder: a different look, or this one changed elsewhere (an undo, say).
+    // Into the builder: a different look, or this one changed elsewhere (an undo, say). A look
+    // of the other sort (3D, or layers) takes the studio there first.
     if (const auto* look = looks.find (current); look != nullptr && (! sameLook || look->revision != loadedRevision))
     {
         loadedRevision = look->revision;
-        layers.setDocument (look->doc);
+        const auto doc = look->doc;
+
+        if (! loadIntoBuilder (doc))
+            return;   // the studio changed sort: it selected the look again, there
     }
 
-    tabs.setVisible (looks.find (current) != nullptr);
+    tabs.setVisible (looks.find (current) != nullptr && ! mode3d);
+    workspace3d.setVisible (looks.find (current) != nullptr && mode3d);
     updateButtons();
     resized();
     repaint();
@@ -1367,10 +2051,28 @@ void KnobStudio::updateButtons()
     newButton.setEnabled (looks.isProjectOpen());
     duplicateButton.setEnabled (look != nullptr && looks.isProjectOpen());
     mineButton.setEnabled (look != nullptr);
+
+    // The 3D Studio: its looks as 3D models (.fk3d), and its own gallery of them.
+    saveKnobButton.setButtonText (juce::String::fromUTF8 (mode3d ? "Save as 3D model\xe2\x80\xa6" : "Save as Sonify knob\xe2\x80\xa6"));
+    loadKnobButton.setButtonText (juce::String::fromUTF8 (mode3d ? "Load 3D model\xe2\x80\xa6" : "Load Sonify knob\xe2\x80\xa6"));
+    galleryButton.setButtonText (juce::String::fromUTF8 (mode3d ? "Select from 3D Gallery\xe2\x80\xa6" : "Select from Gallery\xe2\x80\xa6"));
+
+    if (! workbench)
+    {
+        saveKnobButton.setTooltip (mode3d ? "Save this 3D look as a 3D model file (.fk3d), to share: into the 3D gallery, or wherever you choose"
+                                          : "Save this look as a Sonify knob file (.fklayers): into Sonify's gallery, or wherever you choose");
+        loadKnobButton.setTooltip (mode3d ? "A 3D model file (.fk3d) replaces the 3D look being designed (with none open: a new look)"
+                                          : "A Sonify knob file (.fklayers) replaces the look being designed (with none open: a new look)");
+        galleryButton.setTooltip (mode3d ? "The 3D gallery (3D models only), as pictures, in a window that stays open: double-click one (or drag it here) "
+                                           "to replace the look being designed; Save as 3D model keeps one there"
+                                         : "Sonify's gallery, as pictures, in a window that stays open: double-click a knob (or drag it here) "
+                                           "to replace the look being designed; Save as Sonify knob keeps one there");
+    }
+
     saveKnobButton.setEnabled (look != nullptr);
     exportPngButton.setEnabled (look != nullptr);
     loadKnobButton.setEnabled (workbench || looks.isProjectOpen());
-    loadKnobManButton.setEnabled (workbench || looks.isProjectOpen());
+    loadKnobManButton.setEnabled ((workbench || looks.isProjectOpen()) && ! mode3d);
     galleryButton.setEnabled (workbench || looks.isProjectOpen());
     deleteButton.setEnabled (look != nullptr && look->origin == Looks::Origin::project && usersOf (current) == 0);
 
@@ -1461,6 +2163,12 @@ void KnobStudio::showNewMenu()
         return;
     }
 
+    if (mode3d)
+    {
+        showNew3dMenu();
+        return;
+    }
+
     juce::PopupMenu menu;
     std::vector<std::pair<juce::String, Looks::Origin>> sources;   // by item id - 1
 
@@ -1531,9 +2239,145 @@ void KnobStudio::showNewMenu()
                         });
 }
 
+void KnobStudio::showNew3dMenu()
+{
+    // Each kind, from its ready-made ones (a slider up or across).
+    struct Pick { Model3D::Kind kind; int preset; bool across; };
+    std::vector<Pick> picks;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("New 3D look");
+
+    auto addKind = [&] (Model3D::Kind kind, const juce::String& title, bool across)
+    {
+        juce::PopupMenu sub;
+        const auto presets = Model3D::presetNames (kind);
+
+        for (int i = 0; i < presets.size(); ++i)
+        {
+            picks.push_back ({ kind, i, across });
+            sub.addItem ((int) picks.size(), presets[i]);
+        }
+
+        menu.addSubMenu (title, sub);
+    };
+
+    addKind (Model3D::Kind::knob, "Knobs", false);
+    addKind (Model3D::Kind::button, "Buttons", false);
+    addKind (Model3D::Kind::toggle, "Toggle switches", false);
+    addKind (Model3D::Kind::slider, "Sliders", false);
+    addKind (Model3D::Kind::slider, "Sliders across", true);
+    menu.addSeparator();
+    menu.addItem (galleryId, juce::String::fromUTF8 ("From the 3D Gallery\xe2\x80\xa6"));
+    menu.addItem (lookFileId, juce::String::fromUTF8 ("Open a 3D model file\xe2\x80\xa6"));
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&newButton),
+                        [safeThis = juce::Component::SafePointer<KnobStudio> (this), picks] (int result)
+                        {
+                            if (safeThis == nullptr || result <= 0)
+                                return;
+
+                            if (result == lookFileId)
+                            {
+                                safeThis->openLookFile();
+                                return;
+                            }
+
+                            if (result == galleryId)
+                            {
+                                // The 3D Gallery: a pick becomes a new 3D look.
+                                KnobStudio::showGallery ("3D Gallery", [safe = safeThis] (const juce::File& file)
+                                {
+                                    if (safe != nullptr)
+                                        safe->addLookFromFile (file);
+                                }, true, false, safeThis.getComponent(), {}, true, true);
+                                return;
+                            }
+
+                            if (! juce::isPositiveAndBelow (result - 1, (int) picks.size()))
+                                return;
+
+                            const auto pick = picks[(size_t) (result - 1)];
+                            const auto model = Model3D::preset (pick.kind, pick.preset);
+                            const auto doc = Model3D::newDocument (model, pick.across);
+                            const auto lookKind = pick.kind == Model3D::Kind::knob ? Looks::Kind::knob
+                                                : pick.kind == Model3D::Kind::slider ? (pick.across ? Looks::Kind::sliderAcross : Looks::Kind::slider)
+                                                                                     : Looks::Kind::button;
+                            safeThis->addLook (Model3D::presetNames (pick.kind)[pick.preset], lookKind, doc,
+                                               "3D " + Model3D::kindNames()[(int) pick.kind].toLowerCase());
+                        });
+}
+
+void KnobStudio::setMode3d (bool shouldBe3d)
+{
+    if (mode3d == shouldBe3d)
+        return;
+
+    mode3d = shouldBe3d;
+    current.clear();
+
+    if (galleryWindow != nullptr && galleryIs3d != mode3d)
+        closeGallery();
+
+    shapesGalleryButton.setVisible (! workbench && ! mode3d);
+
+    if (mode3d)
+        closeShapesGallery();
+
+    tabs.setVisible (false);
+    workspace3d.setVisible (false);
+    refreshList();
+    updateButtons();
+    resized();
+    repaint();
+}
+
+bool KnobStudio::loadIntoBuilder (const LayerDoc& doc)
+{
+    const bool is3d = doc.model3d != nullptr;
+
+    if (is3d != mode3d && ! workbench)
+    {
+        // The other studio: there, with this look selected.
+        const auto name = current;
+        mode3d = is3d;
+        refreshList();
+
+        if (is3d) workspace3d.setDocument (doc);
+        else      layers.setDocument (doc);
+
+        current = name;
+
+        if (const auto row = names.indexOf (current); row >= 0)
+            list.selectRow (row, false, true);
+
+        tabs.setVisible (! mode3d);
+        workspace3d.setVisible (mode3d);
+        shapesGalleryButton.setVisible (! workbench && ! mode3d);
+
+        if (mode3d)
+            closeShapesGallery();
+
+        updateButtons();
+        resized();
+        repaint();
+
+        if (onModeChanged != nullptr)
+            onModeChanged (mode3d);
+
+        return false;
+    }
+
+    if (is3d) workspace3d.setDocument (doc);
+    else      layers.setDocument (doc);
+
+    return true;
+}
+
 void KnobStudio::openLookFile()
 {
-    chooser = std::make_unique<juce::FileChooser> ("Open a look (.fklayers)", Looks::myLooksFolder(), juce::String ("*") + Looks::fileExtension);
+    chooser = mode3d ? std::make_unique<juce::FileChooser> ("Open a 3D model (.fk3d)", modelFolder.isDirectory() ? modelFolder : modelGalleryFolder(),
+                                                            "*" + juce::String (Looks::modelExtension) + ";*" + Looks::fileExtension)
+                     : std::make_unique<juce::FileChooser> ("Open a look (.fklayers)", Looks::myLooksFolder(), juce::String ("*") + Looks::fileExtension);
 
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [safeThis = juce::Component::SafePointer<KnobStudio> (this)] (const juce::FileChooser& fc)
@@ -1610,7 +2454,14 @@ void KnobStudio::replaceCurrentFrom (const juce::File& file)
     // Into the builder, then saved as any change there is (a control opened alone gets a look
     // of its own first), so it shows on the plugin at once.
     const auto name = current;
-    layers.setDocument (doc);
+
+    if (! loadIntoBuilder (doc))
+    {
+        // Of the other sort: in that studio's builder now, saved as the look.
+        builderChanged();
+        return;
+    }
+
     builderChanged();
     status ("\"" + current + "\" now looks like " + file.getFileNameWithoutExtension()
             + (current != name ? juce::String (" (a look of its own for this ") + controlName() + ")." : juce::String (".")));
@@ -1666,7 +2517,9 @@ juce::var KnobStudio::getDragSourceDescription (const juce::SparseSet<int>& rows
     folder.deleteRecursively();
     folder.createDirectory();
 
-    const auto file = folder.getChildFile (juce::File::createLegalFileName (look->name) + Looks::fileExtension);
+    // (A 3D look as a 3D model: the 3D Gallery takes it, the other one doesn't.)
+    const auto file = folder.getChildFile (juce::File::createLegalFileName (look->name)
+                                           + (look->doc.model3d != nullptr ? Looks::modelExtension : Looks::fileExtension));
 
     if (! Looks::writeFile (file, *look))
         return {};
@@ -1727,13 +2580,36 @@ void KnobStudio::exportFilmstrip()
     if (look == nullptr)
         return;
 
+    // A filmstrip of every frame, or one picture of it (a button, a single knob for a mockup).
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Export to PNG");
+    PngExport::addChoices (menu, look->doc.frames, true);
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&exportPngButton),
+                        [safeThis = juce::Component::SafePointer<KnobStudio> (this)] (int choice)
+                        {
+                            if (safeThis != nullptr && choice > 0)
+                                safeThis->exportPicture (choice);
+                        });
+}
+
+void KnobStudio::exportPicture (int choice)
+{
+    const auto* look = looks.find (current);
+
+    if (look == nullptr)
+        return;
+
+    const bool strip = PngExport::isStrip (choice);
+    const auto suffix = PngExport::suffix (choice);
+
     const auto start = (workbench && knobFolder.isDirectory() ? knobFolder : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory))
-                           .getChildFile (juce::File::createLegalFileName (workbench ? knobTitle : current) + ".png");
-    chooser = std::make_unique<juce::FileChooser> ("Export the frames as a PNG filmstrip", start, "*.png");
+                           .getChildFile (juce::File::createLegalFileName ((workbench ? knobTitle : current) + suffix) + ".png");
+    chooser = std::make_unique<juce::FileChooser> (strip ? "Export the frames as a PNG filmstrip" : "Export one picture of it as a PNG", start, "*.png");
 
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
                               | juce::FileBrowserComponent::warnAboutOverwriting,
-                          [safeThis = juce::Component::SafePointer<KnobStudio> (this)] (const juce::FileChooser& fc)
+                          [safeThis = juce::Component::SafePointer<KnobStudio> (this), choice, strip] (const juce::FileChooser& fc)
                           {
                               if (safeThis == nullptr || fc.getResult() == juce::File())
                                   return;
@@ -1743,15 +2619,11 @@ void KnobStudio::exportFilmstrip()
                               if (look == nullptr)
                                   return;
 
-                              // Top to bottom, every frame at the look's own size.
-                              const auto strip = LayerRender::renderFilmstrip (look->doc, true);
                               const auto file = fc.getResult().withFileExtension (".png");
-                              file.deleteFile();
-                              juce::FileOutputStream out (file);
-                              juce::PNGImageFormat png;
 
-                              safeThis->status (out.openedOk() && png.writeImageToStream (strip, out)
-                                                    ? "Exported " + juce::String (look->doc.frames) + " frames to " + file.getFullPathName() + "."
+                              safeThis->status (PngExport::write (PngExport::render (look->doc, choice), file)
+                                                    ? "Exported " + (strip ? juce::String (look->doc.frames) + " frames" : juce::String ("one picture"))
+                                                          + " to " + file.getFullPathName() + "."
                                                     : "Couldn't write " + file.getFullPathName() + ".");
                           });
 }
@@ -1809,7 +2681,8 @@ void KnobStudio::paint (juce::Graphics& g)
 
     g.setColour (Theme::text);
     g.setFont (Theme::font (16.0f, true));
-    g.drawText (workbench ? "Knob: " + knobTitle : look != nullptr ? "Look: " + current : juce::String ("Knob Studio"),
+    g.drawText (workbench ? "Knob: " + knobTitle : look != nullptr ? (mode3d ? "3D look: " : "Look: ") + current
+                                                                    : juce::String (mode3d ? "3D Studio" : "Knob Studio"),
                 header.removeFromTop (20), juce::Justification::centredLeft, true);
 
     juce::String detail;
@@ -1822,6 +2695,7 @@ void KnobStudio::paint (juce::Graphics& g)
     else if (look == nullptr)
     {
         detail = ! looks.isProjectOpen() ? "Open a plugin: the Knob Studio works on its knobs, sliders and switches."
+               : names.isEmpty() && mode3d ? "No 3D looks yet: make one with + New look, from a ready-made knob, button, slider or toggle switch."
                : names.isEmpty()         ? "Build the plugin first: its knobs, sliders and switches bring their looks."
                                          : "Nothing open: select a control in Edit UI and press \"Design it in the Knob Studio\" in its menu.";
     }
@@ -1862,9 +2736,12 @@ void KnobStudio::paint (juce::Graphics& g)
         auto hint = getLocalBounds().withTrimmedTop (headerHeight).withTrimmedBottom (statusHeight).withTrimmedLeft (listWidth);
         g.setColour (Theme::muted);
         g.setFont (Theme::font (15.0f));
-        g.drawFittedText ("Select a control in Edit UI and press \"Design it in the Knob Studio\" in its menu: its look opens here "
-                          "(\"Apply this knob on similars\", under it, puts its look on every control of its kind). Looks are made of layers, the "
-                          "KnobMan way: a shape on each, with its own light, bevel, texture and movement.",
+        g.drawFittedText (mode3d ? juce::String ("The 3D Studio: knobs, buttons, sliders and toggle switches built as real objects, in "
+                                                 "materials, lit by the panel's light. Make one with + New look (from a ready-made one), "
+                                                 "or open a control's 3D look from its menu in Edit UI. Every frame is rendered.")
+                                 : juce::String ("Select a control in Edit UI and press \"Design it in the Knob Studio\" in its menu: its look opens here "
+                                                 "(\"Apply this knob on similars\", under it, puts its look on every control of its kind). Looks are made of layers, the "
+                                                 "KnobMan way: a shape on each, with its own light, bevel, texture and movement."),
                           hint.withSizeKeepingCentre (juce::jmin (520, hint.getWidth() - 40), 80), juce::Justification::centred, 3, 1.0f);
     }
 }
@@ -1922,7 +2799,8 @@ void KnobStudio::resized()
     left.removeFromBottom (6);
     auto upper = left.removeFromBottom (30);
     left.removeFromBottom (8);
-    list.setBounds (left);
+    // KnobMaster 2: no list of looks (the plugin's controls open theirs); the Knob Studio's Shapes Gallery there.
+    shapesGalleryButton.setBounds (left.removeFromTop (32).reduced (2, 0));
 
     newButton.setBounds (upper.removeFromLeft (upper.getWidth() / 2).reduced (2, 0));
     duplicateButton.setBounds (upper.reduced (2, 0));
@@ -1930,4 +2808,5 @@ void KnobStudio::resized()
     deleteButton.setBounds (lower.reduced (2, 0));
 
     tabs.setBounds (area.withTrimmedLeft (1));
+    workspace3d.setBounds (area.withTrimmedLeft (1));
 }

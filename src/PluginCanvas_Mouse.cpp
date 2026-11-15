@@ -4,7 +4,11 @@
 
 #include "PluginCanvas.h"
 #include "PluginCanvasMenu.h"
+#include "Body3D.h"       // the window's 3D body, selected, moved and resized
+#include "BodyEditor.h"
 #include "PanelParts.h"
+#include "SelectorSet.h"
+#include "PerformControl.h"
 #include "StellaLookAndFeel.h"
 #include "KnobStudio.h"   // the Gallery
 
@@ -34,6 +38,8 @@ juce::Rectangle<float> PluginCanvas::panelArea() const
     return toView ({ 0, 0, layout.width, layout.height });
 }
 
+// (windowArea(): the panel and the side panels joined to it; see PluginCanvas.cpp)
+
 juce::Point<float> PluginCanvas::toPlugin (juce::Point<float> view) const
 {
     return view / zoom + pan;
@@ -47,11 +53,13 @@ juce::Rectangle<float> PluginCanvas::toView (juce::Rectangle<int> plugin) const
 
 juce::Rectangle<float> PluginCanvas::worldBounds() const
 {
+    const auto window = windowBounds().toFloat();
+
     if (panelOnly)
-        return { 0.0f, 0.0f, (float) layout.width, (float) layout.height };
+        return window;
 
     const auto margin = juce::jmax (worldMargin, (float) juce::jmax (layout.width, layout.height));
-    return juce::Rectangle<float> (0.0f, 0.0f, (float) layout.width, (float) layout.height).expanded (margin);
+    return window.expanded (margin);
 }
 
 void PluginCanvas::clampPan()
@@ -109,8 +117,9 @@ void PluginCanvas::fitToView()
         return;
     }
 
-    zoom = juce::jlimit (minZoom, panelOnly ? maxZoom : 1.0f, juce::jmin (view.getWidth() / (float) layout.width, view.getHeight() / (float) layout.height));
-    pan = juce::Point<float> ((float) layout.width, (float) layout.height) * 0.5f - view.getCentre() / zoom;
+    const auto window = windowBounds().toFloat();   // the side panels joined to it too
+    zoom = juce::jlimit (minZoom, panelOnly ? maxZoom : 1.0f, juce::jmin (view.getWidth() / window.getWidth(), view.getHeight() / window.getHeight()));
+    pan = window.getCentre() - view.getCentre() / zoom;
     clampPan();
     autoFit = true;
     viewChanged();
@@ -265,6 +274,250 @@ juce::Rectangle<float> PluginCanvas::panelHandle() const
 }
 
 //==============================================================================
+// The 3D body, selected, moved and resized as a thing of its own
+juce::Rectangle<float> PluginCanvas::bodyBounds() const
+{
+    if (! Body3D::hasParts (layout.body))
+        return {};
+
+    if (drag == Drag::moveBody || drag == Drag::resizeBody || bodyInFrame)
+        return bodyDragRect;
+
+    if (bodyImageMap.has_value())
+        return bodyImageMap->second;   // moved: its new shape's still being worked out
+
+    // Seen from above: its parts' footprint (x across, z down the window).
+    if (bodyShape != nullptr)
+    {
+        const auto W = (float) layout.width, H = (float) layout.height;
+        const auto box = juce::Rectangle<float>::leftTopRightBottom (W * 0.5f + bodyShape->lo[0], H * 0.5f + bodyShape->lo[2],
+                                                                    W * 0.5f + bodyShape->hi[0], H * 0.5f + bodyShape->hi[2]);
+
+        if (! box.isEmpty() && box.getWidth() < 100000.0f)
+            return box;
+    }
+
+    return { 0.0f, 0.0f, (float) layout.width, (float) layout.height };
+}
+
+juce::Rectangle<float> PluginCanvas::bodyHandleArea (int handle) const
+{
+    if (! bodySelected || ! design || ! juce::isPositiveAndBelow (handle, 8))
+        return {};
+
+    const auto box = toView (bodyBounds().getSmallestIntegerContainer());
+
+    if (box.isEmpty())
+        return {};
+
+    const float xs[] { box.getX(), box.getCentreX(), box.getRight() }, ys[] { box.getY(), box.getCentreY(), box.getBottom() };
+    static constexpr int col[] { 0, 1, 2, 2, 2, 1, 0, 0 }, row[] { 0, 0, 0, 1, 2, 2, 2, 1 };
+    return juce::Rectangle<float> (handleSize, handleSize).withCentre ({ xs[col[handle]], ys[row[handle]] });
+}
+
+int PluginCanvas::bodyHandleAt (juce::Point<float> view) const
+{
+    for (const auto handle : { 0, 2, 4, 6, 1, 3, 5, 7 })
+        if (const auto area = bodyHandleArea (handle); ! area.isEmpty() && area.expanded (3.0f).contains (view))
+            return handle;
+
+    return -1;
+}
+
+void PluginCanvas::selectBody()
+{
+    selected = -1;
+    manySelected.clear();
+    panelSelected = false;
+    bodySelected = design && hasPanel() && Body3D::hasParts (layout.body);
+
+    if (! bodySelected)
+        closeMenu();
+    else if (menuOpen)
+        openMenu();
+
+    repaint();
+}
+
+void PluginCanvas::dragBody (juce::Point<float> delta)
+{
+    const auto from = bodyStartRect;
+    auto box = from;
+
+    if (drag == Drag::moveBody)
+    {
+        box = from.translated ((float) snapped (delta.x), (float) snapped (delta.y));
+
+        // Its middle near the window's: on it (pink lines show it), as Photoshop does.
+        const float pull = 6.0f / juce::jmax (0.1f, zoom);
+        const float midX = (float) layout.width * 0.5f, midY = (float) layout.height * 0.5f;
+        bodyCentredX = std::abs (box.getCentreX() - midX) <= pull;
+        bodyCentredY = std::abs (box.getCentreY() - midY) <= pull;
+
+        if (bodyCentredX) box.setCentre (midX, box.getCentreY());
+        if (bodyCentredY) box.setCentre (box.getCentreX(), midY);
+    }
+    else
+    {
+        // Its handles: 0 top-left, 1 top, 2 top-right, 3 right, 4 bottom-right, 5 bottom, 6 bottom-left, 7 left.
+        const bool left = resizeHandle == 0 || resizeHandle == 6 || resizeHandle == 7;
+        const bool right = resizeHandle >= 2 && resizeHandle <= 4;
+        const bool top = resizeHandle <= 2;
+        const bool bottom = resizeHandle >= 4 && resizeHandle <= 6;
+        const float minimum = 16.0f;
+        auto l = from.getX(), t = from.getY(), r = from.getRight(), b = from.getBottom();
+
+        if (left)   l = juce::jmin ((float) snapped (from.getX() + delta.x), r - minimum);
+        if (right)  r = juce::jmax ((float) snapped (from.getRight() + delta.x), l + minimum);
+        if (top)    t = juce::jmin ((float) snapped (from.getY() + delta.y), b - minimum);
+        if (bottom) b = juce::jmax ((float) snapped (from.getBottom() + delta.y), t + minimum);
+
+        box = juce::Rectangle<float>::leftTopRightBottom (l, t, r, b);
+    }
+
+    if (box != bodyDragRect)
+    {
+        bodyDragRect = box;
+        changed = true;
+        repaint();
+    }
+}
+
+bool PluginCanvas::scalesContents (const GuiWidget& frame)
+{
+    const auto found = frame.settings.find ("scaleContents");
+    return frame.type == GuiWidget::Type::group && (found == frame.settings.end() || (bool) found->second);
+}
+
+bool PluginCanvas::frameHoldsBody (juce::Rectangle<int> frame) const
+{
+    const auto body = bodyBounds();
+
+    if (body.isEmpty() || ! Body3D::hasParts (layout.body))
+        return false;
+
+    const auto slack = juce::jmax (8.0f, 0.03f * (float) juce::jmax (frame.getWidth(), frame.getHeight()));
+    return frame.toFloat().expanded (slack).contains (body);
+}
+
+GuiWidget PluginCanvas::scaledWidget (const GuiWidget& start, juce::Rectangle<float> from, juce::Rectangle<float> to)
+{
+    auto w = start;
+    const float sx = to.getWidth() / juce::jmax (1.0f, from.getWidth()), sy = to.getHeight() / juce::jmax (1.0f, from.getHeight());
+    const float s = juce::jmin (sx, sy);
+    const auto b = start.bounds.toFloat();
+    const juce::Point<float> centre (to.getX() + (b.getCentreX() - from.getX()) * sx, to.getY() + (b.getCentreY() - from.getY()) * sy);
+    float bw = b.getWidth() * sx, bh = b.getHeight() * sy;
+
+    // A knob stays round over its caption.
+    if (start.type == GuiWidget::Type::knob)
+    {
+        const auto caption = (float) GuiLayout::captionHeight;
+        bw = b.getWidth() * s;
+        bh = juce::jmax (4.0f, b.getHeight() - caption) * s + caption;
+    }
+
+    w.bounds = juce::Rectangle<float> (juce::jmax (4.0f, bw), juce::jmax (4.0f, bh)).withCentre (centre).toNearestInt();
+
+    // Its words, lines and caption's place with it.
+    if (start.fontSize > 0.0f)
+        w.fontSize = start.fontSize * s;
+    else if (start.isControl() && std::abs (s - 1.0f) > 0.001f)
+        w.fontSize = 12.5f * s;   // a caption's standard size, scaled
+
+    w.textShift = juce::roundToInt ((float) start.textShift * s);
+    w.strokeWidth = start.strokeWidth * s;
+    return w;
+}
+
+void PluginCanvas::scaleFrameTo (int frame, juce::Rectangle<int> wanted)
+{
+    if (! juce::isPositiveAndBelow (frame, (int) layout.widgets.size()))
+        return;
+
+    const auto start = layout.widgets[(size_t) frame];
+    const auto from = start.bounds.toFloat();
+    const float s = wanted.getWidth() != start.bounds.getWidth() ? (float) wanted.getWidth() / juce::jmax (1.0f, from.getWidth())
+                                                                  : (float) wanted.getHeight() / juce::jmax (1.0f, from.getHeight());
+    const juce::Rectangle<float> to ((float) wanted.getX(), (float) wanted.getY(), from.getWidth() * s, from.getHeight() * s);
+
+    for (int i = 0; i < (int) layout.widgets.size(); ++i)
+        if (i != frame && start.bounds.contains (layout.widgets[(size_t) i].bounds))
+            layout.widgets[(size_t) i] = scaledWidget (layout.widgets[(size_t) i], from, to);
+
+    if (frameHoldsBody (start.bounds))
+    {
+        const auto body = bodyBounds();
+        const juce::Rectangle<float> moved (to.getX() + (body.getX() - from.getX()) * s, to.getY() + (body.getY() - from.getY()) * s,
+                                            body.getWidth() * s, body.getHeight() * s);
+        layout.body = bodyInto (layout.body, layout.width, layout.height, body, moved);
+        bodyImageMap = std::make_pair (bodyImageMap.has_value() ? bodyImageMap->first : body, moved);
+    }
+
+    auto& w = layout.widgets[(size_t) frame];
+    w = scaledWidget (start, from, to);
+    w.bounds = to.toNearestInt();
+}
+
+juce::var PluginCanvas::bodyInto (const juce::var& source, int windowWidth, int windowHeight, juce::Rectangle<float> from, juce::Rectangle<float> to)
+{
+    if (from.isEmpty() || to.isEmpty() || ! Body3D::hasParts (source))
+        return source;
+
+    // Every part: moved to the box's corner, scaled with it (as the window's resize scales it),
+    // moved to the new corner; the middle its mirrored parts are mirrored across with them.
+    auto shifted = [] (const juce::var& in, float dx, float dz)
+    {
+        auto body = in.clone();
+
+        if (auto* o = body.getDynamicObject())
+            o->setProperty ("mirrorAt", std::round (((double) body.getProperty ("mirrorAt", 0.0) + dx) * 100.0) / 100.0);
+
+        if (auto* parts = body.getProperty ("parts", {}).getArray())
+            for (auto& part : *parts)
+                if (auto* o = part.getDynamicObject())
+                {
+                    o->setProperty ("x", std::round (((double) part.getProperty ("x", 0.0) + dx) * 100.0) / 100.0);
+                    o->setProperty ("z", std::round (((double) part.getProperty ("z", 0.0) + dz) * 100.0) / 100.0);
+                }
+
+        return body;
+    };
+
+    // A part with no x or z of its own sits in the window's middle: given it, so it moves.
+    auto body = source.clone();
+
+    if (auto* o = body.getDynamicObject())
+        o->setProperty ("mirrorAt", (double) Body3D::mirrorAtOf (source, windowWidth));
+
+    if (auto* parts = body.getProperty ("parts", {}).getArray())
+        for (auto& part : *parts)
+            if (auto* o = part.getDynamicObject())
+            {
+                if (! o->hasProperty ("x"))  o->setProperty ("x", windowWidth * 0.5);
+                if (! o->hasProperty ("z"))  o->setProperty ("z", windowHeight * 0.5);
+            }
+
+    body = shifted (body, -from.getX(), -from.getY());
+    body = BodyEditor::scaledBody (body, juce::roundToInt (from.getWidth() * 100.0f), juce::roundToInt (from.getHeight() * 100.0f),
+                                   juce::roundToInt (to.getWidth() * 100.0f), juce::roundToInt (to.getHeight() * 100.0f));
+    return shifted (body, to.getX(), to.getY());
+}
+
+void PluginCanvas::dropBody()
+{
+    const auto from = bodyStartRect, to = bodyDragRect;
+
+    if (from.isEmpty() || to.isEmpty() || from == to || ! Body3D::hasParts (layout.body))
+        return;
+
+    layout.body = bodyInto (layout.body, layout.width, layout.height, from, to);
+
+    // The last picture stands in, stretched, until the new one's made.
+    bodyImageMap = std::make_pair (bodyImageMap.has_value() ? bodyImageMap->first : from, to);
+}
+
+//==============================================================================
 // The crop tool
 void PluginCanvas::startCrop()
 {
@@ -341,8 +594,22 @@ void PluginCanvas::applyCrop()
 
     releaseKey();
     layout.widgets = std::move (kept);
+
+    // Its mirrored parts' middle, where it is now (the window's middle changes).
+    if (Body3D::hasParts (layout.body))
+    {
+        layout.body = layout.body.clone();
+
+        if (auto* o = layout.body.getDynamicObject())
+            o->setProperty ("mirrorAt", (double) Body3D::mirrorAtOf (layout.body, layout.width));
+    }
+
     layout.width = newWidth;
     layout.height = newHeight;
+
+    // The body stays where it was under the box (its parts move with the box's corner): a
+    // crop cuts the window, it doesn't shrink what's on it.
+    bodyFollowsWindow (0, 0, box.getPosition());
     indexesChanged();
     select (-1);
 
@@ -586,6 +853,46 @@ juce::Point<float> PluginCanvas::handleCentre (int handle) const
     return at.transformedBy (viewTurn (w));
 }
 
+bool PluginCanvas::hasStudio (const GuiWidget& w) const
+{
+    return w.type == GuiWidget::Type::selector || w.type == GuiWidget::Type::xy || w.type == GuiWidget::Type::matrix
+        || w.type == GuiWidget::Type::preset || (Looks::takesLook (w) && w.command.isEmpty() && looks != nullptr && onEditLook != nullptr);
+}
+
+juce::Rectangle<float> PluginCanvas::editTabArea() const
+{
+    if (! design || ! hasPanel() || ! juce::isPositiveAndBelow (selected, (int) layout.widgets.size()) || ! manySelected.empty()
+        || drag != Drag::none)
+        return {};
+
+    const auto& w = layout.widgets[(size_t) selected];
+
+    if (! isShown (w) || ! hasStudio (w))
+        return {};
+
+    // Under the middle of its bottom side, past its handle.
+    const auto bottom = handleCentre (5);
+    return juce::Rectangle<float> (22.0f, 16.0f).withCentre ({ bottom.x, bottom.y + handleSize * 0.5f + 14.0f });
+}
+
+void PluginCanvas::openStudio (int widgetIndex)
+{
+    if (! juce::isPositiveAndBelow (widgetIndex, (int) layout.widgets.size()))
+        return;
+
+    switch (layout.widgets[(size_t) widgetIndex].type)
+    {
+        case GuiWidget::Type::selector:
+        case GuiWidget::Type::xy:
+        case GuiWidget::Type::matrix:
+        case GuiWidget::Type::preset:    editAdvanced (widgetIndex); return;
+        default: break;
+    }
+
+    if (onEditLook != nullptr && Looks::takesLook (layout.widgets[(size_t) widgetIndex]))
+        onEditLook (widgetIndex, false);
+}
+
 juce::Rectangle<float> PluginCanvas::handleArea (int handle) const
 {
     static_assert (maxBendHandles == ObjectPaint::maxBends, "a handle for every bend point a line can have");
@@ -742,17 +1049,98 @@ int PluginCanvas::layerStep (int index, bool up) const
     return passed.empty() ? -1 : passed.back();
 }
 
+void PluginCanvas::setBehindBody (int index, bool behind)
+{
+    if (! juce::isPositiveAndBelow (index, (int) layout.widgets.size()))
+        return;
+
+    auto& settings = layout.widgets[(size_t) index].settings;
+
+    if (behind)
+        settings["behindBody"] = true;
+    else
+        settings.erase ("behindBody");
+}
+
 void PluginCanvas::reorder (int index, Order order)
 {
     if (! juce::isPositiveAndBelow (index, (int) layout.widgets.size()))
         return;
 
+    // With a 3D body, the elements are two groups, each in its own order: those behind the
+    // body (a table, a backdrop), drawn first, and those over it. A step that finds nothing
+    // more in its group to pass passes the body.
     const auto last = (int) layout.widgets.size() - 1;
-    const auto target = order == Order::front    ? last
-                      : order == Order::back     ? 0
-                      : layerStep (index, order == Order::forward);
+    const bool body = Body3D::hasParts (layout.body);
+    const bool behind = isBehindBody (index);
+    std::optional<bool> nowBehind;
+    int target = index;
 
-    if (target < 0 || target == index)
+    auto lowestInGroup = [&]
+    {
+        for (int i = 0; i < index; ++i)
+            if (isBehindBody (i) == behind)
+                return false;
+
+        return true;
+    };
+
+    switch (order)
+    {
+        case Order::front:
+            target = last;
+            nowBehind = false;
+            break;
+
+        case Order::back:
+            target = 0;
+
+            if (body && ! behind && lowestInGroup())
+                nowBehind = true;   // already the lowest over the body: under it, the very back
+            break;
+
+        case Order::forward:
+        case Order::backward:
+        {
+            const bool up = order == Order::forward;
+            const auto step = layerStep (index, up);
+
+            if (step >= 0 && isBehindBody (step) == behind)
+            {
+                target = step;
+            }
+            else if (body && up == behind)
+            {
+                // Over the body (up from under it: the lowest over it) or under it (down from
+                // over it: the highest under it).
+                nowBehind = ! up;
+                target = up ? 0 : last;
+            }
+            else
+            {
+                return;
+            }
+            break;
+        }
+
+        case Order::behindBody:
+            if (! body || behind)
+                return;
+
+            nowBehind = true;
+            target = last;   // the highest under it
+            break;
+
+        case Order::overBody:
+            if (! behind)
+                return;
+
+            nowBehind = false;
+            target = 0;   // the lowest over it
+            break;
+    }
+
+    if (target == index && (! nowBehind.has_value() || *nowBehind == behind))
         return;
 
     releaseKey();
@@ -760,6 +1148,10 @@ void PluginCanvas::reorder (int index, Order order)
     const auto moving = layout.widgets[(size_t) index];
     layout.widgets.erase (layout.widgets.begin() + index);
     layout.widgets.insert (layout.widgets.begin() + target, moving);
+
+    if (nowBehind.has_value())
+        setBehindBody (target, *nowBehind && body);
+
     indexesChanged();
 
     select (target);
@@ -1014,6 +1406,25 @@ void PluginCanvas::reorderSelection (bool toFront)
 
     releaseKey();
 
+    // To the front: over the 3D body. To the back: the lowest over it, or (when they're that
+    // already) under it, the very back.
+    bool underBody = false;
+
+    if (! toFront && Body3D::hasParts (layout.body))
+    {
+        const std::set<int> chosen (all.begin(), all.end());
+        const auto highest = *chosen.rbegin();
+        underBody = true;
+
+        for (int i = 0; i <= highest && underBody; ++i)
+        {
+            if (chosen.count (i) > 0)
+                underBody = ! isBehindBody (i);                // every one of them over the body...
+            else if (! isBehindBody (i))
+                underBody = false;                             // ...and nothing else over it before them
+        }
+    }
+
     std::vector<GuiWidget> moving;
 
     for (const auto i : all)
@@ -1021,6 +1432,14 @@ void PluginCanvas::reorderSelection (bool toFront)
 
     for (auto it = all.rbegin(); it != all.rend(); ++it)
         layout.widgets.erase (layout.widgets.begin() + *it);
+
+    for (auto& w : moving)
+    {
+        if (underBody)
+            w.settings["behindBody"] = true;
+        else if (toFront)
+            w.settings.erase ("behindBody");
+    }
 
     const auto at = toFront ? (int) layout.widgets.size() : 0;
     layout.widgets.insert (layout.widgets.begin() + at, moving.begin(), moving.end());
@@ -1035,6 +1454,7 @@ void PluginCanvas::reorderSelection (bool toFront)
     edited();
 }
 
+//==============================================================================
 void PluginCanvas::navigateMinimapTo (juce::Point<float> view)
 {
     const auto map = minimapArea();
@@ -1194,8 +1614,10 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
     drag = Drag::none;
     changed = dragMoved = false;
     menuOnRelease = false;
-    pressedPanel = false;
+    pressedPanel = pressedBody = false;
     pressedBackdrop = -1;
+    frameContents.clear();
+    bodyInFrame = false;
     reopenMenu = menuOpen;
     carried.clear();
     dragStart = e.position;
@@ -1246,7 +1668,7 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
     }
 
     const auto plugin = toPlugin (e.position);
-    const bool insidePanel = panelArea().contains (e.position);
+    const bool insidePanel = windowArea().contains (e.position);
 
     // Cropping: a handle drags its side or corner, inside moves the box, outside draws a new
     // one; a double-click inside crops.
@@ -1280,6 +1702,7 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
         if (box.contains (e.position))
         {
             pageStripClicked (item, e);
+            repaint();
             return;
         }
     }
@@ -1315,11 +1738,23 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
             }
             else if (insidePanel)
             {
-                selectPanel();
+                // On the body: it (its menu's the window's), otherwise the window.
+                if (Body3D::hasParts (layout.body) && bodyBounds().contains (plugin))
+                    selectBody();
+                else
+                    selectPanel();
+
                 pastePoint = plugin;
                 openMenu();
             }
 
+            return;
+        }
+
+        // The "E" under the selected element: its studio.
+        if (const auto tab = editTabArea(); ! tab.isEmpty() && tab.expanded (2.0f).contains (e.position))
+        {
+            openStudio (selected);
             return;
         }
 
@@ -1347,6 +1782,21 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
 
             startBounds = layout.widgets[(size_t) selected].bounds;
             startWidget = layout.widgets[(size_t) selected];
+
+            // A frame that scales what's inside it: what that is, as it is now.
+            if (drag == Drag::resizeElement && scalesContents (startWidget) && ! startWidget.isTurned())
+            {
+                for (int i = 0; i < (int) layout.widgets.size(); ++i)
+                    if (i != selected && startBounds.contains (layout.widgets[(size_t) i].bounds))
+                        frameContents.push_back ({ i, layout.widgets[(size_t) i] });
+
+                if (frameHoldsBody (startBounds))
+                {
+                    bodyStartRect = bodyDragRect = bodyBounds();
+                    bodyInFrame = true;
+                }
+            }
+
             return;   // its menu stays open, following it
         }
 
@@ -1355,6 +1805,15 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
             drag = Drag::resizePanel;
             startPanelSize = { layout.width, layout.height };
             selectPanel();
+            return;
+        }
+
+        // The selected body's handles resize it.
+        if (const auto handle = bodySelected ? bodyHandleAt (e.position) : -1; handle >= 0)
+        {
+            bodyStartRect = bodyDragRect = bodyBounds();
+            drag = Drag::resizeBody;
+            resizeHandle = handle;
             return;
         }
 
@@ -1393,11 +1852,8 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
                 if (const auto tab = tabAt (picked, intoWidget (picked, plugin)); tab >= 0)
                     showPage (tab);
 
-            // An element: it's selected now (a menu open for another one closes: the menu is
-            // the right-click's). One of several selected: they all move with it.
-            if (menuOpen && ! isSelected (index))
-                closeMenu();
-
+            // An element: it's selected now (the edit window, open, follows it). One of several
+            // selected: they all move with it.
             reopenMenu = menuOpen;
             const bool many = manySelected.count (index) > 0;
 
@@ -1436,6 +1892,33 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
             for (const auto i : along)
                 carried.push_back ({ i, layout.widgets[(size_t) i].bounds });
 
+            // A frame round the 3D body carries it too.
+            for (const auto mover : movers)
+            {
+                if (layout.widgets[(size_t) mover].type == GuiWidget::Type::group && frameHoldsBody (layout.widgets[(size_t) mover].bounds))
+                {
+                    bodyStartRect = bodyDragRect = bodyBounds();
+                    bodyInFrame = true;
+                    break;
+                }
+            }
+
+            return;
+        }
+
+        // The 3D body where nothing stands on it: selected, a drag moves it; not selected yet,
+        // a click selects it (a drag moves the view, so it isn't moved by accident).
+        if (insidePanel && Body3D::hasParts (layout.body) && bodyBounds().contains (plugin))
+        {
+            if (bodySelected)
+            {
+                bodyStartRect = bodyDragRect = bodyBounds();
+                drag = Drag::moveBody;
+                return;
+            }
+
+            pressedBody = true;
+            drag = Drag::pan;
             return;
         }
 
@@ -1445,8 +1928,16 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
-    // Play mode. A programmed element's open popup takes the click; a click anywhere else
-    // closes it, and goes no further.
+    // Play mode. A preset manager's open list or table, a side panel's handle.
+    if (presetPress (plugin, e.mods.isPopupMenu()))
+    {
+        active = -1;
+        drag = Drag::none;
+        return;
+    }
+
+    // A programmed element's open popup takes the click; a click anywhere else closes it, and
+    // goes no further.
     if (const auto owner = popupAt (plugin); owner >= 0)
     {
         active = owner;
@@ -1477,12 +1968,32 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
 
     if (active < 0)
     {
+        endAssigning();   // assigning: a click elsewhere ends it
         drag = Drag::pan;
         return;
     }
 
     drag = Drag::control;
     const auto& w = layout.widgets[(size_t) active];
+
+    // A control and the modulation matrix: assigning (Compact assign), its amount dragged
+    // (Alt), its modulation's menu (a right-click).
+    if (w.type != GuiWidget::Type::matrix)
+    {
+        if (modulationPress (active, plugin, e.mods))
+        {
+            if (amountDrag.route < 0)
+            {
+                active = -1;
+                drag = Drag::none;
+            }
+
+            return;
+        }
+
+        if (destinationOf (w) <= 0)
+            endAssigning();
+    }
 
     if (w.type == GuiWidget::Type::custom)
     {
@@ -1517,7 +2028,19 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
 
     if (w.type == GuiWidget::Type::xy)
     {
+        if (PerformControl::has (w))
+            performPart = PerformControl::partAt (PerformControl::designOf (w), w.bounds.toFloat().withTrimmedBottom ((float) GuiLayout::captionHeight), local);
+
         setXy (w, local);
+        return;
+    }
+
+    if (w.type == GuiWidget::Type::preset && PresetPanel::has (w))
+    {
+        const auto index = active;
+        active = -1;
+        drag = Drag::none;
+        presetWidgetPress (index, local, e.mods.isPopupMenu());
         return;
     }
 
@@ -1581,6 +2104,48 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
+    // A modulation matrix: a route's source or destination picked, an amount, a pin, a cable.
+    if (w.type == GuiWidget::Type::matrix)
+    {
+        matrixPress (active, local, e.mods.isPopupMenu());
+        return;
+    }
+
+    // A selector's set of keys: the key under the mouse, as its keys behave.
+    if (w.type == GuiWidget::Type::selector && SelectorSet::has (w))
+    {
+        const auto area = w.bounds.toFloat().withTrimmedBottom ((float) GuiLayout::captionHeight);
+        const auto keys = selectorKeys (w);
+        const auto key = SelectorSet::keyAt (SelectorSet::designOf (w), area, keys, local);
+        const auto mode = SelectorSet::modeOf (w);
+        const auto* main = paramFor (w);
+
+        if (key >= 0 && mode == "toggles")
+        {
+            if (const auto* one = paramById (SelectorSet::keyParam (w, key)))
+                setValue (*one, proportionOf (*one, currentValue (*one)) >= 0.5f ? one->min : one->max);
+        }
+        else if (key >= 0 && main != nullptr && mode == "multi")
+        {
+            const auto bits = juce::roundToInt (currentValue (*main) - main->min) ^ (1 << key);
+            setValue (*main, juce::jlimit (main->min, main->max, main->min + (float) bits));
+        }
+        else if (key >= 0 && main != nullptr)
+        {
+            setValue (*main, main->min + (float) key);
+        }
+
+        if (key < 0 || (main == nullptr && mode != "toggles"))
+        {
+            active = -1;
+            drag = Drag::pan;
+            return;
+        }
+
+        repaint();
+        return;
+    }
+
     const auto* p = paramFor (w);
 
     if (p == nullptr)
@@ -1603,6 +2168,34 @@ void PluginCanvas::mouseDown (const juce::MouseEvent& e)
         const auto count = juce::jmax (1, w.options.size() > 0 ? w.options.size() : (int) (p->max - p->min) + 1);
         const auto chosen = juce::roundToInt (currentValue (*p) - p->min);
         const auto area = w.bounds.toFloat().withTrimmedBottom ((float) GuiLayout::captionHeight);
+
+        if (PanelParts::selectorDisplayOf (w) == "dropdown")
+        {
+            // A drop-down list: its names in a menu under it, the chosen one ticked.
+            active = -1;
+            drag = Drag::none;
+
+            juce::PopupMenu list;
+
+            for (int i = 0; i < count; ++i)
+                list.addItem (i + 1, juce::isPositiveAndBelow (i, w.options.size()) ? w.options[i] : juce::String (i + 1), true, i == chosen);
+
+            const auto id = p->id;
+            list.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (localAreaToGlobal (toView (w.bounds).toNearestInt()))
+                                                       .withMinimumWidth (juce::jmax (120, (int) toView (w.bounds).getWidth())),
+                                [safeThis = juce::Component::SafePointer<PluginCanvas> (this), id] (int choice)
+                                {
+                                    if (safeThis == nullptr || choice <= 0)
+                                        return;
+
+                                    if (const auto* param = safeThis->paramById (id))
+                                    {
+                                        safeThis->setValue (*param, param->min + (float) (choice - 1));
+                                        safeThis->repaint();
+                                    }
+                                });
+            return;
+        }
 
         if (const auto picked = PanelParts::selectorPick (w, area, count, chosen, local); picked >= 0)
             setValue (*p, p->min + (float) picked);
@@ -1682,6 +2275,14 @@ void PluginCanvas::mouseDrag (const juce::MouseEvent& e)
             return;
         }
 
+        case Drag::moveBody:
+        case Drag::resizeBody:
+        {
+            if (dragMoved)
+                dragBody (delta);
+            return;
+        }
+
         case Drag::resizePanel:
         {
             // Never smaller than what's on it; a picture filling the window keeps filling it.
@@ -1691,6 +2292,11 @@ void PluginCanvas::mouseDrag (const juce::MouseEvent& e)
             for (const auto& w : layout.widgets)
             {
                 if (w.type == GuiWidget::Type::image && w.bounds == oldWindow)
+                    continue;
+
+                // A side panel is joined to the window's edge, outside it: it follows the
+                // window, it doesn't hold it open (it would push it wider and wider).
+                if (PresetPanel::has (w) && PresetPanel::isSide (PresetPanel::designOf (w)))
                     continue;
 
                 needW = juce::jmax (needW, w.bounds.getRight());
@@ -1703,6 +2309,8 @@ void PluginCanvas::mouseDrag (const juce::MouseEvent& e)
             for (auto& w : layout.widgets)
                 if (w.type == GuiWidget::Type::image && w.bounds == oldWindow)
                     w.bounds = { 0, 0, layout.width, layout.height };
+
+            syncSideModules();   // joined to the new edge
             changed = true;
             followMenu();
             autoFit = false;
@@ -1828,6 +2436,39 @@ void PluginCanvas::mouseDrag (const juce::MouseEvent& e)
 
             auto bounds = juce::Rectangle<int>::leftTopRightBottom (x0, y0, x1, y1);
 
+            // A frame that scales what's inside it (FlowStone's view area): its shape kept,
+            // everything in it, and the 3D body when it's inside, scaled with it from where
+            // they were.
+            if (scalesContents (startWidget) && ! startWidget.isTurned())
+            {
+                const auto from = startBounds.toFloat();
+                const float sw = (float) bounds.getWidth() / juce::jmax (1.0f, from.getWidth());
+                const float sh = (float) bounds.getHeight() / juce::jmax (1.0f, from.getHeight());
+                const bool across = left || right, upDown = top || bottom;
+                auto s = across && upDown ? (std::abs (sw - 1.0f) >= std::abs (sh - 1.0f) ? sw : sh) : (across ? sw : sh);
+                s = juce::jmax (24.0f / juce::jmax (1.0f, juce::jmin (from.getWidth(), from.getHeight())), s);
+                const float nw = from.getWidth() * s, nh = from.getHeight() * s;
+                const float nx = left ? from.getRight() - nw : (right ? from.getX() : from.getCentreX() - nw * 0.5f);
+                const float ny = top ? from.getBottom() - nh : (bottom ? from.getY() : from.getCentreY() - nh * 0.5f);
+                const juce::Rectangle<float> to (nx, ny, nw, nh);
+
+                w = scaledWidget (startWidget, from, to);
+                w.bounds = to.toNearestInt();
+
+                for (const auto& [index, start] : frameContents)
+                    if (juce::isPositiveAndBelow (index, (int) layout.widgets.size()))
+                        layout.widgets[(size_t) index] = scaledWidget (start, from, to);
+
+                if (bodyInFrame)
+                    bodyDragRect = { to.getX() + (bodyStartRect.getX() - from.getX()) * s, to.getY() + (bodyStartRect.getY() - from.getY()) * s,
+                                     bodyStartRect.getWidth() * s, bodyStartRect.getHeight() * s };
+
+                changed = true;
+                followMenu();
+                repaint();
+                return;
+            }
+
             // A knob stays round (its caption stays under it); Shift on a corner keeps the shape.
             if (knob || ((left || right) && (top || bottom) && e.mods.isShiftDown()))
             {
@@ -1862,6 +2503,9 @@ void PluginCanvas::mouseDrag (const juce::MouseEvent& e)
 
             for (const auto& [index, bounds] : carried)
                 layout.widgets[(size_t) index].bounds = bounds.translated (dx, dy);
+
+            if (bodyInFrame)
+                bodyDragRect = bodyStartRect.translated ((float) dx, (float) dy);
 
             changed = true;
 
@@ -1952,9 +2596,24 @@ void PluginCanvas::mouseDrag (const juce::MouseEvent& e)
 
             const auto& w = layout.widgets[(size_t) active];
 
+            // A modulation's amount: up for more.
+            if (amountDrag.route >= 0)
+            {
+                if (juce::isPositiveAndBelow (amountDrag.home, (int) layout.widgets.size()))
+                    setMatrixRoute (layout.widgets[(size_t) amountDrag.home], amountDrag.route, -1, -1,
+                                    juce::jlimit (-1.0f, 1.0f, amountDrag.startAmount + (amountDrag.startY - toPlugin (e.position).y) / (e.mods.isShiftDown() ? 600.0f : 150.0f)));
+                return;
+            }
+
             if (w.type == GuiWidget::Type::custom)
             {
                 elementMouse (active, pressedPopup, 1, toPlugin (e.position), e.mods);
+                return;
+            }
+
+            if (w.type == GuiWidget::Type::matrix)
+            {
+                matrixDragTo (intoWidget (w, toPlugin (e.position)));
                 return;
             }
 
@@ -2014,6 +2673,7 @@ void PluginCanvas::mouseUp (const juce::MouseEvent& e)
 {
     const auto was = drag;
     drag = Drag::none;
+    amountDrag = {};
 
     if (commandHeld >= 0)
     {
@@ -2032,8 +2692,17 @@ void PluginCanvas::mouseUp (const juce::MouseEvent& e)
         return;
     }
 
+    if ((was == Drag::moveBody || was == Drag::resizeBody || bodyInFrame) && changed)
+        dropBody();
+
+    bodyInFrame = false;
+    frameContents.clear();
+
     if (was == Drag::resizePanel && changed)
+    {
         fitPaintedBackdrops();
+        bodyFollowsWindow (startPanelSize.x, startPanelSize.y);   // the body grows with the window
+    }
 
     // A line reshaped: its box made snug round it again.
     if (design && changed && (was == Drag::lineEnd || was == Drag::lineBend || was == Drag::adjustShape || was == Drag::bendPoint) && isLine (selected))
@@ -2045,6 +2714,20 @@ void PluginCanvas::mouseUp (const juce::MouseEvent& e)
     // A corner moved: its box made snug round its corners again.
     if (design && changed && was == Drag::corner && juce::isPositiveAndBelow (selected, (int) layout.widgets.size()))
         ObjectPaint::fitCornersBox (layout.widgets[(size_t) selected]);
+
+    // A matrix let go: a pin taken out, a cable plugged in.
+    if (was == Drag::control && matrixDrag.widget >= 0)
+    {
+        if (juce::isPositiveAndBelow (matrixDrag.widget, (int) layout.widgets.size()))
+            matrixDragTo (intoWidget (layout.widgets[(size_t) matrixDrag.widget], toPlugin (e.position)));   // where it's let go
+
+        matrixRelease();
+    }
+
+    // A pitch bend let go: back to its middle.
+    if (was == Drag::control && juce::isPositiveAndBelow (active, (int) layout.widgets.size())
+        && layout.widgets[(size_t) active].type == GuiWidget::Type::xy)
+        releasePerform (active);
 
     if (was == Drag::control && juce::isPositiveAndBelow (active, (int) layout.widgets.size())
         && layout.widgets[(size_t) active].type == GuiWidget::Type::custom)
@@ -2105,7 +2788,7 @@ void PluginCanvas::mouseUp (const juce::MouseEvent& e)
         }
         else if (was == Drag::element || was == Drag::resizeElement || was == Drag::turnElement || was == Drag::adjustShape
                  || was == Drag::resizePanel || was == Drag::lineEnd || was == Drag::lineBend || was == Drag::corner
-                 || was == Drag::bendPoint)
+                 || was == Drag::bendPoint || was == Drag::moveBody || was == Drag::resizeBody)
         {
             if (reopenMenu)
                 openMenu();                     // back where it was before the move
@@ -2113,21 +2796,13 @@ void PluginCanvas::mouseUp (const juce::MouseEvent& e)
         else if (was == Drag::pan && ! dragMoved)
         {
             // A click on the background picture selects it; on the window's empty space, the
-            // window; outside it: nothing. A menu open for something else closes.
+            // window; outside it: nothing (the edit window, open, follows).
             if (juce::isPositiveAndBelow (pressedBackdrop, (int) layout.widgets.size()))
-            {
-                if (menuOpen && ! isSelected (pressedBackdrop))
-                    closeMenu();
-
                 select (pressedBackdrop);
-            }
+            else if (pressedBody)
+                selectBody();
             else if (pressedPanel)
-            {
-                if (menuOpen && ! panelSelected)
-                    closeMenu();
-
                 selectPanel();
-            }
             else
             {
                 select (-1);
@@ -2216,17 +2891,30 @@ void PluginCanvas::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseW
             return;
         }
 
-        const auto index = panelArea().contains (e.position) ? widgetAt (toPlugin (e.position), true) : -1;
+        if (presetWheel (toPlugin (e.position), wheel.deltaY))
+            return;
+
+        const auto index = windowArea().contains (e.position) ? widgetAt (toPlugin (e.position), true) : -1;
 
         if (index >= 0)
         {
             const auto& w = layout.widgets[(size_t) index];
+
+            if (w.type == GuiWidget::Type::matrix)
+            {
+                matrixWheel (index, intoWidget (w, toPlugin (e.position)), wheel.deltaY);
+                return;
+            }
 
             if (w.type == GuiWidget::Type::custom)
             {
                 elementMouse (index, false, 5, toPlugin (e.position), e.mods, false, wheel.deltaY * 4.0f);
                 return;
             }
+
+            // Alt: a modulated control's amount.
+            if (e.mods.isAltDown() && modulationWheel (index, wheel.deltaY))
+                return;
 
             if (const auto* p = paramFor (w); p != nullptr && (w.type == GuiWidget::Type::knob || w.type == GuiWidget::Type::slider))
             {
@@ -2259,7 +2947,7 @@ void PluginCanvas::mouseMove (const juce::MouseEvent& e)
     if (hasPanel())
         hoverElements (toPlugin (e.position), e.mods);
 
-    const auto index = hasPanel() && panelArea().contains (e.position) ? widgetAt (toPlugin (e.position), ! design) : -1;
+    const auto index = hasPanel() && windowArea().contains (e.position) ? widgetAt (toPlugin (e.position), ! design) : -1;
 
     if (index != hovered)
     {
@@ -2282,6 +2970,12 @@ void PluginCanvas::mouseMove (const juce::MouseEvent& e)
     // The handles show what they do: a resize handle points the way it pulls (turned with its
     // element), the turn and the shape's own take the hand.
     const auto handle = design && hasPanel() && selected >= 0 ? handleAt (e.position) : -1;
+
+    if (const auto tab = editTabArea(); ! tab.isEmpty() && tab.expanded (2.0f).contains (e.position))
+    {
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        return;
+    }
 
     if (handle >= 8)
     {
@@ -2325,6 +3019,10 @@ bool PluginCanvas::keyPressed (const juce::KeyPress& key)
 {
     const auto mods = key.getModifiers();
 
+    // A preset manager's search being typed.
+    if (! design && presetKey (key))
+        return true;
+
     // The view: Ctrl+0 fits, Ctrl+1 is 100%, Ctrl + / - zoom.
     if (hasPanel() && ! panelOnly && (mods.isCtrlDown() || mods.isCommandDown()))
     {
@@ -2364,7 +3062,7 @@ bool PluginCanvas::keyPressed (const juce::KeyPress& key)
         return true;
     }
 
-    if (key == juce::KeyPress::escapeKey && (menuOpen || selected >= 0 || panelSelected))
+    if (key == juce::KeyPress::escapeKey && (menuOpen || selected >= 0 || panelSelected || bodySelected))
     {
         select (-1);
         return true;
@@ -2415,6 +3113,13 @@ bool PluginCanvas::keyPressed (const juce::KeyPress& key)
     {
         copyElements (selection());
         pasteElements ({});
+        return true;
+    }
+
+    // Ctrl+M: the shapes selected merged into one (Photoshop's Merge Shapes).
+    if (ctrlAnd ('M') && ! mods.isAltDown() && ! mods.isShiftDown())
+    {
+        mergeShapes (selection());
         return true;
     }
 
@@ -2473,7 +3178,8 @@ bool PluginCanvas::isInterestedInDragSource (const SourceDetails& details)
 {
     return design && hasPanel()
         && (PrimitiveLibrary::idFromDrag (details.description).isNotEmpty()
-            || KnobStudio::galleryDragFile (details.description) != juce::File());
+            || KnobStudio::galleryDragFile (details.description) != juce::File()
+            || details.description.hasProperty ("galleryDesign") || details.description.hasProperty ("galleryIcon"));
 }
 
 void PluginCanvas::itemDragEnter (const SourceDetails& details)
@@ -2483,6 +3189,37 @@ void PluginCanvas::itemDragEnter (const SourceDetails& details)
 
 void PluginCanvas::itemDragMove (const SourceDetails& details)
 {
+    // From the Gallery window: a design (over one of its kind, that one; elsewhere a new one's
+    // place), a body (the whole window), an icon (over an Icon element, that one).
+    const auto& d = details.description;
+
+    if (d.hasProperty ("galleryDesign") || d.hasProperty ("galleryIcon"))
+    {
+        repaintDropGhost();
+        const auto at = toPlugin (details.localPosition.toFloat());
+        const auto over = widgetAt (at, false);
+        const auto kind = d.getProperty ("galleryDesign", {}).toString();
+        const auto design = d.getProperty ("design", {});
+
+        const bool overPanel = over >= 0 && layout.widgets[(size_t) over].type == GuiWidget::Type::shape
+                            && layout.widgets[(size_t) over].shapeKind() != "line";
+
+        if (kind == "body" || kind == "layout" || (kind == "materialLook" && ! overPanel))
+            dropGhost = juce::Rectangle<int> (0, 0, layout.width, layout.height);
+        else if (kind == "materialLook")
+            dropGhost = layout.widgets[(size_t) over].bounds;
+        else if (kind.isNotEmpty() && over >= 0 && wearsGalleryDesign (layout.widgets[(size_t) over], kind, design))
+            dropGhost = layout.widgets[(size_t) over].bounds;
+        else if (kind.isEmpty() && over >= 0 && layout.widgets[(size_t) over].type == GuiWidget::Type::label
+                 && PanelParts::labelDisplayOf (layout.widgets[(size_t) over]) == "icon")
+            dropGhost = layout.widgets[(size_t) over].bounds;
+        else
+            dropGhost = placed (kind.isEmpty() ? juce::Rectangle<int> (40, 40) : juce::Rectangle<int> (200, 80), at);
+
+        repaintDropGhost();
+        return;
+    }
+
     // A Gallery item: over a knob, slider or switch, that control (it takes the item's look);
     // elsewhere, a new control's place.
     if (KnobStudio::galleryDragFile (details.description) != juce::File())
@@ -2514,10 +3251,50 @@ void PluginCanvas::itemDropped (const SourceDetails& details)
     dropGhost.reset();
     repaint();
 
+    const auto& d = details.description;
+
+    if (const auto kind = d.getProperty ("galleryDesign", {}).toString(); kind.isNotEmpty())
+    {
+        const auto at = toPlugin (details.localPosition.toFloat());
+
+        const auto over = widgetAt (at, false);
+
+        if (kind == "body")
+            useGalleryBody (d.getProperty ("design", {}), (int) d.getProperty ("width", 0), (int) d.getProperty ("height", 0));
+        else if (kind == "layout")
+            startFromLayout (d.getProperty ("design", {}).getProperty ("name", {}).toString(), {}, false, false, false);
+        else if (kind == "materialLook")
+            applyMaterialLook (d.getProperty ("design", {}).toString(),
+                               over >= 0 && layout.widgets[(size_t) over].type == GuiWidget::Type::shape
+                                   && layout.widgets[(size_t) over].shapeKind() != "line" ? over : -1);
+        else
+            useGalleryDesign (kind, d.getProperty ("design", {}), d.getProperty ("settings", {}), (int) d.getProperty ("keys", 0), true,
+                              widgetAt (at, false), at);
+
+        return;
+    }
+
+    if (const auto icon = d.getProperty ("galleryIcon", {}).toString(); icon.isNotEmpty())
+    {
+        const auto at = toPlugin (details.localPosition.toFloat());
+        const auto over = widgetAt (at, false);
+        const bool ontoIcon = over >= 0 && layout.widgets[(size_t) over].type == GuiWidget::Type::label
+                           && PanelParts::labelDisplayOf (layout.widgets[(size_t) over]) == "icon";
+        useGalleryIcon (icon, ontoIcon ? over : -1, at, d);   // a Guitar FX icon: on its badge
+        return;
+    }
+
     if (const auto file = KnobStudio::galleryDragFile (details.description); file != juce::File())
     {
         const auto at = toPlugin (details.localPosition.toFloat());
         const auto over = widgetAt (at, false);
+
+        // A kept shape: a picture where it's dropped.
+        if (file.hasFileExtension (Looks::shapesExtension))
+        {
+            addGalleryShape (file, at);
+            return;
+        }
 
         if (over >= 0 && Looks::takesLook (layout.widgets[(size_t) over]))
             useGalleryItem (over, file);   // dropped on a control: it wears the item

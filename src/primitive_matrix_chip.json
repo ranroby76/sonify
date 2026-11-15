@@ -1,0 +1,22 @@
+{
+  "name": "Mod source chip",
+  "category": "Modulation",
+  "order": 49,
+  "icon": "xy",
+  "description": "A modulation source to drag onto any knob or slider (its amount shows as a ring round it); a click starts assigning. Its source in the Matrix Studio.",
+  "widget": {
+    "type": "matrix",
+    "w": 120,
+    "h": 28,
+    "param": "mod",
+    "settings": {
+      "matrix": {
+        "style": "chip",
+        "source": 1,
+        "colour": "#FF5FE0E8",
+        "panelColour": "#FF1C1E22",
+        "textColour": "#FFE6E6E6"
+      }
+    }
+  }
+}

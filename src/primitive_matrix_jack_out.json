@@ -1,0 +1,23 @@
+{
+  "name": "Jack (output)",
+  "category": "Modulation",
+  "order": 47,
+  "icon": "xy",
+  "description": "A modulation source's output jack, anywhere on the panel: drag a cable from it to an input jack, a patch bay or any knob. Its source in the Matrix Studio.",
+  "widget": {
+    "type": "matrix",
+    "w": 64,
+    "h": 84,
+    "param": "mod",
+    "settings": {
+      "matrix": {
+        "style": "jack",
+        "role": "out",
+        "source": 1,
+        "jack": "eurorack",
+        "colour": "#FF4FC35A",
+        "textColour": "#FFE6E6E6"
+      }
+    }
+  }
+}

@@ -2,6 +2,8 @@
 // From KnobMaker's StyleEditorPanel (C:\workspace\knobmaker): the colour button the Edit UI's
 // menus use. A click opens a colour picker in a call-out; a right-click copies the colour or
 // pastes one (through the system clipboard, as "#AARRGGBB", so it goes from one button to another).
+// KnobMaster 2: every colour picker takes colours straight from the knob or the panel too
+// (ColourDropper): while it's open, a click on the design takes the colour under the mouse.
 
 #pragma once
 
@@ -9,6 +11,20 @@
 
 #include <functional>
 #include <optional>
+
+//==============================================================================
+/** KnobMaster 2: the colour pickers' dropper. While a picker opened by launch() is up, a click on
+    a component marked as a source (the Knob Studio's and the 3D Studio's preview, Edit UI's
+    panel) takes the colour under the mouse, as it shows there, and the picker stays open for
+    another; a click anywhere else closes the picker, as before. */
+namespace ColourDropper
+{
+    /** What the dropper takes colours from (it and what's in it). */
+    void markAsSource (juce::Component&);
+
+    /** The picker in a call-out pointing at area (screen coordinates), deleted when it closes. */
+    void launch (std::unique_ptr<juce::ColourSelector> selector, juce::Rectangle<int> area);
+}
 
 //==============================================================================
 class ColourSwatchButton final : public juce::Button,

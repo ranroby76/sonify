@@ -226,6 +226,23 @@
    }
   },
   {
+   "name": "Greyhole Drift",
+   "values": {
+    "Echo On": 0.0,
+    "Routing": 3.0,
+    "Blend": 100.0,
+    "Voicing": 8.0,
+    "Size": 60.0,
+    "Decay": 65.0,
+    "Damping": 35.0,
+    "Pre-Delay": 20.0,
+    "Texture": 70.0,
+    "Mod": 40.0,
+    "Low Cut": 150.0,
+    "Wet": 35.0
+   }
+  },
+  {
    "name": "Gated Snare",
    "values": {
     "Echo On": 0.0,
@@ -365,7 +382,7 @@
    "values": {
     "Reverb On": 0.0,
     "Style": 4.0,
-    "Mode": 3.0,
+    "Mode": 0.0,
     "Note": 4.0,
     "Feedback": 25.0,
     "Wet": 35.0,
@@ -384,7 +401,8 @@
     "Tap 13": 0.0,
     "Tap 14": 30.0,
     "Tap 15": 0.0,
-    "Tap 16": 20.0
+    "Tap 16": 20.0,
+    "Rhythm": 1.0
    }
   },
   {

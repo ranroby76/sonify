@@ -2,18 +2,22 @@
 
 #pragma once
 
+#include "SonifyGreyhole.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 /** Space Lifter 4's engine: a reverb and an echo blended into one space.
 
     Plain C++ (no JUCE), so the reverb alone can go into the instruments too (Natura, Tomahawk,
-    Grex, AXIS): SonifySpace::Reverb is a whole reverb by itself (pre-delay, colour, early
-    reflections, its voicings, its shapes), SonifySpace::Echo a whole echo, and SonifySpace::Space
-    the two wired together in one of four routings.
+    Grex): SonifySpace::Reverb is a whole reverb by itself (pre-delay, colour, early
+    reflections, its voicings (one of them Greyhole, SonifyGreyhole.h), its shapes),
+    SonifySpace::Echo a whole echo, and SonifySpace::Space the two wired together in one of
+    four routings.
 
     Everything is allocated in prepare(); set() and the audio calls never allocate, and run on
     the audio thread. Run them with denormals flushed (juce::ScopedNoDenormals). */
@@ -242,7 +246,9 @@ namespace SonifySpace
         }
     };
 
-    /** An early digital box's converters: band-limited, held at a lower rate, 12 bits. */
+    /** An early digital box's converters: band-limited, held at a lower rate, 12 bits. The bits
+        are companded (the quiet quantised finer, as a floating-point or mu-law converter does):
+        a tail fades into grit instead of stopping dead the moment it falls under the last bit. */
     struct Degrade
     {
         Biquad before, after;
@@ -264,7 +270,9 @@ namespace SonifySpace
             if (++count >= hold)
             {
                 count = 0;
-                held = std::round (clampf (x, -1.5f, 1.5f) * steps) / steps;
+                const auto v = clampf (x, -1.5f, 1.5f);
+                const auto q = std::round (std::sqrt (std::abs (v)) * steps) / steps;   // its square root, in the bits
+                held = v < 0.0f ? -q * q : q * q;
             }
 
             return after.process (held);
@@ -276,8 +284,8 @@ namespace SonifySpace
     //==============================================================================
     // THE REVERB
     //==============================================================================
-    enum class Voicing : int { plate, hall, room, chamber, cathedral, spring, vintage, shimmer };
-    constexpr int numVoicings = 8;
+    enum class Voicing : int { plate, hall, room, chamber, cathedral, spring, vintage, shimmer, greyhole };
+    constexpr int numVoicings = 9;
 
     /** How the tail is shaped after the sound that makes it: as it decays, cut off (gate),
         rising into a stop (reverse), or swelling up after the hit (bloom). */
@@ -329,7 +337,9 @@ namespace SonifySpace
             // vintage digital
             { 0.4f, 10.0f, 0.4f, 1.4f, { 31.1f, 35.9f, 41.3f, 46.7f, 51.1f, 58.3f, 63.7f, 71.9f }, 0.9f, 0.6f, 1.1f, 1.2f, 0.6f, 0.1f, 0.62f },
             // shimmer
-            { 1.2f, 14.0f, 0.7f, 1.6f, { 29.3f, 33.7f, 38.9f, 43.1f, 49.7f, 55.3f, 61.9f, 68.3f }, 1.0f, 0.75f, 0.4f, 0.6f, 0.8f, 0.0f, 0.39f }
+            { 1.2f, 14.0f, 0.7f, 1.6f, { 29.3f, 33.7f, 38.9f, 43.1f, 49.7f, 55.3f, 61.9f, 68.3f }, 1.0f, 0.75f, 0.4f, 0.6f, 0.8f, 0.0f, 0.39f },
+            // greyhole (SonifyGreyhole.h: its own network; the RTs are what its feedback gives, about)
+            { 1.0f, 40.0f, 0.5f, 1.5f, {}, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.8f }
         }};
 
         return specs[static_cast<size_t> (std::clamp (static_cast<int> (v), 0, numVoicings - 1))];
@@ -786,8 +796,11 @@ namespace SonifySpace
 
                 case Shape::reverse:
                 {
+                    // Rising from the hit over the shape's length, then cut: at once when the hit
+                    // is over by then (a drum), else held up while the sound goes on and cut
+                    // when it stops (a pad, a chord).
                     const auto t = sinceOnset / length;
-                    target = t < 1.0f ? t * t : 0.0f;
+                    target = t < 1.0f ? t * t : (fast > 0.003f ? 1.0f : 0.0f);
                     gain += (target > gain ? 0.5f : closing) * (target - gain);
                     break;
                 }
@@ -831,6 +844,14 @@ namespace SonifySpace
             spring.allocate (rate);
             octave.allocate (rate);
             early.allocate (rate);
+
+            if (greyhole == nullptr)
+            {
+                greyhole = std::make_unique<SonifyGreyhole::Greyhole>();
+                greyhole->buildUserInterface (&greyholeControls);
+            }
+
+            greyhole->init (static_cast<int> (rate));
             shaper.prepare (rate);
             degradeL.prepare (rate, 32000.0f, 9000.0f, 12);
             degradeR.prepare (rate, 32000.0f, 9000.0f, 12);
@@ -948,6 +969,16 @@ namespace SonifySpace
                     spring.tick (xL, xR, bL, bR);
                     break;
 
+                case Voicing::greyhole:
+                    if (--greyholeCountdown <= 0)
+                    {
+                        greyhole->update();           // its controls, once in a while (they glide in Reverb's smoothers' place: see applyBody)
+                        greyholeCountdown = 32;
+                    }
+
+                    greyhole->tick (xL, xR, bL, bR);
+                    break;
+
                 case Voicing::vintage:
                     network.tick (xL + 0.4f * e * eL, xR + 0.4f * e * eR, bL, bR);
                     bL = degradeL.process (bL);
@@ -997,6 +1028,10 @@ namespace SonifySpace
             plate.clear();
             spring.clear();
             octave.clear();
+
+            if (greyhole != nullptr)
+                greyhole->instanceClear();
+
             degradeL.reset();
             degradeR.reset();
             shimmerLow.reset();
@@ -1023,6 +1058,25 @@ namespace SonifySpace
                     spring.set (sizeScale, rt, s.damping, s.freeze, jump);
                     break;
 
+                case Voicing::greyhole:
+                    if (greyholeControls.complete())
+                    {
+                        // Size: its delay (30 ms to 600 ms, as heard) and its size together; Decay: its
+                        // feedback, up to 0.985 (1 would ring for ever: that's Freeze's); Damping,
+                        // Texture, Mod: its damp, diffusion and modulation.
+                        const auto size = clampf (s.size, 0.0f, 1.0f);
+                        const auto decay = clampf (s.decay, 0.0f, 1.0f);
+                        *greyholeControls.delay = 0.03f * std::pow (20.0f, size);
+                        *greyholeControls.size = 0.6f + 1.8f * size;
+                        *greyholeControls.feedback = 100.0f * (s.freeze ? 1.0f : std::min (0.985f, 1.0f - 0.7f * std::pow (1.0f - decay, 1.6f)));
+                        *greyholeControls.damp = s.freeze ? 0.0f : 90.0f * clampf (s.damping, 0.0f, 1.0f);
+                        *greyholeControls.diffusion = 10.0f + 85.0f * clampf (s.texture, 0.0f, 1.0f);
+                        *greyholeControls.modDepth = 5.0f + 45.0f * clampf (s.mod, 0.0f, 1.0f);
+                        *greyholeControls.modRate = 0.8f + 2.4f * clampf (s.mod, 0.0f, 1.0f);
+                        greyholeCountdown = 0;    // taken at the next sample
+                    }
+                    break;
+
                 case Voicing::hall:
                 case Voicing::room:
                 case Voicing::chamber:
@@ -1043,6 +1097,9 @@ namespace SonifySpace
         Network network;
         Plate plate;
         Spring spring;
+        std::unique_ptr<SonifyGreyhole::Greyhole> greyhole;   // on the heap: 2.5 MB
+        SonifyGreyhole::Controls greyholeControls;
+        int greyholeCountdown = 0;
         OctaveUp octave;
         OnePole shimmerLow, shimmerHigh;
         Degrade degradeL, degradeR;
@@ -1080,14 +1137,15 @@ namespace SonifySpace
     class Echo
     {
     public:
-        static constexpr float longestSeconds = 10.5f;
+        static constexpr float longestSeconds = 10.5f;        // an echo's time, at most (B's line)
+        static constexpr float longestRhythmSeconds = 21.25f; // A's line: Rhythm's sixteen steps and their feedback tap
 
         void prepare (double sampleRate)
         {
             rate = static_cast<float> (sampleRate > 0.0 ? sampleRate : 48000.0);
 
-            for (auto& line : lines)
-                line.allocate (static_cast<int> (longestSeconds * rate));
+            lines[0].allocate (static_cast<int> (longestRhythmSeconds * rate));
+            lines[1].allocate (static_cast<int> (longestSeconds * rate));
 
             for (auto& c : colour)
             {
@@ -1314,7 +1372,7 @@ namespace SonifySpace
                     break;
 
                 case EchoMode::rhythm:
-                    a = b = std::min (t, most / 17.0f);
+                    a = b = std::min (t, (longestRhythmSeconds * rate - 0.2f * rate) / 17.0f);   // the 16th step and its tap fit A's line
                     break;
             }
 

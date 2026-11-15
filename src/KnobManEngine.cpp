@@ -1739,7 +1739,7 @@ namespace KnobManEngine
 
             juce::Font font (juce::FontOptions (typefaceFor (pr.font), 10.0f, style));
             font = font.withPointHeight ((float) size);   // Java's size is the em size
-            juce::Image image (juce::Image::ARGB, W, H, true);
+            juce::Image image (juce::Image::ARGB, W, H, true, juce::SoftwareImageType());
             {
                 juce::Graphics g (image);
                 g.setFont (font);
@@ -1794,7 +1794,7 @@ namespace KnobManEngine
                     path.cubicTo (sx (v[j - 2]), sy (v[j - 1]), sx (v[0]), sy (v[1]), sx (v[2]), sy (v[3]));
             }
 
-            juce::Image image (juce::Image::ARGB, W, H, true);
+            juce::Image image (juce::Image::ARGB, W, H, true, juce::SoftwareImageType());
             {
                 juce::Graphics g (image);
                 g.setColour (juce::Colour (0, 0, 255));
@@ -2597,7 +2597,7 @@ namespace KnobManEngine
     //==========================================================================
     juce::Image toJuce (const Bmp& b)
     {
-        juce::Image image (juce::Image::ARGB, juce::jmax (1, b.w), juce::jmax (1, b.h), true);
+        juce::Image image (juce::Image::ARGB, juce::jmax (1, b.w), juce::jmax (1, b.h), true, juce::SoftwareImageType());
         juce::Image::BitmapData data (image, juce::Image::BitmapData::writeOnly);
 
         for (int y = 0; y < b.h; ++y)

@@ -1,0 +1,43 @@
+{
+  "name": "Selector ring",
+  "category": "Selectors",
+  "order": 34,
+  "icon": "selector",
+  "description": "Lit keys round the bottom of a knob (or round a ring): one at a time, each on its own, or several at once. Its look in the Selector Studio.",
+  "widget": {
+    "type": "selector",
+    "w": 260,
+    "h": 170,
+    "options": [
+      "One",
+      "Two",
+      "Three",
+      "Four",
+      "Five",
+      "Six"
+    ],
+    "settings": {
+      "set": {
+        "render": "3d",
+        "formation": "arc",
+        "arcFrom": 100,
+        "arcTo": 260,
+        "inner": 62,
+        "shape": "segment",
+        "gap": 14,
+        "rounding": 40,
+        "capColour": "#FF1B1D22",
+        "capOnColour": "#FF20262B",
+        "edge": true,
+        "edgeOff": 30,
+        "glowColour": "#FF5FE0E8",
+        "glow": 75,
+        "labelColour": "#FFA8E6EA",
+        "labelOnColour": "#FFFFFFFF",
+        "textSize": 26,
+        "material": "Satin plastic",
+        "height": 16
+      }
+    }
+  }
+}

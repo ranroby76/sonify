@@ -7,7 +7,9 @@
 */
 
 #include "LayerPanels.h"
+#include "ColourSwatch.h"   // the pickers' dropper
 #include "BevelDialog.h"
+#include "LayerMerge.h"
 #include "MaterialChoices.h"
 #include "ShapeDoc.h"
 #include "UiHelpers.h"
@@ -276,6 +278,14 @@ public:
             return true;
         }
 
+        // Stella: Ctrl+M merges the layers picked together.
+        if ((k.getModifiers().isCtrlDown() || k.getModifiers().isCommandDown()) && ! k.getModifiers().isAltDown()
+              && juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) k.getKeyCode()) == 'M')
+        {
+            owner.mergePicked();
+            return true;
+        }
+
         return false;
     }
 
@@ -320,6 +330,7 @@ void LayerListPanel::setDocument (LayerDoc* doc)
 {
     document = doc;
     selectedIndex = 0;
+    picked.clear();
     refresh();
 }
 
@@ -337,12 +348,21 @@ void LayerListPanel::refresh()
     }
 
     selectedIndex = juce::jlimit (0, juce::jmax (0, numLayers() - 1), selectedIndex);
+
+    // Layers picked together that are gone (the stack got shorter): let go of.
+    for (auto it = picked.begin(); it != picked.end();)
+        it = *it >= numLayers() ? picked.erase (it) : std::next (it);
+
+    if (picked.size() < 2)
+        picked.clear();
+
     rebuildRows();
 }
 
 void LayerListPanel::setSelectedIndex (int i)
 {
     selectedIndex = juce::jlimit (0, juce::jmax (0, numLayers() - 1), i);
+    picked.clear();
 
     for (auto* r : rows)
         r->repaint();
@@ -405,6 +425,18 @@ void LayerListPanel::paintRow (LayerRow& r, juce::Graphics& g)
         g.setColour (juce::Colour (0xff3a5a7a));
         g.fillRect (0, 0, w, h);
     }
+    else if (picked.count (index) > 0)
+    {
+        // Stella: picked together with the selected one (Shift+click), for Merge.
+        g.setColour (juce::Colour (0xff2e4760));
+        g.fillRect (0, 0, w, h);
+    }
+
+    if (picked.count (index) > 0)
+    {
+        g.setColour (juce::Colour (0xff6fa8dc));
+        g.fillRect (0, 0, 3, h);
+    }
 
     // Grip lines: the affordance that says this row can be picked up.
     g.setColour (juce::Colour (0xff65656e));
@@ -444,6 +476,7 @@ void LayerListPanel::rowClicked (LayerRow& r, const juce::MouseEvent& e)
             return;
 
         selectedIndex = row;
+        picked.clear();
 
         for (auto* other : rows)
             other->repaint();
@@ -481,13 +514,104 @@ void LayerListPanel::rowClicked (LayerRow& r, const juce::MouseEvent& e)
         return;
     }
 
+    // Stella: Shift+click picks layers together (again: lets one go), for Merge (Ctrl+M). The
+    // one clicked shows in the panels.
+    if (e.mods.isShiftDown())
+    {
+        if (picked.empty())
+            picked.insert (docIndexForRow (selectedIndex));
+
+        if (picked.count (index) > 0 && picked.size() > 1)
+        {
+            picked.erase (index);
+
+            // The one let go was the one shown: another picked one shows.
+            if (row == selectedIndex)
+            {
+                selectedIndex = docIndexForRow (*picked.rbegin());
+
+                if (onSelectionChange != nullptr)
+                    onSelectionChange();
+            }
+        }
+        else
+        {
+            picked.insert (index);
+
+            if (row != selectedIndex)
+            {
+                selectedIndex = row;
+
+                if (onSelectionChange != nullptr)
+                    onSelectionChange();
+            }
+        }
+
+        if (picked.size() < 2)
+            picked.clear();
+
+        for (auto* other : rows)
+            other->repaint();
+
+        return;
+    }
+
     select();
+}
+
+void LayerListPanel::mergePicked()
+{
+    if (document == nullptr)
+        return;
+
+    if (picked.size() < 2)
+    {
+        if (onMessage != nullptr)
+            onMessage ("Shift+click the layers to merge, then Ctrl+M");
+
+        return;
+    }
+
+    const std::vector<int> layers (picked.begin(), picked.end());
+    const auto count = (int) layers.size();
+
+    // A look from KnobMan becomes the studio's own: KnobMan has no merged shapes.
+    const bool fromKnobMan = document->knobman != nullptr;
+
+    if (fromKnobMan)
+    {
+        document->knobman.reset();
+        document->knobmanSonifyLight = false;
+    }
+
+    const auto merged = LayerMerge::merge (*document, layers, currentFrame != nullptr ? currentFrame() : 0.0f);
+
+    if (merged < 0)
+    {
+        if (onMessage != nullptr)
+            onMessage ("Nothing to merge: the layers picked show nothing");
+
+        return;
+    }
+
+    picked.clear();
+    selectedIndex = juce::jlimit (0, juce::jmax (0, numLayers() - 1), numLayers() - 1 - merged);
+    refresh();
+
+    if (onSelectionChange != nullptr)  onSelectionChange();
+    if (onDocumentChange != nullptr)   onDocumentChange();
+
+    if (onMessage != nullptr)
+        onMessage (juce::String (count) + " layers merged into one shape"
+                     + (fromKnobMan ? juce::String (" (the look is the studio's own now, no longer drawn by KnobMan)") : juce::String()));
 }
 
 //==============================================================================
 void LayerListPanel::beginDrag (LayerRow& r, int grabY)
 {
     dragging  = true;
+    picked.clear();
+
     dragGrabY = grabY;
 
     const int row = rows.indexOf (&r);
@@ -621,6 +745,8 @@ void LayerListPanel::addLayer()
     if (document == nullptr)
         return;
 
+    picked.clear();
+
     DocLayer l;
     l.name = "Layer " + juce::String (numLayers() + 1);
     document->layers.push_back (l);
@@ -638,6 +764,8 @@ void LayerListPanel::duplicateLayer()
 {
     if (document == nullptr || document->layers.empty())
         return;
+
+    picked.clear();
 
     const int index = docIndexForRow (selectedIndex);
 
@@ -658,6 +786,8 @@ void LayerListPanel::deleteLayerAt (int documentIndex)
 {
     if (document == nullptr || documentIndex < 0 || documentIndex >= numLayers())
         return;
+
+    picked.clear();
 
     document->removeLayer (documentIndex);
     selectedIndex = juce::jlimit (0, juce::jmax (0, numLayers() - 1), selectedIndex);
@@ -723,8 +853,7 @@ PrimitivePanel::PrimitivePanel()
         selector->setSize (300, 380);
         selector->addChangeListener (this);
 
-        juce::CallOutBox::launchAsynchronously (std::move (selector),
-                                                colourButton.getScreenBounds(), nullptr);
+        ColourDropper::launch (std::move (selector), colourButton.getScreenBounds());
     };
     addAndMakeVisible (colourButton);
 
@@ -895,7 +1024,7 @@ PrimitivePanel::PrimitivePanel()
             selector->setSize (300, 380);
             selector->addChangeListener (this);
 
-            juce::CallOutBox::launchAsynchronously (std::move (selector), swatch.getScreenBounds(), nullptr);
+            ColourDropper::launch (std::move (selector), swatch.getScreenBounds());
         };
 
         addAndMakeVisible (swatch);
@@ -973,8 +1102,7 @@ PrimitivePanel::PrimitivePanel()
         selector->setSize (300, 380);
         selector->addChangeListener (this);
 
-        juce::CallOutBox::launchAsynchronously (std::move (selector),
-                                                ledBezelColourButton.getScreenBounds(), nullptr);
+        ColourDropper::launch (std::move (selector), ledBezelColourButton.getScreenBounds());
     };
     addAndMakeVisible (ledBezelColourButton);
 
@@ -1019,8 +1147,7 @@ PrimitivePanel::PrimitivePanel()
             selector->setSize (300, 380);
             selector->addChangeListener (this);
 
-            juce::CallOutBox::launchAsynchronously (std::move (selector),
-                                                    swatch.getScreenBounds(), nullptr);
+            ColourDropper::launch (std::move (selector), swatch.getScreenBounds());
         };
         addAndMakeVisible (swatch);
     };
@@ -1069,8 +1196,7 @@ PrimitivePanel::PrimitivePanel()
         selector->setSize (300, 380);
         selector->addChangeListener (this);
 
-        juce::CallOutBox::launchAsynchronously (std::move (selector),
-                                                shadowColourButton.getScreenBounds(), nullptr);
+        ColourDropper::launch (std::move (selector), shadowColourButton.getScreenBounds());
     };
     addAndMakeVisible (shadowColourButton);
 
@@ -1110,8 +1236,7 @@ PrimitivePanel::PrimitivePanel()
         selector->setSize (300, 380);
         selector->addChangeListener (this);
 
-        juce::CallOutBox::launchAsynchronously (std::move (selector),
-                                                strokeColourButton.getScreenBounds(), nullptr);
+        ColourDropper::launch (std::move (selector), strokeColourButton.getScreenBounds());
     };
     addAndMakeVisible (strokeColourButton);
 

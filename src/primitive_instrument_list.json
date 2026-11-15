@@ -1,6 +1,6 @@
 {
   "name": "Instrument list",
-  "category": "Controls",
+  "category": "Selectors",
   "order": 33,
   "icon": "samples",
   "description": "A sampler's instruments: the names in its sample library (Options > Sample library...), for its instrument parameter.",

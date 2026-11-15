@@ -183,3 +183,87 @@ inline void configurePanelControls (juce::Component& parent)
         configurePanelControls (*child);
     }
 }
+
+//==============================================================================
+/** A slider made for fine editing, everywhere in the editors:
+
+      - dragged relative to where it was pressed (a click on its track doesn't jump it), the
+        sensitivity's pixels for its whole range (the app's one, see getSliderSensitivity), or
+        a pixel a step when it has more steps (up to 2000 pixels);
+      - Shift (or Ctrl / Cmd) held while dragging: ten times finer, for the last pixel of a
+        size or a degree of a turn; let go of it mid-drag and it carries on at full speed
+        from there, no jump;
+      - the pointer hidden while it's dragged (sliderDragCursor), so the screen's edge never
+        stops it.
+
+    Tag it with keepPointerTracking (a transport scrubber) and it follows the pointer instead. */
+class FineSlider : public juce::Slider
+{
+public:
+    using juce::Slider::Slider;
+
+    static constexpr float fineFactor = 0.1f;
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (tracksPointer())
+        {
+            juce::Slider::mouseDown (e);
+            return;
+        }
+
+        setSliderSnapsToMousePosition (false);
+        setMouseDragSensitivity (pixelsForRange());
+        lastReal = virtualAt = e.position;
+        juce::Slider::mouseDown (e);
+    }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (tracksPointer())
+        {
+            juce::Slider::mouseDrag (e);
+            return;
+        }
+
+        // Where the drag has got to: each move counted in full, or (fine) a tenth of it.
+        const bool fine = e.mods.isShiftDown() || e.mods.isCtrlDown() || e.mods.isCommandDown();
+        virtualAt += (e.position - lastReal) * (fine ? fineFactor : 1.0f);
+        lastReal = e.position;
+        juce::Slider::mouseDrag (e.withNewPosition (virtualAt));
+    }
+
+private:
+    juce::Point<float> lastReal, virtualAt;
+
+    /** Pixels for its whole range: the app's sensitivity, or a pixel a step when it has more
+        steps than that (a size in millimetres), up to 2000 (the pointer's hidden and unbounded
+        while it's dragged, so that's never too far). */
+    int pixelsForRange() const
+    {
+        const auto base = getSliderSensitivity();
+        const auto interval = getInterval();
+
+        if (interval <= 0.0)
+            return base;
+
+        const auto steps = getRange().getLength() / interval;
+        return juce::jlimit (base, juce::jmax (base, 2000), (int) std::lround (steps));
+    }
+
+    bool tracksPointer() const
+    {
+        return (bool) getProperties().getWithDefault ("pointerTracking", false);
+    }
+
+    // Every way it's made: the editing defaults.
+    bool configured = [this]
+    {
+        setVelocityBasedMode (false);
+        setSliderSnapsToMousePosition (false);
+        setMouseDragSensitivity (getSliderSensitivity());
+        addMouseListener (&sliderDragCursor(), false);
+        return true;
+    }();
+};
+

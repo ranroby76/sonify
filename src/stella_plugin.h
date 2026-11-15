@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -39,6 +40,12 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#if defined (_WIN32)
+ #include <direct.h>     // _wmkdir: the window's size, kept for the next window
+#else
+ #include <sys/stat.h>   // mkdir
+#endif
 
 #if defined (__x86_64__) || defined (_M_X64) || defined (__i386__) || defined (_M_IX86)
  #include <xmmintrin.h>
@@ -381,13 +388,16 @@ namespace stella::plugin
         }
 
         //======================================================================
-        // State: one "id=value" line per parameter.
+        // State: one "id=value" line per parameter; the window's size ("@window=", a scale).
         std::string saveState() const
         {
             std::string text = "stella-state 1\n";
 
             for (size_t i = 0; i < params.size(); ++i)
                 text += params[i].id + "=" + numberText ((double) values[i].load (std::memory_order_relaxed)) + "\n";
+
+            if (const auto scale = chosenScale.load (std::memory_order_relaxed); scale > 0.0f)
+                text += "@window=" + numberText ((double) scale) + "\n";
 
             return text;
         }
@@ -409,7 +419,9 @@ namespace stella::plugin
                 const auto line = text.substr (start, end - start);
                 const auto equals = line.find ('=');
 
-                if (equals != std::string::npos)
+                if (equals != std::string::npos && line.compare (0, equals, "@window") == 0)
+                    chosenScale.store (gui::snapScale ((float) numberFrom (line.c_str() + equals + 1)), std::memory_order_relaxed);
+                else if (equals != std::string::npos)
                     storeValue (indexOfParam (line.substr (0, equals)), (float) numberFrom (line.c_str() + equals + 1));
 
                 start = end + 1;
@@ -417,6 +429,48 @@ namespace stella::plugin
 
             return true;
         }
+
+        //======================================================================
+        // The window's size (gui::Host): this plugin's (its state), else the last one chosen
+        // in any copy of it (a small file of its own, "Sonify Plugins" in the user's settings).
+        float windowScale() override
+        {
+            if (const auto scale = chosenScale.load (std::memory_order_relaxed); scale > 0.0f)
+                return scale;
+
+            float kept = 1.0f;
+
+            if (auto* file = openWindowFile (false))
+            {
+                char text[32] {};
+                const auto got = std::fread (text, 1, sizeof (text) - 1, file);
+                std::fclose (file);
+                text[got] = 0;
+                kept = gui::snapScale ((float) numberFrom (text));
+            }
+
+            return kept;
+        }
+
+        void setWindowScale (float scale) override
+        {
+            scale = gui::snapScale (scale);
+            chosenScale.store (scale, std::memory_order_relaxed);
+
+            if (auto* file = openWindowFile (true))
+            {
+                const auto text = numberText ((double) scale);
+                std::fwrite (text.data(), 1, text.size(), file);
+                std::fclose (file);
+            }
+        }
+
+        // The user's presets (gui::Host): every parameter by number, and where their files go
+        // (Documents/<vendor>/<name> Presets).
+        int numParams() override                         { return (int) params.size(); }
+        const char* paramId (int param) override         { return param >= 0 && param < (int) params.size() ? params[(size_t) param].id.c_str() : nullptr; }
+        const char* pluginName() override                { return info::name; }
+        const char* vendorName() override                { return info::vendor[0] != 0 ? info::vendor : "Made in Sonify"; }
 
         //======================================================================
         // What the window needs (gui::Host), on the main thread. Edits are the format's own.
@@ -707,5 +761,57 @@ namespace stella::plugin
 
         /** Registrations made in this process (any of its plugins' windows): the others check again. */
         static inline std::atomic<int> registrations { 0 };
+
+        // The window's scale chosen for this plugin (0: none yet), and the file keeping the last
+        // one chosen: "Sonify Plugins/<its id>.window" in the user's settings folder (Windows:
+        // %APPDATA%; Mac: ~/Library/Application Support; Linux: ~/.config).
+        std::atomic<float> chosenScale { 0.0f };
+
+        static std::FILE* openWindowFile (bool writing)
+        {
+            std::string name;
+
+            for (const auto* c = info::id; c != nullptr && *c != 0; ++c)
+                name += (std::isalnum ((unsigned char) *c) != 0 || *c == '.' || *c == '-') ? *c : '_';
+
+            if (name.empty())
+                return nullptr;
+
+           #if defined (_WIN32)
+            const auto* appData = _wgetenv (L"APPDATA");
+
+            if (appData == nullptr || *appData == 0)
+                return nullptr;
+
+            const std::wstring folder = std::wstring (appData) + L"\\Sonify Plugins";
+
+            if (writing)
+                _wmkdir (folder.c_str());
+
+            return _wfopen ((folder + L"\\" + std::wstring (name.begin(), name.end()) + L".window").c_str(), writing ? L"wb" : L"rb");
+           #else
+            std::string base;
+
+           #if defined (__APPLE__)
+            if (const auto* home = std::getenv ("HOME"))
+                base = std::string (home) + "/Library/Application Support";
+           #else
+            if (const auto* config = std::getenv ("XDG_CONFIG_HOME"); config != nullptr && *config != 0)
+                base = config;
+            else if (const auto* home = std::getenv ("HOME"))
+                base = std::string (home) + "/.config";
+           #endif
+
+            if (base.empty())
+                return nullptr;
+
+            const auto folder = base + "/Sonify Plugins";
+
+            if (writing)
+                mkdir (folder.c_str(), 0755);
+
+            return std::fopen ((folder + "/" + name + ".window").c_str(), writing ? "wb" : "rb");
+           #endif
+        }
     };
 }

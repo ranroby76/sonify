@@ -185,6 +185,7 @@ juce::String GuiLayout::typeName (GuiWidget::Type type)
         case GuiWidget::Type::custom:    return "custom";
         case GuiWidget::Type::registration: return "registration";
         case GuiWidget::Type::tabs:      return "tabs";
+        case GuiWidget::Type::matrix:    return "matrix";
     }
 
     return "knob";
@@ -248,6 +249,7 @@ GuiWidget::Type GuiLayout::typeFromName (const juce::String& name)
         || n == "license")
         return GuiWidget::Type::registration;
     if (n == "tabs" || n == "tab" || n == "tabbar" || n == "pages" || n == "pagetabs") return GuiWidget::Type::tabs;
+    if (n == "matrix" || n == "modmatrix" || n == "modulationmatrix" || n == "patchbay" || n == "patch") return GuiWidget::Type::matrix;
     if (n.isEmpty() || n == "knob" || n == "rotary" || n == "dial")   return GuiWidget::Type::knob;
 
     // Anything else is a programmed element: "custom" with its "element", or its own name.
@@ -322,6 +324,12 @@ GuiLayout GuiLayout::fromVar (const juce::var& json)
         layout.lightAltitude = juce::jlimit (0.0f, 90.0f, (float) (double) light.getProperty ("altitude", layout.lightAltitude));
     }
 
+    if (json.hasProperty ("camera"))
+        layout.camera = juce::jlimit (0.0f, 100.0f, (float) (double) json.getProperty ("camera", layout.camera));
+
+    if (const auto body = json.getProperty ("body", {}); body.isObject())
+        layout.body = body.clone();
+
     if (const auto* list = json.getProperty ("pages", {}).getArray())
         for (const auto& name : *list)
             if (const auto text = name.toString().trim(); text.isNotEmpty())
@@ -392,6 +400,10 @@ juce::var GuiLayout::toVar() const
     set (light, "angle", juce::roundToInt (lightAngle * 10.0f) / 10.0);
     set (light, "altitude", juce::roundToInt (lightAltitude * 10.0f) / 10.0);
     set (json, "light", light);
+    set (json, "camera", juce::roundToInt (camera));
+
+    if (body.isObject())
+        set (json, "body", body.clone());
 
     if (! pages.isEmpty())
     {
@@ -565,11 +577,12 @@ GuiWidget GuiLayout::widgetFromVar (const juce::var& item)
         const auto defaultW = t == GuiWidget::Type::slider ? 32 : t == GuiWidget::Type::toggle ? 48 : t == GuiWidget::Type::meter ? 18
                             : t == GuiWidget::Type::lamp ? 30 : t == GuiWidget::Type::xy ? 160 : t == GuiWidget::Type::label ? 160
                             : t == GuiWidget::Type::image ? 160 : t == GuiWidget::Type::keyboard ? 600 : t == GuiWidget::Type::custom ? 160
-                            : t == GuiWidget::Type::registration ? 236 : t == GuiWidget::Type::tabs ? 300 : 200;
+                            : t == GuiWidget::Type::registration ? 236 : t == GuiWidget::Type::tabs ? 300 : t == GuiWidget::Type::matrix ? 420 : 200;
         const auto defaultH = t == GuiWidget::Type::slider ? 140 : t == GuiWidget::Type::toggle ? 48 : t == GuiWidget::Type::meter ? 140
                             : t == GuiWidget::Type::lamp ? 44 : t == GuiWidget::Type::xy ? 180 : t == GuiWidget::Type::label ? 28
                             : t == GuiWidget::Type::preset ? 28 : t == GuiWidget::Type::group ? 160 : t == GuiWidget::Type::keyboard ? 90
-                            : t == GuiWidget::Type::custom ? 32 : t == GuiWidget::Type::registration ? 26 : t == GuiWidget::Type::tabs ? 30 : 120;
+                            : t == GuiWidget::Type::custom ? 32 : t == GuiWidget::Type::registration ? 26 : t == GuiWidget::Type::tabs ? 30
+                            : t == GuiWidget::Type::matrix ? 260 : 120;
         w.bounds = { x, y, juce::jlimit (8, maxWidth, intOf (item, "w", defaultW)), juce::jlimit (8, maxHeight, intOf (item, "h", defaultH)) };
     }
 

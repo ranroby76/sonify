@@ -1,0 +1,41 @@
+{
+  "name": "Preset table",
+  "category": "Presets",
+  "order": 53,
+  "icon": "presets",
+  "description": "A table of preset buttons on the panel, a page at a time (flat or 3D keys); its look in the Preset Studio.",
+  "widget": {
+    "type": "preset",
+    "w": 380,
+    "h": 220,
+    "settings": {
+      "presets": {
+        "style": "table",
+        "open": "panel",
+        "columns": 3,
+        "rows": 4,
+        "categories": "none",
+        "actions": true,
+        "plate": true,
+        "colour": "#FF2FB36B",
+        "panelColour": "#FF17191C",
+        "textColour": "#FFD8DADF",
+        "lineColour": "#FF2C2F35",
+        "keys": {
+          "render": "2d",
+          "style": "soft",
+          "shape": "rect",
+          "rounding": 18,
+          "gap": 10,
+          "capColour": "#FF24262B",
+          "capOnColour": "#FF27392F",
+          "glowColour": "#FF2FB36B",
+          "glow": 35,
+          "labelColour": "#FFC8CBD0",
+          "labelOnColour": "#FFFFFFFF",
+          "textSize": 42
+        }
+      }
+    }
+  }
+}

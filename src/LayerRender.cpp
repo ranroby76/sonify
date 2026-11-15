@@ -8,6 +8,7 @@
 */
 
 #include "LayerRender.h"
+#include "Render3D.h"
 #include "BmpImage.h"
 #include "KnobManEngine.h"
 #include "MaterialChoices.h"
@@ -15,6 +16,7 @@
 #include "TextureLibrary.h"
 
 #include <algorithm>
+#include <optional>
 
 #include <cmath>
 #include <map>
@@ -49,7 +51,7 @@ namespace
 
         if (! entry.image.isValid() || entry.modified != modified || entry.size != size)
         {
-            entry.image = loadImageFile (file);
+            entry.image = juce::SoftwareImageType().convert (loadImageFile (file));   // (plain memory: drawn from on any thread, never read back from a graphics card)
             entry.modified = modified;
             entry.size = size;
         }
@@ -291,7 +293,7 @@ namespace
 //==============================================================================
 juce::Image LayerRender::renderCircleFamily (const PrimitiveSpec& p, int w, int h, int spectype)
 {
-    juce::Image img (juce::Image::ARGB, w, h, true);
+    juce::Image img (juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
 
     {
         juce::Image::BitmapData data (img, juce::Image::BitmapData::readWrite);
@@ -474,7 +476,7 @@ juce::Image LayerRender::renderCircleFamily (const PrimitiveSpec& p, int w, int 
 //==============================================================================
 juce::Image LayerRender::renderRing (const PrimitiveSpec& p, int w, int h)
 {
-    juce::Image img (juce::Image::ARGB, w, h, true);
+    juce::Image img (juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
 
     {
         juce::Image::BitmapData data (img, juce::Image::BitmapData::readWrite);
@@ -727,7 +729,12 @@ namespace
         const double rnd = juce::jlimit (0.0f, 100.0f, round) * 0.005 * juce::jmin (body.getWidth(), body.getHeight());
         const double xe = width + 1.0 - mn * em / 200.0 * edge, xem = width - mn * em / 200.0;
         const double ye = height + 1.0 - mn * em / 200.0 * edge, yem = height - mn * em / 200.0;
-        const double round2 = rnd * juce::jmin (xe, ye) / juce::jmax (0.001, juce::jmin (width, height));
+        // KnobMan's corner arcs, their centres held inside the face: rounded further than its
+        // bevel band leaves room for (a Round of 100 makes a disc), KnobMan's centres crossed
+        // over the middle and split the bevel into four lit and shaded quarters; held at the
+        // middle, the band runs round the disc as a ring.
+        const double round2 = juce::jmin (rnd * juce::jmin (xe, ye) / juce::jmax (0.001, juce::jmin (width, height)),
+                                          juce::jmax (0.0, juce::jmin (xem, yem)));
 
         juce::Image::BitmapData data (img, juce::Image::BitmapData::readWrite);
 
@@ -791,7 +798,7 @@ namespace
 
 juce::Image LayerRender::rasterisePrimitive (const PrimitiveSpec& p, int w, int h, float scale, float t)
 {
-    juce::Image img (juce::Image::ARGB, w, h, true);
+    juce::Image img (juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
 
     if (p.type == PrimType::None)
         return img;
@@ -1589,6 +1596,10 @@ juce::Image LayerRender::rasterisePrimitive (const PrimitiveSpec& p, int w, int 
                     shape = doc.buildPath();
             }
 
+            // Stella: a shape of its own (merged layers'), in 0..1 of the layer.
+            if (shape.isEmpty() && p.shapePath.isNotEmpty())
+                shape = juce::Drawable::parseSVGPath (p.shapePath);
+
             if (shape.isEmpty() && p.shapePoints.size() >= 2)
             {
                 for (size_t i = 0; i < p.shapePoints.size(); ++i)
@@ -1961,6 +1972,59 @@ namespace
 
         return alpha.empty() ? 0 : (int) *std::max_element (alpha.begin(), alpha.end());
     }
+
+    /** How far each pixel is from the nearest solid pixel (outside) and from the nearest empty
+        one (inside), solid being over half of full. Past the picture's edges counts as empty:
+        a shape that touches them (a circle inscribed in its layer, a rectangle filling it) has
+        its edge there too, so a bevel, an inner shadow or an inside outline runs along it
+        rather than breaking off where it meets the edge (or, filling the picture, vanishing).
+        False when nothing is solid. */
+    bool distanceFields (const std::vector<juce::uint8>& alpha, int w, int h, int full,
+                         std::vector<float>& outside, std::vector<float>& inside)
+    {
+        constexpr float kFar = 1.0e9f;
+
+        // A ring of empty pixels round the picture.
+        const int pw = w + 2, ph = h + 2;
+        std::vector<float> out ((size_t) pw * (size_t) ph, kFar), in ((size_t) pw * (size_t) ph, 0.0f);
+        bool anySolid = false;
+
+        for (int y = 0; y < h; ++y)
+        {
+            for (int x = 0; x < w; ++x)
+            {
+                const size_t k = (size_t) (y + 1) * (size_t) pw + (size_t) (x + 1);
+
+                if (2 * (int) alpha[(size_t) y * (size_t) w + (size_t) x] > full)
+                {
+                    out[k] = 0.0f;
+                    in[k] = kFar;
+                    anySolid = true;
+                }
+            }
+        }
+
+        if (! anySolid)
+            return false;
+
+        euclideanDistance (out, pw, ph);
+        euclideanDistance (in,  pw, ph);
+
+        outside.resize ((size_t) w * (size_t) h);
+        inside.resize ((size_t) w * (size_t) h);
+
+        for (int y = 0; y < h; ++y)
+        {
+            for (int x = 0; x < w; ++x)
+            {
+                const size_t k = (size_t) (y + 1) * (size_t) pw + (size_t) (x + 1);
+                outside[(size_t) y * (size_t) w + (size_t) x] = out[k];
+                inside[(size_t) y * (size_t) w + (size_t) x] = in[k];
+            }
+        }
+
+        return true;
+    }
 }
 
 void LayerRender::applyStroke (juce::Image& img, const PrimitiveSpec& p, float scale,
@@ -1978,13 +2042,9 @@ void LayerRender::applyStroke (juce::Image& img, const PrimitiveSpec& p, float s
     const int h = img.getHeight();
     const size_t n = (size_t) w * (size_t) h;
 
-    constexpr float kFar = 1.0e9f;
-
-    std::vector<float> outside (n, kFar);   // distance to the nearest solid pixel
-    std::vector<float> inside  (n, kFar);   // distance to the nearest empty pixel
+    std::vector<float> outside;   // distance to the nearest solid pixel
+    std::vector<float> inside;    // distance to the nearest empty pixel
     std::vector<juce::uint8> alpha (n, 0);
-
-    bool anySolid = false, anyEmpty = false;
 
     {
         juce::Image::BitmapData data (img, juce::Image::BitmapData::readOnly);
@@ -1997,19 +2057,10 @@ void LayerRender::applyStroke (juce::Image& img, const PrimitiveSpec& p, float s
     // Solid is over half as opaque as the layer gets (solidAlphaOf).
     const int full = solidAlphaOf (alpha, 0);
 
-    for (size_t i = 0; i < n; ++i)
-    {
-        if (2 * (int) alpha[i] > full) { outside[i] = 0.0f; anySolid = true; }
-        else                           { inside[i]  = 0.0f; anyEmpty = true; }
-    }
-
-    // Nothing drawn, or the shape fills the canvas edge to edge — either way
-    // there is no silhouette to trace.
-    if (! anySolid || ! anyEmpty)
+    // Nothing drawn: no silhouette to trace. (Past the canvas's edges is empty, so a shape
+    // filling it, or touching its edges, is outlined along them too.)
+    if (! distanceFields (alpha, w, h, full, outside, inside))
         return;
-
-    euclideanDistance (outside, w, h);
-    euclideanDistance (inside,  w, h);
 
     // How much room the shape gives an outline in each direction: how far out
     // there is to go, and how deep the shape is at its thickest.
@@ -2137,14 +2188,10 @@ namespace
                               std::vector<float>& sd, std::vector<juce::uint8>& alpha,
                               int fullAlpha = 0)
     {
-        constexpr float kFar = 1.0e9f;
-
         const size_t n = (size_t) w * (size_t) h;
 
-        std::vector<float> outside (n, kFar), inside (n, kFar);
+        std::vector<float> outside, inside;
         alpha.assign (n, 0);
-
-        bool anySolid = false, anyEmpty = false;
 
         for (int y = 0; y < h; ++y)
             for (int x = 0; x < w; ++x)
@@ -2152,17 +2199,9 @@ namespace
 
         const int full = solidAlphaOf (alpha, fullAlpha);
 
-        for (size_t i = 0; i < n; ++i)
-        {
-            if (2 * (int) alpha[i] > full) { outside[i] = 0.0f; anySolid = true; }
-            else                           { inside[i]  = 0.0f; anyEmpty = true; }
-        }
-
-        if (! anySolid || ! anyEmpty)
+        // Past the picture's edges is empty (distanceFields).
+        if (! distanceFields (alpha, w, h, full, outside, inside))
             return false;
-
-        euclideanDistance (outside, w, h);
-        euclideanDistance (inside,  w, h);
 
         sd.resize (n);
 
@@ -2552,6 +2591,27 @@ void LayerRender::applyBevel (juce::Image& img, const PrimitiveSpec& p, float sc
 
             auto c = data.getPixelColour (x, y);
 
+            // Where nothing is under the bevel (outside the shape, and no outline there), there's
+            // nothing to blend with: its highlight and its shadow are their own colours, the
+            // shadow over the highlight, as see-through as they are strong. (Blended onto the
+            // empty pixel's black, a white highlight came out grey.)
+            const auto hc = b.highlightColour, sc = b.shadowColour;
+            const float cover = paintsOutside ? sh + hi * (1.0f - sh) : 0.0f;
+
+            auto ownColour = [hi, sh, cover] (float high, float shade) { return (high * hi * (1.0f - sh) + shade * sh) / cover; };
+
+            if (c.getAlpha() == 0)
+            {
+                if (cover <= 0.0001f)
+                    continue;
+
+                data.setPixelColour (x, y, juce::Colour::fromFloatRGBA (ownColour (hc.getFloatRed(), sc.getFloatRed()),
+                                                                        ownColour (hc.getFloatGreen(), sc.getFloatGreen()),
+                                                                        ownColour (hc.getFloatBlue(), sc.getFloatBlue()),
+                                                                        juce::jmin (1.0f, cover)));
+                continue;
+            }
+
             float r = c.getFloatRed(), g = c.getFloatGreen(), bl = c.getFloatBlue();
             float a = c.getFloatAlpha();
 
@@ -2573,11 +2633,19 @@ void LayerRender::applyBevel (juce::Image& img, const PrimitiveSpec& p, float sc
                 bl += (out.b - bl) * sh;
             }
 
-            // Outside the shape there is nothing to shade, so the bevel has to
-            // supply its own coverage — that is what makes an Outer Bevel a
-            // visible rim rather than a no-op on transparent pixels.
-            if (! onShape)
-                a = juce::jmax (a, juce::jmin (1.0f, hi + sh));
+            // A partly covered pixel (the shape's soft edge, an outline's): the bevel's own
+            // colours under it where the bevel paints past the edge, so the rim runs into the
+            // shape without a see-through seam between them.
+            if (a < 1.0f && cover > 0.0001f)
+            {
+                const float under = juce::jmin (1.0f, cover) * (1.0f - a);
+                const float total = a + under;
+
+                r  = (r  * a + ownColour (hc.getFloatRed(),   sc.getFloatRed())   * under) / total;
+                g  = (g  * a + ownColour (hc.getFloatGreen(), sc.getFloatGreen()) * under) / total;
+                bl = (bl * a + ownColour (hc.getFloatBlue(),  sc.getFloatBlue())  * under) / total;
+                a  = total;
+            }
 
             if (a <= 0.0001f)
                 continue;
@@ -2664,7 +2732,7 @@ juce::Image LayerRender::makeEdgeEffect (juce::Image& placed, const ShadowSpec& 
     constexpr float kFalloff = 14.0f;
     const float tail = 1.0f / (1.0f + kFalloff);
 
-    juce::Image out (juce::Image::ARGB, w, h, true);
+    juce::Image out (juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
 
     {
         juce::Image::BitmapData dst (out, juce::Image::BitmapData::writeOnly);
@@ -3075,7 +3143,7 @@ juce::Image LayerRender::strokeBand (const juce::Image& silhouette, const Stroke
     else if (s.position == StrokePosition::Centre) { lo = -width * 0.5f; hi = width * 0.5f; }
 
     const float opacity = juce::jlimit (0.0f, 1.0f, s.opacity * 0.01f) * s.colour.getFloatAlpha();
-    juce::Image band (juce::Image::ARGB, w, h, true);
+    juce::Image band (juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
     juce::Image::BitmapData out (band, juce::Image::BitmapData::writeOnly);
 
     for (int y = 0; y < h; ++y)
@@ -3414,10 +3482,21 @@ void LayerRender::applyMaterial (juce::Image& img, const PrimitiveSpec& p, const
 //==============================================================================
 namespace
 {
+    /** A bevel that paints past the shape's edge (Outer Bevel, Emboss, Pillow Emboss, Stroke
+        Emboss) is worked out on the canvas, where the layer has landed: in its own image a
+        circle or a sphere is inscribed with no room round it, so what it painted outside the
+        shape stopped at that image's edges, and the layer's zoom shrank those to a square. */
+    bool bevelOnCanvas (const PrimitiveSpec& p) noexcept
+    {
+        const auto style = p.bevel.style;
+        return p.bevel.enabled && (style == BevelStyle::OuterBevel || style == BevelStyle::Emboss
+                                    || style == BevelStyle::PillowEmboss || style == BevelStyle::StrokeEmboss);
+    }
+
     bool needsPlacement (const PrimitiveSpec& p) noexcept
     {
         return p.strokeEnabled || p.shadow.enabled
-            || p.innerShadow.enabled || p.outerGlow.enabled;
+            || p.innerShadow.enabled || p.outerGlow.enabled || bevelOnCanvas (p);
     }
 
     /** The most opaque pixel of an image. */
@@ -3462,7 +3541,7 @@ namespace
 
 void LayerRender::compositeWithEdgeEffects (juce::Image& canvas, const DocLayer& layer,
                                             juce::Image& img, int w, int h, float t, float scale,
-                                            RenderNotes* notes, float pad)
+                                            RenderNotes* notes, float pad, float bevelAngle, float bevelAltitude)
 {
     const float alpha = juce::jlimit (0.0f, 1.0f, layer.eff.alpha.at (t) * 0.01f);
 
@@ -3476,12 +3555,35 @@ void LayerRender::compositeWithEdgeEffects (juce::Image& canvas, const DocLayer&
     // Placed at full strength: the effects follow the shape, not how see-through
     // the layer is (below 50% they used to find no shape at all). Its Alpha then
     // fades the layer and its effects together, as Photoshop's Opacity does.
-    juce::Image placed (juce::Image::ARGB, canvas.getWidth(), canvas.getHeight(), true);
+    juce::Image placed (juce::Image::ARGB, canvas.getWidth(), canvas.getHeight(), true, juce::SoftwareImageType());
 
     {
         juce::Graphics pg (placed);
         compositeLayer (pg, layer, img, w, h, t, pad, false);
     }
+
+    // A bevel that paints past its edge, on the shape as it landed (turned and zoomed: its
+    // size zoomed with it, as it was in the layer's own image; the light where it is). A
+    // Stroke Emboss bevels the outline, so it comes once the outline is there (measured from
+    // the shape's own edge); the others bevel the shape, under the outline.
+    const bool strokeEmboss = bevelOnCanvas (layer.prim) && layer.prim.bevel.style == BevelStyle::StrokeEmboss;
+    std::optional<juce::Image> silhouette;
+
+    auto bevelPlaced = [&] (const juce::Image* shape)
+    {
+        auto onCanvas = layer.prim;
+        const float zoom = std::sqrt (juce::jmax (0.001f, layer.eff.zoomX.at (t) * 0.01f)
+                                        * juce::jmax (0.001f, (layer.eff.zoomSeparate ? layer.eff.zoomY.at (t) : layer.eff.zoomX.at (t)) * 0.01f));
+        onCanvas.bevel.size *= zoom;
+        onCanvas.bevel.soften *= zoom;
+        applyBevel (placed, onCanvas, scale, bevelAngle, bevelAltitude, shape);
+    };
+
+    if (bevelOnCanvas (layer.prim) && ! strokeEmboss)
+        bevelPlaced (nullptr);
+
+    if (strokeEmboss)
+        silhouette = placed.createCopy();
 
     // How solid the layer itself is, before an outline is painted over it: the shadows
     // and the glow still take a see-through fill with an opaque outline as one shape.
@@ -3505,6 +3607,9 @@ void LayerRender::compositeWithEdgeEffects (juce::Image& canvas, const DocLayer&
     if (clipped && notes != nullptr)
         notes->messages.add (layer.name + ": outline is as thick as the shape it is "
                                           "tracing — reduce Outline W, or use Outside");
+
+    if (strokeEmboss && silhouette.has_value())
+        bevelPlaced (&*silhouette);
 
     // Then back to front, as Photoshop stacks them: drop shadow, glow, the
     // layer, then the inner shadow on top because it belongs to the surface.
@@ -3552,6 +3657,11 @@ juce::Image LayerRender::renderFrame (const LayerDoc& doc, float t, float scale,
 {
     scale = juce::jlimit (0.25f, 8.0f, scale);
 
+    // Stella: a 3D look, rendered as an object.
+    if (doc.model3d != nullptr)
+        return Render3D::renderFrame (*doc.model3d, doc.canvasWidth, doc.canvasHeight, t, scale, 0.0f,
+                                      doc.globalLightAngle, doc.globalLightAltitude);
+
     if (doc.knobman != nullptr)
     {
         KnobManEngine::ShapeDrawer drawer;
@@ -3590,7 +3700,7 @@ juce::Image LayerRender::renderFrame (const LayerDoc& doc, float t, float scale,
     const int w = juce::jmax (8, (int) std::lround (doc.canvasWidth  * scale));
     const int h = juce::jmax (8, (int) std::lround (doc.canvasHeight * scale));
 
-    juce::Image canvas (juce::Image::ARGB, w, h, true);
+    juce::Image canvas (juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
 
     // No long-lived Graphics: a layer with a non-Normal blend has to touch the
     // canvas pixels directly, and it cannot do that while one is open.
@@ -3612,9 +3722,10 @@ juce::Image LayerRender::renderFrame (const LayerDoc& doc, float t, float scale,
 
         applyMaterial (img, layer.prim, layer.eff, t, scale, doc.globalLightAngle, doc.globalLightAltitude);
 
-        applyBevel (img, lit, scale,
-                    (lit.bevel.useGlobalLight ? doc.globalLightAngle : lit.bevel.angle) + turn,
-                    lit.bevel.useGlobalLight ? doc.globalLightAltitude : lit.bevel.altitude);
+        if (! bevelOnCanvas (lit))   // past its edge: on the canvas, once it's placed
+            applyBevel (img, lit, scale,
+                        (lit.bevel.useGlobalLight ? doc.globalLightAngle : lit.bevel.angle) + turn,
+                        lit.bevel.useGlobalLight ? doc.globalLightAltitude : lit.bevel.altitude);
 
         applyTexture      (img, lit, scale);
         applyGloss        (img, lit);
@@ -3623,7 +3734,9 @@ juce::Image LayerRender::renderFrame (const LayerDoc& doc, float t, float scale,
 
         if (needsPlacement (layer.prim))
         {
-            compositeWithEdgeEffects (canvas, layer, img, w, h, t, scale, notes);
+            compositeWithEdgeEffects (canvas, layer, img, w, h, t, scale, notes, 0.0f,
+                                      layer.prim.bevel.useGlobalLight ? doc.globalLightAngle : layer.prim.bevel.angle,
+                                      layer.prim.bevel.useGlobalLight ? doc.globalLightAltitude : layer.prim.bevel.altitude);
         }
         else
         {
@@ -3640,6 +3753,11 @@ juce::Image LayerRender::renderFrame (const LayerDoc& doc, float t, float scale,
 {
     pad = juce::jlimit (0.0f, 2048.0f, std::ceil (pad));
 
+    // Stella: a 3D look, its shadow and glow going on into the room round it.
+    if (doc.model3d != nullptr)
+        return Render3D::renderFrame (*doc.model3d, doc.canvasWidth, doc.canvasHeight, t, juce::jlimit (0.25f, 8.0f, scale), pad,
+                                      doc.globalLightAngle, doc.globalLightAltitude);
+
     if (pad <= 0.0f || doc.knobman != nullptr)
     {
         if (doc.knobman == nullptr || pad <= 0.0f)
@@ -3648,7 +3766,7 @@ juce::Image LayerRender::renderFrame (const LayerDoc& doc, float t, float scale,
         // KnobMan draws inside its canvas: the room round it stays empty.
         const auto frame = renderFrame (doc, t, scale, notes);
         const int room = (int) pad;
-        juce::Image canvas (juce::Image::ARGB, frame.getWidth() + 2 * room, frame.getHeight() + 2 * room, true);
+        juce::Image canvas (juce::Image::ARGB, frame.getWidth() + 2 * room, frame.getHeight() + 2 * room, true, juce::SoftwareImageType());
         juce::Graphics g (canvas);
         g.drawImageAt (frame, room, room);
         return canvas;
@@ -3661,7 +3779,7 @@ juce::Image LayerRender::renderFrame (const LayerDoc& doc, float t, float scale,
     const int h = juce::jmax (8, (int) std::lround (doc.canvasHeight * scale));
     const int room = (int) pad;
 
-    juce::Image canvas (juce::Image::ARGB, w + 2 * room, h + 2 * room, true);
+    juce::Image canvas (juce::Image::ARGB, w + 2 * room, h + 2 * room, true, juce::SoftwareImageType());
     const bool solo = doc.hasSolo();
 
     for (const auto& layer : doc.layers)
@@ -3679,9 +3797,10 @@ juce::Image LayerRender::renderFrame (const LayerDoc& doc, float t, float scale,
 
         applyMaterial (img, layer.prim, layer.eff, t, scale, doc.globalLightAngle, doc.globalLightAltitude);
 
-        applyBevel (img, lit, scale,
-                    (lit.bevel.useGlobalLight ? doc.globalLightAngle : lit.bevel.angle) + turn,
-                    lit.bevel.useGlobalLight ? doc.globalLightAltitude : lit.bevel.altitude);
+        if (! bevelOnCanvas (lit))   // past its edge: on the canvas, once it's placed
+            applyBevel (img, lit, scale,
+                        (lit.bevel.useGlobalLight ? doc.globalLightAngle : lit.bevel.angle) + turn,
+                        lit.bevel.useGlobalLight ? doc.globalLightAltitude : lit.bevel.altitude);
 
         applyTexture      (img, lit, scale);
         applyGloss        (img, lit);
@@ -3690,7 +3809,9 @@ juce::Image LayerRender::renderFrame (const LayerDoc& doc, float t, float scale,
 
         if (needsPlacement (layer.prim))
         {
-            compositeWithEdgeEffects (canvas, layer, img, w, h, t, scale, notes, (float) room);
+            compositeWithEdgeEffects (canvas, layer, img, w, h, t, scale, notes, (float) room,
+                                      layer.prim.bevel.useGlobalLight ? doc.globalLightAngle : layer.prim.bevel.angle,
+                                      layer.prim.bevel.useGlobalLight ? doc.globalLightAltitude : layer.prim.bevel.altitude);
         }
         else
         {
@@ -3704,6 +3825,9 @@ juce::Image LayerRender::renderFrame (const LayerDoc& doc, float t, float scale,
 
 float LayerRender::overhangOf (const LayerDoc& doc)
 {
+    if (doc.model3d != nullptr)
+        return Render3D::overhang (*doc.model3d, doc.canvasWidth, doc.canvasHeight, doc.globalLightAltitude);
+
     if (doc.knobman != nullptr)
         return 0.0f;   // KnobMan draws inside its canvas
 
@@ -3723,6 +3847,10 @@ float LayerRender::overhangOf (const LayerDoc& doc)
 
         if (p.strokeEnabled && p.strokePosition != StrokePosition::Inside)
             reach = juce::jmax (reach, p.strokeWidth * (p.strokePosition == StrokePosition::Outside ? 1.0f : 0.5f) + 1.0f);
+
+        if (bevelOnCanvas (p))
+            reach = juce::jmax (reach, p.bevel.size * 1.25f + p.bevel.soften + 2.0f
+                                         + (p.bevel.style == BevelStyle::StrokeEmboss && p.strokeEnabled ? p.strokeWidth : 0.0f));
     }
 
     return reach;
@@ -3736,7 +3864,7 @@ juce::Image LayerRender::renderLayer (const LayerDoc& doc, int layerIndex, float
     const int w = juce::jmax (8, (int) std::lround (doc.canvasWidth  * scale));
     const int h = juce::jmax (8, (int) std::lround (doc.canvasHeight * scale));
 
-    juce::Image canvas (juce::Image::ARGB, w, h, true);
+    juce::Image canvas (juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
 
     if (layerIndex < 0 || layerIndex >= (int) doc.layers.size())
         return canvas;
@@ -3753,9 +3881,10 @@ juce::Image LayerRender::renderLayer (const LayerDoc& doc, int layerIndex, float
 
     applyMaterial (img, layer.prim, layer.eff, t, scale, doc.globalLightAngle, doc.globalLightAltitude);
 
-    applyBevel (img, lit, scale,
-                (lit.bevel.useGlobalLight ? doc.globalLightAngle : lit.bevel.angle) + turn,
-                lit.bevel.useGlobalLight ? doc.globalLightAltitude : lit.bevel.altitude);
+    if (! bevelOnCanvas (lit))   // past its edge: on the canvas, once it's placed
+        applyBevel (img, lit, scale,
+                    (lit.bevel.useGlobalLight ? doc.globalLightAngle : lit.bevel.angle) + turn,
+                    lit.bevel.useGlobalLight ? doc.globalLightAltitude : lit.bevel.altitude);
 
     applyTexture      (img, lit, scale);
     applyGloss        (img, lit);
@@ -3764,7 +3893,9 @@ juce::Image LayerRender::renderLayer (const LayerDoc& doc, int layerIndex, float
 
     if (needsPlacement (layer.prim))
     {
-        compositeWithEdgeEffects (canvas, layer, img, w, h, t, scale, nullptr);
+        compositeWithEdgeEffects (canvas, layer, img, w, h, t, scale, nullptr, 0.0f,
+                                  layer.prim.bevel.useGlobalLight ? doc.globalLightAngle : layer.prim.bevel.angle,
+                                  layer.prim.bevel.useGlobalLight ? doc.globalLightAltitude : layer.prim.bevel.altitude);
     }
     else
     {
@@ -3776,7 +3907,34 @@ juce::Image LayerRender::renderLayer (const LayerDoc& doc, int layerIndex, float
 }
 
 //==============================================================================
-juce::Image LayerRender::renderFilmstrip (const LayerDoc& doc, bool vertical, float scale)
+juce::Image LayerRender::silhouette (const LayerDoc& doc, int layerIndex, float t, float scale, bool placed)
+{
+    scale = juce::jlimit (0.25f, 16.0f, scale);
+
+    const int w = juce::jmax (8, (int) std::lround (doc.canvasWidth  * scale));
+    const int h = juce::jmax (8, (int) std::lround (doc.canvasHeight * scale));
+
+    if (layerIndex < 0 || layerIndex >= (int) doc.layers.size())
+        return juce::Image (juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
+
+    const auto& layer = doc.layers[(size_t) layerIndex];
+
+    // The shape and what its masks keep of it: its look (material, bevel, texture, effects
+    // round its edge) doesn't change where it is.
+    auto img = rasterisePrimitive (layer.prim, w, h, scale, t);
+    applyMasks (img, layer.eff, t);
+
+    if (! placed)
+        return img;
+
+    juce::Image canvas (juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
+    juce::Graphics g (canvas);
+    compositeLayer (g, layer, img, w, h, t, 0.0f, false);
+    return canvas;
+}
+
+//==============================================================================
+juce::Image LayerRender::renderFilmstrip (const LayerDoc& doc, bool vertical, float scale, const std::function<bool()>& stop)
 {
     scale = juce::jlimit (0.25f, 8.0f, scale);
 
@@ -3787,12 +3945,15 @@ juce::Image LayerRender::renderFilmstrip (const LayerDoc& doc, bool vertical, fl
     juce::Image strip (juce::Image::ARGB,
                        vertical ? w : w * n,
                        vertical ? h * n : h,
-                       true);
+                       true, juce::SoftwareImageType());
 
     juce::Graphics g (strip);
 
     for (int i = 0; i < n; ++i)
     {
+        if (stop != nullptr && stop())
+            return {};
+
         const float t = (n == 1) ? 0.0f : (float) i / (float) (n - 1);
 
         auto frame = renderFrame (doc, t, scale);

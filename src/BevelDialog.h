@@ -23,6 +23,8 @@
 
 #include <juce_gui_extra/juce_gui_extra.h>
 
+#include "UiHelpers.h"   // FineSlider
+
 #include <functional>
 
 class PrimitivePanel;
@@ -178,14 +180,14 @@ private:
     juce::ComboBox styleBox, techniqueBox;
     juce::Label    depthLabel { {}, "Depth" },      sizeLabel { {}, "Size" },
                    softenLabel { {}, "Soften" };
-    juce::Slider   depthSlider, sizeSlider, softenSlider;
+    FineSlider   depthSlider, sizeSlider, softenSlider;
     juce::Label    directionLabel { {}, "Direction" };
     juce::ToggleButton upButton { "Up" }, downButton { "Down" };
 
     juce::Label    shadingHeader { {}, "SHADING" };
     juce::ToggleButton globalLightButton { "Use Global Light" };
     juce::Label    angleLabel { {}, "Angle" }, altitudeLabel { {}, "Altitude" };
-    juce::Slider   angleSlider, altitudeSlider;
+    FineSlider   angleSlider, altitudeSlider;
 
     // Contour — reshapes the bevel's cross-section.
     juce::Label        contourHeader { {}, "CONTOUR" };
@@ -193,7 +195,7 @@ private:
     ContourPresetButton bevelContourPresetBox;
     ContourEditor      bevelContourEditor;
     juce::Label        rangeLabel { {}, "Range" };
-    juce::Slider       rangeSlider;
+    FineSlider       rangeSlider;
 
     BevelPreview       preview;
 
@@ -208,13 +210,13 @@ private:
     juce::ComboBox   highlightModeBox;
     juce::TextButton highlightColourButton;
     juce::Label      highlightOpacityLabel { {}, "Opacity" };
-    juce::Slider     highlightOpacitySlider;
+    FineSlider     highlightOpacitySlider;
 
     juce::Label      shadowLabel { {}, "Shadow" };
     juce::ComboBox   shadowModeBox;
     juce::TextButton shadowColourButton;
     juce::Label      shadowOpacityLabel { {}, "Opacity" };
-    juce::Slider     shadowOpacitySlider;
+    FineSlider     shadowOpacitySlider;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BevelDialog)
 };

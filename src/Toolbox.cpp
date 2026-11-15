@@ -3,6 +3,8 @@
 #include "Toolbox.h"
 #include "Primitives.h"
 #include "StellaLookAndFeel.h"
+#include "IconLibrary.h"
+#include "Preferences.h"   // the categories hidden, remembered
 
 namespace
 {
@@ -111,6 +113,15 @@ public:
         layOut();
     }
 
+    /** The categories whose items show (a search looks through all of them). */
+    void setHidden (const juce::StringArray& categoriesHidden)
+    {
+        hidden = categoriesHidden;
+        layOut();
+    }
+
+    bool shows (const juce::String& category) const    { return filter.isNotEmpty() || ! hidden.contains (category); }
+
     void layOut()
     {
         headers.clear();
@@ -123,8 +134,14 @@ public:
             for (auto* item : items)
                 any = any || (item->getCategory() == category && item->matches (filter));
 
-            if (! any)
+            if (! any || ! shows (category))
+            {
+                for (auto* item : items)
+                    if (item->getCategory() == category)
+                        item->setVisible (false);
+
                 continue;
+            }
 
             headers.add ({ category, y });
             y += headerHeight;
@@ -170,7 +187,7 @@ public:
         {
             g.setColour (Theme::muted);
             g.setFont (Theme::font (13.0f));
-            g.drawText ("Nothing matches", getLocalBounds().withHeight (40), juce::Justification::centred, false);
+            g.drawText (filter.isEmpty() ? "Light a category above" : "Nothing matches", getLocalBounds().withHeight (40), juce::Justification::centred, false);
         }
     }
 
@@ -181,7 +198,11 @@ public:
     }
 
 private:
+public:
     juce::StringArray categories;
+
+private:
+    juce::StringArray hidden;
     juce::OwnedArray<Item> items;
     juce::Array<std::pair<juce::String, int>> headers;
     juce::String filter;
@@ -189,6 +210,23 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (List)
 };
+
+//==============================================================================
+namespace
+{
+    /** A category's button: says whether it was a right-click (that one alone). */
+    struct CategoryButton final : public juce::TextButton
+    {
+        using juce::TextButton::TextButton;
+        std::function<void (bool alone)> onPick;
+
+        void clicked (const juce::ModifierKeys& modifiers) override
+        {
+            if (onPick != nullptr)
+                onPick (modifiers.isPopupMenu());
+        }
+    };
+}
 
 //==============================================================================
 Toolbox::Toolbox()
@@ -201,6 +239,27 @@ Toolbox::Toolbox()
     addAndMakeVisible (search);
 
     list = std::make_unique<List> (*this);
+
+    // A button a category: lit, its items show.
+    hiddenCategories = juce::StringArray::fromLines (SettingsFolder::file ("toolbox hidden categories.txt").loadFileAsString());
+    hiddenCategories.removeEmptyStrings();
+
+    for (const auto& category : list->categories)
+    {
+        auto* b = new CategoryButton (category);
+        categoryButtons.add (b);
+        b->setClickingTogglesState (false);
+        b->setToggleState (! hiddenCategories.contains (category), juce::dontSendNotification);
+        b->setColour (juce::TextButton::buttonColourId, Theme::raised);
+        b->setColour (juce::TextButton::buttonOnColourId, Theme::accentDeep.brighter (0.15f));
+        b->setColour (juce::TextButton::textColourOffId, Theme::muted);
+        b->setColour (juce::TextButton::textColourOnId, Theme::text);
+        b->setTooltip ("Its items show while it's lit (several at once). Right-click: this one alone (again: all of them)");
+        b->onPick = [this, b] (bool alone) { categoryClicked (*b, alone); };
+        addAndMakeVisible (b);
+    }
+
+    list->setHidden (hiddenCategories);
     viewport.setViewedComponent (list.get(), false);
     viewport.setScrollBarsShown (true, false);
     viewport.setScrollBarThickness (8);
@@ -221,12 +280,85 @@ void Toolbox::paint (juce::Graphics& g)
     g.drawText ("TOOLBOX", getLocalBounds().removeFromTop (34).withTrimmedLeft (14), juce::Justification::centredLeft, false);
 }
 
+void Toolbox::categoryClicked (juce::TextButton& button, bool alone)
+{
+    const auto category = button.getButtonText();
+
+    if (alone)
+    {
+        // This one alone; this one alone again: all of them.
+        const bool already = hiddenCategories.size() == categoryButtons.size() - 1 && ! hiddenCategories.contains (category);
+        hiddenCategories.clear();
+
+        if (! already)
+            for (auto* b : categoryButtons)
+                if (b != &button)
+                    hiddenCategories.add (b->getButtonText());
+    }
+    else if (hiddenCategories.contains (category))
+    {
+        hiddenCategories.removeString (category);
+    }
+    else
+    {
+        hiddenCategories.add (category);
+    }
+
+    for (auto* b : categoryButtons)
+        b->setToggleState (! hiddenCategories.contains (b->getButtonText()), juce::dontSendNotification);
+
+    saveHidden();
+    list->setHidden (hiddenCategories);
+}
+
+void Toolbox::saveHidden() const
+{
+    SettingsFolder::file ("toolbox hidden categories.txt").replaceWithText (hiddenCategories.joinIntoString ("\n"));
+}
+
+int Toolbox::layOutCategories (int width, bool place)
+{
+    // As many to a row as fit, each as wide as its name.
+    const int h = 22, gap = 4;
+    int x = 0, y = 0;
+    const auto font = Theme::font (12.0f);
+
+    for (auto* b : categoryButtons)
+    {
+        const auto w = juce::jmin (width, juce::roundToInt (juce::GlyphArrangement::getStringWidth (font, b->getButtonText())) + 16);
+
+        if (x > 0 && x + w > width)
+        {
+            x = 0;
+            y += h + gap;
+        }
+
+        if (place)
+            b->setBounds (x, y, w, h);
+
+        x += w + gap;
+    }
+
+    return categoryButtons.isEmpty() ? 0 : y + h;
+}
+
 void Toolbox::resized()
 {
     auto area = getLocalBounds().withTrimmedRight (1);
     area.removeFromTop (34);
     search.setBounds (area.removeFromTop (28).reduced (10, 0));
-    area.removeFromTop (6);
+    area.removeFromTop (8);
+
+    // The categories' buttons under the search.
+    auto buttons = area.reduced (10, 0);
+    categoriesHeight = layOutCategories (buttons.getWidth(), false);
+    const auto origin = buttons.getPosition();
+    layOutCategories (buttons.getWidth(), true);
+
+    for (auto* b : categoryButtons)
+        b->setTopLeftPosition (b->getPosition() + origin);
+
+    area.removeFromTop (categoriesHeight + 8);
     viewport.setBounds (area);
 
     list->setSize (viewport.getMaximumVisibleWidth(), list->getHeight());
@@ -255,6 +387,15 @@ void Toolbox::drawIcon (juce::Graphics& g, juce::Rectangle<float> area, const ju
         g.setColour (accent);
         g.drawLine ({ c, tip }, juce::jmax (1.5f, diameter * 0.09f));
     };
+
+    // An icon from the library: "icon:<name>".
+    if (icon.startsWith ("icon:"))
+    {
+        const auto path = IconLibrary::pathOf (icon.fromFirstOccurrenceOf (":", false, false));
+        g.setColour (accent);
+        g.fillPath (path, path.getTransformToScaleToFit (box.reduced (s * 0.14f), true));
+        return;
+    }
 
     if (icon == "knob")            { knob (s * 0.78f, juce::Colour (0xff2a2a2f)); return; }
     if (icon == "knob_small")      { knob (s * 0.5f, juce::Colour (0xff2a2a2f)); return; }

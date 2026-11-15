@@ -17,7 +17,7 @@ Four elements built into the studio, drawn in 3D: rows of curves stacked in dept
 
 Two or more oscillators: a `MorphSurface` when there's a mix between A and B; otherwise a `WaveTerrain` for each oscillator side by side, each with its own `"label"` ("Osc 1", "Osc 2") and `"color"`. Add a `FilterSweep` beside them when the filter has an envelope or LFO. At most two 3D displays on a panel: each takes about 4 ms of every frame while it shows.
 
-Sizes: 360 to 520 wide, 180 to 260 tall; a 2:1 box suits them. They draw their own dark background, so they sit best in a screen area of the panel (a recessed screen from the background-painter skill, or a dark group). Colours that glow on black: teal `#38E0D0`, magenta `#FF4FD8`, amber `#FFB347`, periwinkle `#7C9CFF`, lime `#B5E48C`; use the panel's accent for the main one (the panel-taste skill).
+Sizes: 360 to 520 wide, 180 to 260 tall; a 2:1 box suits them. They're frameless, drawn on nothing (like a see-through PNG), so they sit best on a dark screen area of the panel (a recessed screen from the background-painter skill, or a dark group); `"settings": { "backdrop": 1 }` gives one its own dark box and floor grid. Colours that glow on black: teal `#38E0D0`, magenta `#FF4FD8`, amber `#FFB347`, periwinkle `#7C9CFF`, lime `#B5E48C`; use the panel's accent for the main one (the panel-taste skill).
 
 ## Placing them
 With `edit_layout`, like any element; every key but the type and the box is optional:

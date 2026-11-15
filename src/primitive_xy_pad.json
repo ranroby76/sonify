@@ -1,6 +1,6 @@
 {
   "name": "XY pad",
-  "category": "Controls",
+  "category": "Performance",
   "order": 40,
   "icon": "xy",
   "description": "Moves two parameters at once with one dot.",

@@ -19,6 +19,9 @@
 #endif
 
 #include <windows.h>
+#include <commdlg.h>
+#include <shellapi.h>
+#include <shlobj.h>
 
 #include <algorithm>
 #include <string>
@@ -54,8 +57,45 @@ namespace stella::gui
             return (GetKeyState (VK_SHIFT) < 0 ? shiftKey : 0) | (control ? commandKey : 0);
         }
 
+        std::wstring wideOf (const std::string& s)
+        {
+            if (s.empty())
+                return {};
+
+            const auto n = MultiByteToWideChar (CP_UTF8, 0, s.data(), (int) s.size(), nullptr, 0);
+            std::wstring w ((size_t) std::max (0, n), L'\0');
+
+            if (n > 0)
+                MultiByteToWideChar (CP_UTF8, 0, s.data(), (int) s.size(), &w[0], n);
+
+            for (auto& c : w)
+                if (c == L'/')
+                    c = L'\\';
+
+            return w;
+        }
+
+        std::string utf8Of (const wchar_t* w)
+        {
+            const auto n = WideCharToMultiByte (CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+            std::string s ((size_t) std::max (0, n), '\0');
+
+            if (n > 0)
+                WideCharToMultiByte (CP_UTF8, 0, w, -1, &s[0], n, nullptr, nullptr);
+
+            while (! s.empty() && s.back() == '\0')
+                s.pop_back();
+
+            for (auto& c : s)
+                if (c == '\\')
+                    c = '/';
+
+            return s;
+        }
+
         class Win32Window final : public Window,
-                                  private Clipboard
+                                  private Clipboard,
+                                  private Desktop
         {
         public:
             explicit Win32Window (Host& host)
@@ -63,6 +103,16 @@ namespace stella::gui
             {
                 pixels.resize ((size_t) editor.getWidth() * (size_t) editor.getHeight());
                 editor.setClipboard (this);
+                editor.setDesktop (this);
+
+                // Its size menu chose another size: its pixels and itself that size, and the host told.
+                editor.onScaleChosen = [this]
+                {
+                    fitToEditor();
+
+                    if (onResizeRequest)
+                        onResizeRequest (editor.getWidth(), editor.getHeight());
+                };
 
                 if (liveWindows++ == 0)
                 {
@@ -82,6 +132,7 @@ namespace stella::gui
             ~Win32Window() override
             {
                 editor.setClipboard (nullptr);
+                editor.setDesktop (nullptr);
 
                 if (hwnd != nullptr)
                 {
@@ -121,6 +172,24 @@ namespace stella::gui
                     ShowWindow (hwnd, visible ? SW_SHOW : SW_HIDE);
             }
 
+            void getSize (int& w, int& h) override
+            {
+                w = editor.getWidth();
+                h = editor.getHeight();
+            }
+
+            void setSize (int w, int h) override
+            {
+                const auto scale = scaleForSize (w, h);
+
+                if (scale == editor.getScale())
+                    return;
+
+                editor.setScale (scale);
+                editor.getHost().setWindowScale (scale);
+                fitToEditor();
+            }
+
             // Keys the host hands the plugin's view.
             bool wantsKeys() override    { return editor.wantsKeys(); }
 
@@ -132,6 +201,98 @@ namespace stella::gui
             }
 
         private:
+            /** Its pixels, and itself, the Editor's size. */
+            void fitToEditor()
+            {
+                pixels.assign ((size_t) editor.getWidth() * (size_t) editor.getHeight(), 0u);
+
+                if (hwnd != nullptr)
+                {
+                    SetWindowPos (hwnd, nullptr, 0, 0, editor.getWidth(), editor.getHeight(), SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
+                    InvalidateRect (hwnd, nullptr, FALSE);
+                }
+            }
+
+            //==================================================================
+            // The preset commands' folder and dialogs (Editor's Desktop).
+            std::string documentsFolder() override
+            {
+                wchar_t path[MAX_PATH] {};
+
+                if (SUCCEEDED (SHGetFolderPathW (nullptr, CSIDL_PERSONAL | CSIDL_FLAG_CREATE, nullptr, 0, path)))
+                    return utf8Of (path);
+
+                return {};
+            }
+
+            /** The host's window it's in (what the dialogs belong to). */
+            HWND owner() const
+            {
+                return hwnd != nullptr ? GetAncestor (hwnd, GA_ROOT) : nullptr;
+            }
+
+            bool chooseFile (bool saving, const std::string& title, const std::string& folder, const std::string& name,
+                             const std::string& extension, std::string& chosen) override
+            {
+                // comdlg32 loaded when it's needed: nothing more for the plugin to link.
+                using Dialog = BOOL (WINAPI*) (LPOPENFILENAMEW);
+                static HMODULE library = LoadLibraryW (L"comdlg32.dll");
+
+                if (library == nullptr)
+                    return false;
+
+                const auto dialog = reinterpret_cast<Dialog> (reinterpret_cast<void*> (GetProcAddress (library, saving ? "GetSaveFileNameW" : "GetOpenFileNameW")));
+
+                if (dialog == nullptr)
+                    return false;
+
+                std::wstring file (32768, L'\0');
+                const auto suggested = wideOf (name);
+                std::copy (suggested.begin(), suggested.begin() + (std::ptrdiff_t) std::min (suggested.size(), file.size() - 1), file.begin());
+
+                const auto ext = wideOf (extension), start = wideOf (folder), heading = wideOf (title);
+                std::wstring filter = (extension == "presetbank" ? L"Preset banks" : L"Presets") + std::wstring (L" (*.") + ext + L")";
+                filter += L'\0';
+                filter += L"*." + ext;
+                filter += L'\0';
+                filter += L"All files";
+                filter += L'\0';
+                filter += L"*.*";
+                filter += L'\0';
+                filter += L'\0';
+
+                OPENFILENAMEW o {};
+                o.lStructSize = sizeof (o);
+                o.hwndOwner = owner();
+                o.lpstrFilter = filter.c_str();
+                o.lpstrFile = &file[0];
+                o.nMaxFile = (DWORD) file.size();
+                o.lpstrInitialDir = start.empty() ? nullptr : start.c_str();
+                o.lpstrTitle = heading.c_str();
+                o.lpstrDefExt = ext.c_str();
+                o.Flags = OFN_NOCHANGEDIR | OFN_EXPLORER | (saving ? OFN_OVERWRITEPROMPT : (OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST));
+
+                if (! dialog (&o))
+                    return false;
+
+                chosen = utf8Of (file.c_str());
+                return ! chosen.empty();
+            }
+
+            bool confirm (const std::string& question) override
+            {
+                const auto text = wideOf (question);
+                const bool asking = question.find ('?') != std::string::npos;
+                return MessageBoxW (owner(), text.c_str(), L"Presets", asking ? (MB_YESNO | MB_ICONQUESTION) : (MB_OK | MB_ICONINFORMATION))
+                         == (asking ? IDYES : IDOK);
+            }
+
+            void showFolder (const std::string& path) override
+            {
+                const auto folder = wideOf (path);
+                ShellExecuteW (owner(), L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            }
+
             //==================================================================
             // The clipboard (Editor's Clipboard).
             bool getText (std::string& text) override
@@ -322,6 +483,12 @@ namespace stella::gui
                     }
 
                     case WM_TIMER:
+                        self->editor.runQueuedPresetCommand();   // a preset command a click asked for (its dialog)
+                        self = reinterpret_cast<Win32Window*> (GetWindowLongPtrW (window, GWLP_USERDATA));
+
+                        if (self == nullptr)
+                            return 0;   // closed while its dialog was up
+
                         InvalidateRect (window, nullptr, FALSE);
                         self->followKeys (false);
                         return 0;
@@ -335,6 +502,16 @@ namespace stella::gui
                     case WM_LBUTTONDBLCLK:
                         self->editor.mouseDown (pointerX (l), pointerY (l), fineKeys (w), true);
                         self->followKeys (true);
+                        return 0;
+
+                    // A right-click: the size menu.
+                    case WM_RBUTTONUP:
+                        self->editor.contextClick (pointerX (l), pointerY (l));
+                        InvalidateRect (window, nullptr, FALSE);
+                        return 0;
+
+                    case WM_RBUTTONDOWN:
+                    case WM_RBUTTONDBLCLK:
                         return 0;
 
                     //==========================================================

@@ -6,7 +6,17 @@
 #include "KnobFile.h"
 #include "LayerRender.h"
 #include "Looks.h"
+#include "BodyEditor.h"       // design_templates: the bodies
+#include "Body3D.h"
+#include "IconLibrary.h"      // find_icons
+#include "ModMatrix.h"
+#include "PerformControl.h"
+#include "PresetPanel.h"
+#include "SelectorSet.h"
 #include "MaterialChoices.h"
+#include "MaterialArchetypes.h"   // edit_layout's built-in material looks
+#include "PanelLayouts.h"         // design_templates: the panel layouts
+#include "Model3D.h"          // 3D looks: make_3d_look, the 3D Gallery
 #include "PanelParts.h"
 #include "PluginLibrary.h"
 #include "PresetBank.h"
@@ -27,7 +37,8 @@
 #include <optional>
 
 //==============================================================================
-// Sonify's gallery for Fanan AI: every knob, slider and switch in it, numbered by name.
+// Sonify's galleries for Fanan AI: every knob, slider and switch in the gallery (or every 3D model
+// in the 3D Gallery), numbered by name.
 namespace
 {
     struct GalleryEntry
@@ -36,18 +47,27 @@ namespace
         juce::File file;
         juce::String name;        // its file's name
         Looks::Kind kind = Looks::Kind::knob;
+        juce::String model;       // a 3D model's kind ("knob", "button", "toggle", "slider"); empty: not 3D
     };
 
-    std::vector<GalleryEntry> galleryEntries()
+    std::vector<GalleryEntry> galleryEntries (bool models = false)
     {
-        // What each file is, read once (a Sonify knob file names its kind at its start; a KnobMan
-        // one is read whole), again only when the file changes.
+        // What each file is, read once (a Sonify knob file names its kind at its start, a 3D model
+        // its model's kind; a KnobMan one is read whole), again only when the file changes.
+        struct Known
+        {
+            juce::int64 stamp = 0;
+            Looks::Kind kind = Looks::Kind::knob;
+            juce::String model;
+        };
+
         static juce::CriticalSection lock;
-        static std::map<juce::String, std::pair<juce::int64, Looks::Kind>> known;
+        static std::map<juce::String, Known> known;
         const juce::ScopedLock sl (lock);
 
-        const auto folder = KnobStudio::galleryFolder();
-        auto files = folder.findChildFiles (juce::File::findFiles, true, juce::String ("*.knob;*") + Looks::fileExtension);
+        const auto folder = models ? KnobStudio::modelGalleryFolder() : KnobStudio::galleryFolder();
+        auto files = folder.findChildFiles (juce::File::findFiles, true, models ? "*" + juce::String (Looks::modelExtension)
+                                                                                : juce::String ("*.knob;*") + Looks::fileExtension);
         std::sort (files.begin(), files.end(), [&folder] (const juce::File& a, const juce::File& b)
         {
             return a.getRelativePathFrom (folder).compareNatural (b.getRelativePathFrom (folder)) < 0;
@@ -60,22 +80,27 @@ namespace
             const auto stamp = file.getLastModificationTime().toMilliseconds() ^ file.getSize();
             auto found = known.find (file.getFullPathName());
 
-            if (found == known.end() || found->second.first != stamp)
+            if (found == known.end() || found->second.stamp != stamp)
             {
                 std::optional<Looks::Kind> kind;
+                juce::String model;
 
-                if (file.hasFileExtension (Looks::fileExtension))
+                if (file.hasFileExtension (Looks::fileExtension) || file.hasFileExtension (Looks::modelExtension))
                 {
                     juce::FileInputStream in (file);
                     juce::MemoryBlock start;
 
                     if (in.openedOk())
-                        in.readIntoMemoryBlock (start, 4096);
+                        in.readIntoMemoryBlock (start, 32768);   // (a 3D model is small: its model's kind is in it too)
 
                     const auto text = start.toString();
 
                     if (const auto at = text.indexOf ("stellaKind=\""); at >= 0)
                         kind = Looks::kindFromName (text.substring (at + 12).upToFirstOccurrenceOf ("\"", false, false));
+
+                    if (const auto at = text.indexOf ("<Model3D"); at >= 0)
+                        if (const auto k = text.indexOf (at, "kind=\""); k >= 0)
+                            model = text.substring (k + 6).upToFirstOccurrenceOf ("\"", false, false);
                 }
 
                 if (! kind.has_value())
@@ -91,14 +116,18 @@ namespace
                     kind = read;
                 }
 
-                found = known.insert_or_assign (file.getFullPathName(), std::make_pair (stamp, *kind)).first;
+                found = known.insert_or_assign (file.getFullPathName(), Known { stamp, *kind, model }).first;
             }
+
+            if (models && found->second.model.isEmpty())
+                continue;   // (the 3D Gallery: 3D models only)
 
             GalleryEntry entry;
             entry.id = (int) entries.size() + 1;
             entry.file = file;
             entry.name = file.getFileNameWithoutExtension();
-            entry.kind = found->second.second;
+            entry.kind = found->second.kind;
+            entry.model = found->second.model;
             entries.push_back (entry);
         }
 
@@ -359,9 +388,30 @@ namespace
             target->removeProperty ("w");
         }
 
+        // Its settings merge: the keys given replace theirs (null removes one), the rest stay.
+        auto settings = target->getProperty ("settings");
+
+        if (const auto* given = fields->getProperty ("settings").getDynamicObject(); given != nullptr)
+        {
+            auto kept = settings.isObject() ? settings.clone() : juce::var (new juce::DynamicObject());
+
+            for (const auto& entry : given->getProperties())
+            {
+                if (entry.value.isVoid() || entry.value.isUndefined())
+                    kept.getDynamicObject()->removeProperty (entry.name);
+                else
+                    kept.getDynamicObject()->setProperty (entry.name, entry.value);
+            }
+
+            settings = kept;
+        }
+
         for (const auto& field : fields->getProperties())
             if (field.name.toString() != "index")
                 target->setProperty (field.name, field.value);
+
+        if (settings.isObject())
+            target->setProperty ("settings", settings);
 
         return GuiLayout::widgetFromVar (merged);
     }
@@ -509,9 +559,24 @@ namespace
         return " [its shadow falls " + juce::String (juce::roundToInt (reach / side * 100.0f)) + "% of its size past the control: leave that room]";
     }
 
+    /** A 3D look: its model's kind, material, colour and view ("3D knob: Brass, #FFD4A94F, seen from 0 deg"). */
+    juce::String modelNote (const Looks::Look& look)
+    {
+        const auto& m = *look.doc.model3d;
+        const auto* material = Model3D::findParam (m.kind, "material");
+        return " {3D " + Model3D::kindKey (m.kind) + ": "
+             + (material != nullptr ? material->choices[m.choice ("material")] : juce::String())
+             + ", " + "#" + m.colour ("colour").toDisplayString (true)
+             + ", seen from " + juce::String (juce::roundToInt (m.number ("tilt"))) + " deg"
+             + ", perspective " + juce::String (juce::roundToInt (m.number ("perspective"))) + "%}";
+    }
+
     /** A look's layers, bottom first, each with its material: "layers: Shadow, Bezel=anodized, Body=titanium, Pointer". */
     juce::String layersNote (const Looks::Look& look)
     {
+        if (look.doc.model3d != nullptr)
+            return modelNote (look);
+
         juce::StringArray names;
 
         for (const auto& layer : look.doc.layers)
@@ -745,7 +810,7 @@ juce::var ProjectTools::getDefinitions (bool builder) const
 
     {
         auto props = object();
-        props.getDynamicObject()->setProperty ("layout", property ("object", "The whole GUI: { \"format\": 1, \"width\", \"height\", \"background\", \"light\", \"widgets\": [...] }"));
+        props.getDynamicObject()->setProperty ("layout", property ("object", "The whole GUI: { \"format\": 1, \"width\", \"height\", \"background\", \"light\", \"camera\", \"body\" (its 3D body: the 3d-body skill), \"widgets\": [...] }"));
         tools.add (tool ("set_layout",
                          "Replaces the whole GUI (gui/layout.json), for a new design. It shows at once; no build needed. "
                          "To change part of it, use edit_layout instead. If you do replace it, read gui/layout.json just before, "
@@ -773,9 +838,29 @@ juce::var ProjectTools::getDefinitions (bool builder) const
         props.getDynamicObject()->setProperty ("light", property ("object", "The panel's global light, which lights the knobs' looks, the shapes and painted "
                                                                            "backgrounds alike: { \"angle\": 120, \"altitude\": 30 } (Photoshop's: degrees it comes "
                                                                            "from, 120 the upper left; how high, 0..90). Painted backgrounds are painted again in it."));
+        props.getDynamicObject()->setProperty ("camera", property ("number", "The panel camera, 0..100 (50 standard): how one camera over the whole panel "
+                                                                         "sees its 3D looks and body (the 3d-panel skill)."));
+        props.getDynamicObject()->setProperty ("body", property ("object", "The window's 3D body, replacing it whole: { \"tilt\", \"shadow\", \"floor\", "
+                                                                         "\"parts\": [...] } (the 3d-body skill; design_templates has ready-made ones). "
+                                                                         "null removes it. Read gui/layout.json first to keep what the user built."));
+        props.getDynamicObject()->setProperty ("materialLook", property ("string", "Only when the user asks for it: one of the built-in material looks, by its exact name: "
+                                                                                  + MaterialArchetypes::names().joinIntoString (", ")
+                                                                                  + ". Without lookIndex: every rectangular panel, the window's background, light and text colours. "
+                                                                                    "It's put on before this call's changes, so they win."));
+        props.getDynamicObject()->setProperty ("lookIndex", property ("integer", "With materialLook: the one shape to put it on, by its index in the \"GUI elements\" list."));
+        props.getDynamicObject()->setProperty ("lookControls", property ("boolean", "With materialLook and no lookIndex, only when the user asks for the look's controls too: "
+                                                                                   "every knob, slider and switch wears the look's matching 3D controls (the looks \"<look> knob\", "
+                                                                                   "\"<look> slider\", \"<look> slider across\", \"<look> button\"; \"<look> lever\" is there for a switch too)."));
+        props.getDynamicObject()->setProperty ("lookTheme", property ("boolean", "With materialLook and no lookIndex, only when the user asks for the look's displays or fonts too (or the "
+                                                                                "whole theme): its lamps, selectors, readouts, LED digits, keyboards and meters, its fonts and title "
+                                                                                "lettering and its panel camera; places, sizes, parameters and words stay as they are."));
+        props.getDynamicObject()->setProperty ("lookPainting", property ("boolean", "With materialLook and no lookIndex, only when the user asks for the look's painted panel (a painted "
+                                                                                   "or lit background in it): the panel shapes step back (hidden, kept) and the title takes the plate's "
+                                                                                   "lettering; the result gives the paint_picture recipe to paint next, its parts placed from the layout."));
         tools.add (tool ("edit_layout",
                          "Changes part of the plugin's GUI and keeps everything else exactly as it is: removes, changes or adds elements, "
-                         "or resizes the window. Elements are named by their index in the project's \"GUI elements\" list; one call's "
+                         "or resizes the window, its light, camera and 3D body. A change's \"settings\" merge: the keys given replace theirs "
+                         "(null removes one), the rest stay. Elements are named by their index in the project's \"GUI elements\" list; one call's "
                          "changes and removals all use that list, then its additions go in. Put all of a step's GUI edits in one call: the "
                          "indexes change after it. The window grows by itself to fit what's added or moved. It shows at once; no build needed. "
                          "Toolbox types (a drop-down list is \"dropdown\"; RangeSlider, DualKnob and MeterKnob are built in) and the project's programmed elements only: an element the "
@@ -958,20 +1043,53 @@ juce::var ProjectTools::getDefinitions (bool builder) const
                          props, { "name" }));
     }
 
-    // Sonify's gallery: ready-made knobs, sliders and switches, every one allowed in any plugin.
-    // Looked through first, before designing a look.
+    // 3D looks: knobs, buttons, sliders and toggle switches built as real objects and rendered.
     {
         auto props = object();
-        auto kind = property ("string", "\"knob\", \"slider\" (either way up) or \"switch\".");
+        props.getDynamicObject()->setProperty ("name", property ("string", "The new 3D look's name, e.g. \"Brass 3D knob\": controls wear it by this "
+                                                                           "name. A look of this plugin's own with that name is replaced."));
+        props.getDynamicObject()->setProperty ("from", property ("string", "A 3D look in the project's looks list to start from (its settings kept, "
+                                                                           "those given changed): one marked {3D ...}. Left out: a ready-made one (preset)."));
+        auto kind = property ("string", "Its kind, when from is left out: \"knob\", \"button\", \"toggle\" (a lever switch), \"slider\" "
+                                        "(upright) or \"hslider\" (a slider across).");
+        kind.getDynamicObject()->setProperty ("enum", juce::Array<juce::var> { "knob", "button", "toggle", "slider", "hslider" });
+        props.getDynamicObject()->setProperty ("kind", kind);
+        props.getDynamicObject()->setProperty ("preset", property ("string", "A ready-made one of the kind to start from (the 3d-controls skill names "
+                                                                             "them; left out: the kind's first)."));
+        props.getDynamicObject()->setProperty ("settings", property ("object", "Its settings by key, only those to change, e.g. { \"material\": "
+                                                                               "\"Brass\", \"colour\": \"#FFD4A94F\", \"grip\": \"Flutes\", "
+                                                                               "\"gripCount\": 24, \"ring\": true, \"tilt\": 20 }: a choice by "
+                                                                               "its name, a flag true or false, a colour \"#AARRGGBB\", a number "
+                                                                               "(kept in its range). Every key, its range and its default: the "
+                                                                               "3d-controls skill."));
+        props.getDynamicObject()->setProperty ("description", property ("string", "A few words for the looks list, e.g. \"brass, fluted, lit ring\"."));
+        tools.add (tool ("make_3d_look",
+                         "Makes a 3D look: a knob, button, toggle switch or slider built as a real object (a turned body with its skirt, "
+                         "grip, cap and pointer; a cap on its bezel with its light; a fader on its track; a lever on its nut) in "
+                         "materials (plastics, rubber, bakelite, brushed and spun aluminium, chrome, steel, gold, brass, copper, "
+                         "anodized, painted metal), rendered, lit by the panel's global light and seen by the panel's camera. Starts "
+                         "from a 3D look of the project's (from), or a ready-made one of a kind (kind, preset), and changes the "
+                         "settings given. Saved as the plugin's own look: put it on controls with their \"style\" (edit_layout). "
+                         "Read the 3d-controls and 3d-panel skills before a panel of 3D controls.",
+                         props, { "name" }));
+    }
+
+    // Sonify's galleries: ready-made knobs, sliders and switches (and 3D models), every one allowed
+    // in any plugin. Looked through first, before designing a look.
+    {
+        auto props = object();
+        auto kind = property ("string", "\"knob\", \"slider\" (either way up) or \"switch\" (in the 3D Gallery: buttons and toggle switches).");
         kind.getDynamicObject()->setProperty ("enum", juce::Array<juce::var> { "knob", "slider", "switch" });
         props.getDynamicObject()->setProperty ("kind", kind);
         props.getDynamicObject()->setProperty ("words", property ("string", "What to look for in their names, e.g. \"metal\", \"vintage\", "
                                                                             "\"black\", \"vu\". Left out: all of that kind."));
+        props.getDynamicObject()->setProperty ("3d", property ("boolean", "true: the 3D Gallery (3D models, for a panel of 3D controls) instead "
+                                                                          "of the knob gallery."));
         tools.add (tool ("find_gallery_looks",
-                         "Looks through Sonify's gallery for knobs, sliders or switches: ready-made designs, every one allowed in any "
-                         "plugin, sold ones too. Lists up to 30, each with its id and name. Use it first when the panel needs knobs "
-                         "(or sliders, switches), before designing a look: pick the item whose name suits the plugin's character, then "
-                         "use_gallery_look. Changes nothing.",
+                         "Looks through Sonify's gallery for knobs, sliders or switches (with \"3d\": true, the 3D Gallery's 3D models): "
+                         "ready-made designs, every one allowed in any plugin, sold ones too. Lists up to 30, each with its id and "
+                         "name. Use it first when the panel needs knobs (or sliders, switches), before designing a look: pick the "
+                         "item whose name suits the plugin's character, then use_gallery_look. Changes nothing.",
                          props, { "kind" }));
     }
 
@@ -979,10 +1097,48 @@ juce::var ProjectTools::getDefinitions (bool builder) const
         auto props = object();
         props.getDynamicObject()->setProperty ("id", property ("integer", "The gallery item's id (from find_gallery_looks)."));
         props.getDynamicObject()->setProperty ("name", property ("string", "The look's name in this plugin, e.g. \"Vintage knob\" (left out: the item's own)."));
+        props.getDynamicObject()->setProperty ("3d", property ("boolean", "true: an item of the 3D Gallery (as find_gallery_looks listed it with \"3d\": true)."));
         tools.add (tool ("use_gallery_look",
                          "Brings a gallery item (from find_gallery_looks) into the plugin as its own look, drawn exactly as in the "
-                         "gallery. Then put it on controls with their \"style\" (edit_layout).",
+                         "gallery. Then put it on controls with their \"style\" (edit_layout). A 3D one's settings can then be "
+                         "changed with make_3d_look (from it).",
                          props, { "id" }));
+    }
+
+    // The studios' galleries of designs: selector sets, performance controls, matrices, preset
+    // managers, 3D bodies.
+    {
+        auto props = object();
+        auto kind = property ("string", "\"set\" (a selector's keys: its settings \"set\"), \"perform\" (wheels, levers, joysticks, pads, "
+                                        "ribbons: an xy element's settings \"perform\"), \"matrix\" (a matrix element's settings \"matrix\"), "
+                                        "\"presets\" (a preset manager: a preset element's settings \"presets\"), \"body\" (the "
+                                        "window's 3D body: edit_layout's \"body\") or \"layout\" (a whole window laid out for a kind of "
+                                        "plugin: a synth, a drum machine, a compressor...: set_layout's starting point).");
+        kind.getDynamicObject()->setProperty ("enum", juce::Array<juce::var> { "set", "perform", "matrix", "presets", "body", "layout" });
+        props.getDynamicObject()->setProperty ("kind", kind);
+        props.getDynamicObject()->setProperty ("name", property ("string", "One design's name (as listed): its JSON. Left out: the list."));
+        tools.add (tool ("design_templates",
+                         "The studio's ready-made designs of a kind: lists them, or gives one's JSON to put in an element's settings "
+                         "(or, for a body, in edit_layout's \"body\", made for this window's size; for a layout, a whole window to "
+                         "start a new plugin's first design from). Start from the nearest one and "
+                         "change what differs; the selector-sets, performance-controls, mod-matrix, preset-managers and 3d-body "
+                         "skills have every key. Changes nothing.",
+                         props, { "kind" }));
+    }
+
+    // The icon library: icons in place of words, or among them.
+    {
+        auto props = object();
+        props.getDynamicObject()->setProperty ("words", property ("string", "What to look for in their names and tags, e.g. \"sine\", "
+                                                                            "\"filter lowpass\", \"play\", \"microphone\", \"arrow left\"."));
+        props.getDynamicObject()->setProperty ("category", property ("string", "Only this category (left out: all): " + IconLibrary::categories().joinIntoString (", ")
+                                                                               + ". \"Audio\" has waves, filters, envelopes, LFOs, arpeggio modes, routing, "
+                                                                                 "stereo, effects, voices and note values."));
+        tools.add (tool ("find_icons",
+                         "Looks through the icon library (some 13,000 icons and symbols, free in any plugin with no credit) for icons "
+                         "to show in place of words: their names, best matches first (up to 60). In any text an icon is its name in "
+                         "braces: \"{wave-sine}\", \"{filter-lowpass} Cutoff\". Changes nothing.",
+                         props, { "words" }));
     }
 
     if (! builder)
@@ -1151,7 +1307,8 @@ juce::String ProjectTools::describeProject() const
              << (layout.backgroundPicture().isNotEmpty() ? ", background picture " + layout.backgroundPicture() : juce::String())
              << (layout.pages.isEmpty() ? juce::String() : ", pages: " + layout.pages.joinIntoString (", "))
              << ", global light from " << juce::String (layout.lightAngle, 1).trimCharactersAtEnd ("0").trimCharactersAtEnd (".")
-             << " degrees, " << juce::String (layout.lightAltitude, 1).trimCharactersAtEnd ("0").trimCharactersAtEnd (".") << " up.\n";
+             << " degrees, " << juce::String (layout.lightAltitude, 1).trimCharactersAtEnd ("0").trimCharactersAtEnd (".") << " up"
+             << ", panel camera " << juce::roundToInt (layout.camera) << ".\n";
 
         // Every element, by index: edit_layout changes them without the whole file going back and forth.
         if (! layout.widgets.empty())
@@ -1273,6 +1430,18 @@ juce::String ProjectTools::describeProject() const
                  << knobs << " knobs, " << sliders << " sliders, " << switches << " switches.\n";
         else
             text << "Sonify's gallery is empty on this computer: design looks from the list above (make_look).\n";
+
+        // ...and the 3D Gallery's models (find_gallery_looks with "3d": true).
+        int models3d = 0;
+
+        for (const auto& item : galleryEntries (true))
+            models3d += item.model.isNotEmpty() ? 1 : 0;
+
+        text << (models3d > 0 ? "Sonify's 3D Gallery (find_gallery_looks and use_gallery_look with \"3d\": true): " + juce::String (models3d)
+                                    + " 3D models (knobs, buttons, toggle switches, sliders). "
+                              : juce::String ("Sonify's 3D Gallery is empty on this computer. "))
+             << "3D looks are made with make_3d_look; the panel's \"camera\" (0..100, now " << juce::roundToInt (layout.camera)
+             << ") is how its one camera sees them.\n";
     }
 
     PresetBank bank;
@@ -1500,11 +1669,21 @@ juce::String ProjectTools::describeCall (const juce::String& name, const juce::v
     if (name == "make_look")
         return "Designing the look \"" + input.getProperty ("name", {}).toString().trim() + "\"";
 
+    if (name == "make_3d_look")
+        return "Building the 3D look \"" + input.getProperty ("name", {}).toString().trim() + "\"";
+
     if (name == "find_gallery_looks")
-        return juce::String::fromUTF8 ("Looking through the knob gallery\xe2\x80\xa6");
+        return juce::String::fromUTF8 ((bool) input.getProperty ("3d", false) ? "Looking through the 3D Gallery\xe2\x80\xa6"
+                                                                              : "Looking through the knob gallery\xe2\x80\xa6");
 
     if (name == "use_gallery_look")
         return "Taking a look from the knob gallery";
+
+    if (name == "design_templates")
+        return juce::String::fromUTF8 ("Looking through the studio's designs\xe2\x80\xa6");
+
+    if (name == "find_icons")
+        return juce::String::fromUTF8 ("Looking through the icons\xe2\x80\xa6");
 
     return {};
 }
@@ -1660,7 +1839,7 @@ juce::String ProjectTools::checkLayout (const GuiLayout& layout, const GuiLayout
     juce::StringArray crowded;
 
     for (const auto& w : layout.widgets)
-        if (w.type == GuiWidget::Type::selector && w.options.size() > 8 && PanelParts::selectorDisplayOf (w) != "vfd")
+        if (w.type == GuiWidget::Type::selector && w.options.size() > 8 && PanelParts::selectorDisplayOf (w) != "vfd" && PanelParts::selectorDisplayOf (w) != "dropdown")
             crowded.addIfNotAlreadyThere (w.label.isNotEmpty() ? w.label : w.param);
 
     return (tabsMissing ? juce::String ("\nThe window has pages but no \"tabs\" element to show them: add one ({ \"type\": \"tabs\", ... }), "
@@ -1674,7 +1853,7 @@ juce::String ProjectTools::checkLayout (const GuiLayout& layout, const GuiLayout
                                            "move them apart or make them a little smaller, so each shadow has its room: " + crowdedShadows.joinIntoString (", ") + ".")
          + (crowded.isEmpty() ? juce::String()
                               : "\nThese selectors have too many buttons to read (" + crowded.joinIntoString (", ")
-                                    + "): make each a \"dropdown\" instead, or give it \"display\": \"vfd\" (one name at a time).")
+                                    + "): make each a \"dropdown\" instead, or give it \"display\": \"dropdown\" (a list) or \"vfd\" (one name at a time).")
          + (unprogrammed.isEmpty() ? juce::String()
                                    : "\nThese elements aren't toolbox types and aren't programmed: " + unprogrammed.joinIntoString (", ")
                                          + ". Use a toolbox type, or program each one (elements/<Name>.cpp ending with STELLA_ELEMENT (<Name>, ...), then build).")
@@ -1851,6 +2030,61 @@ void ProjectTools::run (const juce::String& name, const juce::var& input, Done d
         std::vector<juce::Rectangle<int>> placed;   // where changed and added elements went, for the window to fit
         int changedCount = 0, addedCount = 0;
 
+        // A built-in material look first: this call's own changes win over it.
+        juce::String lookDone;
+
+        if (const auto lookName = input.getProperty ("materialLook", {}).toString().trim(); lookName.isNotEmpty())
+        {
+            const auto look = MaterialArchetypes::find (lookName);
+
+            if (! look.isObject())
+            {
+                problems.add ("there's no material look \"" + lookName + "\"");
+            }
+            else if (input.hasProperty ("lookIndex"))
+            {
+                const auto index = indexFrom (input.getProperty ("lookIndex", {}));
+
+                if (juce::isPositiveAndBelow (index, count) && layout.widgets[(size_t) index].type == GuiWidget::Type::shape)
+                {
+                    MaterialArchetypes::applyToWidget (layout.widgets[(size_t) index], look);
+                    lookDone = "Element " + juce::String (index) + " took the look \"" + lookName + "\".";
+                }
+                else
+                {
+                    problems.add ("element " + input.getProperty ("lookIndex", "?").toString() + " isn't a shape, so it can't take a material look");
+                }
+            }
+            else
+            {
+                const auto panels = MaterialArchetypes::applyToLayout (layout, look);
+                lookDone = juce::String (panels) + " panels took the look \"" + lookName + "\", with the window's background, light and text colours.";
+
+                if ((bool) input.getProperty ("lookControls", false))
+                    lookDone << " " << juce::String (MaterialArchetypes::applyControls (layout, lookName)) << " controls took its matching 3D controls.";
+
+                if ((bool) input.getProperty ("lookTheme", false))
+                    lookDone << " " << juce::String (MaterialArchetypes::applyTheme (layout, lookName)) << " elements took its displays and fonts.";
+
+                if ((bool) input.getProperty ("lookPainting", false) && MaterialArchetypes::findPaintedPanel (lookName).isObject())
+                {
+                    const auto hidden = MaterialArchetypes::prepareForPainting (layout, lookName);
+                    juce::String file ("background.png");
+
+                    for (const auto& w : layout.widgets)
+                        if (w.type == GuiWidget::Type::image && w.bounds == juce::Rectangle<int> (0, 0, layout.width, layout.height)
+                            && GuiLayout::paintedPictures (project.getGuiFolder()).contains (w.image))
+                            file = w.image;
+
+                    lookDone << " " << juce::String (hidden) << " panel shapes stepped back (hidden, kept) for its painted panel. Paint it now: "
+                             << "paint_picture with exactly " << juce::JSON::toString (MaterialArchetypes::painterRecipe (layout, lookName, file), true)
+                             << ", then, unless an image showing " << file << " already fills the window, add { \"type\": \"image\", \"x\": 0, \"y\": 0, "
+                             << "\"w\": " << juce::String (layout.width) << ", \"h\": " << juce::String (layout.height) << ", \"image\": \"" << file
+                             << "\", \"mode\": \"stretch\" } with edit_layout at 0.";
+                }
+            }
+        }
+
         // Changes first, then removals, both by the indexes as listed.
         if (const auto* changes = input.getProperty ("change", {}).getArray())
         {
@@ -1931,6 +2165,16 @@ void ProjectTools::run (const juce::String& name, const juce::var& input, Done d
             layout.lightAltitude = juce::jlimit (0.0f, 90.0f, (float) (double) light.getProperty ("altitude", layout.lightAltitude));
         }
 
+        // The panel camera, and the 3D body (replaced whole; null removes it).
+        if (input.hasProperty ("camera"))
+            layout.camera = juce::jlimit (0.0f, 100.0f, (float) (double) input.getProperty ("camera", layout.camera));
+
+        if (input.hasProperty ("body"))
+        {
+            const auto body = input.getProperty ("body", {});
+            layout.body = body.isObject() && body.getDynamicObject()->getProperties().size() > 0 ? body.clone() : juce::var();
+        }
+
         // The pages, as listed: elements on a page that's gone go to the first one (with one page
         // or none, the window is one page again and nothing has a page).
         if (const auto* list = input.getProperty ("pages", {}).getArray())
@@ -1970,6 +2214,11 @@ void ProjectTools::run (const juce::String& name, const juce::var& input, Done d
                 if (w.type == GuiWidget::Type::image && w.bounds == oldWindow)
                     w.bounds = { 0, 0, layout.width, layout.height };
 
+        // The 3D body grows or shrinks with the window (unless this call gave a new one).
+        if ((layout.width != oldWindow.getWidth() || layout.height != oldWindow.getHeight()) && ! input.hasProperty ("body")
+            && Body3D::hasParts (layout.body))
+            layout.body = BodyEditor::scaledBody (layout.body, oldWindow.getWidth(), oldWindow.getHeight(), layout.width, layout.height);
+
         if (const auto saved = layout.save (file); saved.failed())
             return fail (saved.getErrorMessage());
 
@@ -1985,10 +2234,11 @@ void ProjectTools::run (const juce::String& name, const juce::var& input, Done d
         done ("The GUI is showing: " + juce::String ((int) layout.widgets.size()) + " elements, " + juce::String (layout.width) + " x "
                   + juce::String (layout.height) + (what.isEmpty() ? juce::String (".") : " (" + what.joinIntoString (", ") + ").")
                   + (layout.width != askedWidth || layout.height != askedHeight ? "\nThe window grew to fit what was placed." : juce::String())
+                  + (lookDone.isEmpty() ? juce::String() : "\n" + lookDone)
                   + (problems.isEmpty() ? juce::String() : "\nNot done: " + problems.joinIntoString ("; ") + ".")
                   + checkLayout (layout, before)
                   + (what.isEmpty() ? juce::String() : "\nThe indexes have changed: use the project's updated \"GUI elements\" list for further edits."),
-              ! problems.isEmpty() && what.isEmpty());
+              ! problems.isEmpty() && what.isEmpty() && lookDone.isEmpty());
         return;
     }
 
@@ -2127,11 +2377,120 @@ void ProjectTools::run (const juce::String& name, const juce::var& input, Done d
     if (name == "make_look")
         return makeLook (input, std::move (done));
 
+    if (name == "make_3d_look")
+        return make3dLook (input, std::move (done));
+
     if (name == "find_gallery_looks")
         return findGalleryLooks (input, std::move (done));
 
     if (name == "use_gallery_look")
         return useGalleryLook (input, std::move (done));
+
+    if (name == "find_icons")
+    {
+        const auto words = input.getProperty ("words", {}).toString().trim();
+        const auto category = input.getProperty ("category", {}).toString().trim();
+        const auto found = IconLibrary::search (words, IconLibrary::categories().contains (category) ? category : juce::String(), 60);
+
+        if (found.empty())
+            return done ("No icons match \"" + words + "\": try fewer or other words (\"wave\", \"filter\", \"arrow\").", false);
+
+        juce::StringArray lines;
+
+        for (const auto index : found)
+        {
+            const auto& icon = IconLibrary::all()[(size_t) index];
+            lines.add ("{" + icon.name + "} (" + icon.category + ")");
+        }
+
+        return done (juce::String ((int) found.size()) + " icons, best first:\n" + lines.joinIntoString ("\n"), false);
+    }
+
+    if (name == "design_templates")
+    {
+        const auto kind = input.getProperty ("kind", {}).toString().trim().toLowerCase();
+        const auto wanted = input.getProperty ("name", {}).toString().trim();
+        const auto names = kind == "set" ? SelectorSet::templateNames()
+                         : kind == "perform" ? PerformControl::templateNames()
+                         : kind == "matrix" ? ModMatrix::templateNames()
+                         : kind == "presets" ? PresetPanel::templateNames()
+                         : kind == "body" ? BodyEditor::templateNames()
+                         : kind == "layout" ? PanelLayouts::names() : juce::StringArray();
+
+        if (names.isEmpty())
+            return fail ("kind is one of set, perform, matrix, presets, body, layout.");
+
+        if (wanted.isEmpty() && kind == "layout")
+        {
+            done ("The panel layouts (ask for one by its name for its JSON):\n" + PanelLayouts::describe(), false);
+            return;
+        }
+
+        if (wanted.isEmpty())
+        {
+            done ("The " + kind + " designs: " + names.joinIntoString (", ") + ". Ask for one by its name for its JSON.", false);
+            return;
+        }
+
+        auto index = names.indexOf (wanted, true);
+
+        for (int i = 0; index < 0 && i < names.size(); ++i)
+            if (names[i].containsIgnoreCase (wanted))
+                index = i;
+
+        if (index < 0)
+            return fail ("There's no " + kind + " design called \"" + wanted + "\". There are: " + names.joinIntoString (", ") + ".");
+
+        juce::String text;
+
+        if (kind == "body")
+        {
+            int width = 760, height = 420;
+
+            if (project.isOpen())
+            {
+                GuiLayout layout;
+
+                if (const auto file = project.getGuiFolder().getChildFile (GuiLayout::fileName);
+                    file.existsAsFile() && GuiLayout::load (file, layout).wasOk())
+                {
+                    width = layout.width;
+                    height = layout.height;
+                }
+            }
+
+            text = "The body \"" + names[index] + "\" for a " + juce::String (width) + " x " + juce::String (height)
+                 + " window (edit_layout's \"body\"):\n" + juce::JSON::toString (BodyEditor::makeTemplate (index, width, height), true);
+        }
+        else if (kind == "layout")
+        {
+            text = "The layout \"" + names[index] + "\": a starting point for set_layout. Its \"param\" ids (and \"params\", \"source\"s) are "
+                   "roles: bind each to the plugin's own ids, drop the controls it has no parameter for and add the ones it needs, in the "
+                   "same groups and on the same grid; resize the window to what's left. Keep its title and preset manager. Its look comes "
+                   "from a material look (edit_layout's \"materialLook\", with \"lookControls\", \"lookTheme\" and \"lookPainting\" when "
+                   "the user wants the whole theme):\n" + juce::JSON::toString (PanelLayouts::layout (index), true);
+        }
+        else if (kind == "set")
+        {
+            text = "The set \"" + names[index] + "\" (a selector's settings \"set\"; its picture shows "
+                 + juce::String (SelectorSet::templateKeys (index)) + " keys):\n" + juce::JSON::toString (SelectorSet::makeTemplate (index), true);
+        }
+        else if (kind == "perform")
+        {
+            text = "The control \"" + names[index] + "\" (an xy element's settings \"perform\"):\n"
+                 + juce::JSON::toString (PerformControl::makeTemplate (index), true)
+                 + "\nThe element's settings it comes with: " + juce::JSON::toString (PerformControl::templateSettings (index), true);
+        }
+        else
+        {
+            text = "The design \"" + names[index] + "\" (a " + (kind == "matrix" ? juce::String ("matrix") : juce::String ("preset"))
+                 + " element's settings \"" + kind + "\"):\n"
+                 + juce::JSON::toString (kind == "matrix" ? ModMatrix::makeTemplate (index) : PresetPanel::makeTemplate (index), true);
+        }
+
+        done (text, false);
+        return;
+    }
 
     fail ("There's no tool called " + name + ".");
 }
@@ -2266,6 +2625,9 @@ void ProjectTools::makeLook (const juce::var& input, Done done)
         from = &looks.defaultFor (Looks::kindFromName (input.getProperty ("kind", "knob").toString()));
     }
 
+    if (from->doc.model3d != nullptr)
+        return done ("\"" + from->name + "\" is a 3D look: change it with make_3d_look (from it).", true);
+
     auto doc = from->doc;
     const auto kind = from->kind;
     const auto fromLabel = from->name;   // from may be the look replaced below
@@ -2339,14 +2701,17 @@ void ProjectTools::makeLook (const juce::var& input, Done done)
 void ProjectTools::findGalleryLooks (const juce::var& input, Done done)
 {
     const auto wantedKind = input.getProperty ("kind", "knob").toString().trim().toLowerCase();
+    const bool models = (bool) input.getProperty ("3d", false);
+    const auto galleryName = juce::String (models ? "Sonify's 3D Gallery" : "Sonify's gallery");
+    const auto instead = juce::String (models ? "make the 3D look yourself (make_3d_look)" : "design the look from the project's looks list (make_look)");
     juce::StringArray words;
     words.addTokens (input.getProperty ("words", {}).toString().toLowerCase(), " ,;", "\"");
     words.removeEmptyStrings();
 
-    const auto all = galleryEntries();
+    const auto all = galleryEntries (models);
 
     if (all.empty())
-        return done ("Sonify's gallery is empty on this computer: design the look from the project's looks list (make_look).", false);
+        return done (galleryName + " is empty on this computer: " + instead + ".", false);
 
     struct Found { const GalleryEntry* item; int score; };
     std::vector<Found> found;
@@ -2370,22 +2735,24 @@ void ProjectTools::findGalleryLooks (const juce::var& input, Done done)
     }
 
     if (found.empty())
-        return done ("Sonify's gallery has no " + wantedKind + " yet: design the look from the project's looks list (make_look).", false);
+        return done (galleryName + " has no " + wantedKind + " yet: " + instead + ".", false);
 
     // The best matches first (names that match none of the words still listed after them).
     std::stable_sort (found.begin(), found.end(), [] (const Found& x, const Found& y) { return x.score > y.score; });
 
     juce::String text;
     text << juce::String ((int) juce::jmin ((size_t) 30, found.size())) << " of " << juce::String ((int) found.size())
-         << " gallery " << (wantedKind == "hslider" ? juce::String ("slider") : wantedKind) << "s:\n";
+         << (models ? " 3D Gallery " : " gallery ") << (wantedKind == "hslider" ? juce::String ("slider") : wantedKind) << "s:\n";
 
     for (size_t i = 0; i < found.size() && i < 30; ++i)
     {
         const auto& item = *found[i].item;
-        text << "- id " << item.id << ": \"" << item.name << "\" (" << Looks::kindDisplayName (item.kind) << ")\n";
+        text << "- id " << item.id << ": \"" << item.name << "\" ("
+             << (item.model.isNotEmpty() ? "3D " + item.model + ", " : juce::String()) << Looks::kindDisplayName (item.kind) << ")\n";
     }
 
-    done (text + "Then use_gallery_look with the id of the one that suits the plugin.", false);
+    done (text + (models ? "Then use_gallery_look with \"3d\": true and the id of the one that suits the plugin."
+                         : "Then use_gallery_look with the id of the one that suits the plugin."), false);
 }
 
 void ProjectTools::useGalleryLook (const juce::var& input, Done done)
@@ -2394,7 +2761,8 @@ void ProjectTools::useGalleryLook (const juce::var& input, Done done)
         return done ("No project is open: the user has to create one (New) or open one first.", true);
 
     const auto id = (int) input.getProperty ("id", 0);
-    const auto all = galleryEntries();
+    const bool models = (bool) input.getProperty ("3d", false);
+    const auto all = galleryEntries (models);
     const GalleryEntry* item = nullptr;
 
     for (const auto& candidate : all)
@@ -2428,9 +2796,139 @@ void ProjectTools::useGalleryLook (const juce::var& input, Done done)
     if (onLayoutChanged != nullptr)
         onLayoutChanged();
 
-    done ("Added the gallery look \"" + name + "\" (" + Looks::kindDisplayName (kind)
+    done ("Added the " + juce::String (doc.model3d != nullptr ? "3D " : "") + "gallery look \"" + name + "\" (" + Looks::kindDisplayName (kind)
               + ") as this plugin's own: put it on controls with \"style\": \"" + name + "\" (edit_layout)"
               + (kind == Looks::Kind::sliderAcross ? juce::String (", on sliders across (\"orientation\": \"horizontal\")") : juce::String())
+              + (doc.model3d != nullptr ? juce::String (". Its settings change with make_3d_look (\"from\": \"") + name + "\")" : juce::String())
+              + ".",
+          false);
+}
+
+//==============================================================================
+// A 3D look (Model3D): from one of the project's, or a ready-made one of a kind, its settings
+// changed as given. Saved as the plugin's own look.
+void ProjectTools::make3dLook (const juce::var& input, Done done)
+{
+    if (! project.isOpen())
+        return done ("No project is open: the user has to create one (New) or open one first.", true);
+
+    const auto name = input.getProperty ("name", {}).toString().trim().removeCharacters ("\\/:*?\"<>|").substring (0, 48).trim();
+
+    if (name.isEmpty())
+        return done ("Give the 3D look a name (\"name\"), e.g. \"Brass 3D knob\".", true);
+
+    Looks looks;
+    looks.setGuiFolder (project.getGuiFolder());
+
+    Model3D model;
+    LayerDoc doc;
+    Looks::Kind lookKind = Looks::Kind::knob;
+    juce::String fromLabel;
+
+    if (const auto fromName = input.getProperty ("from", {}).toString().trim(); fromName.isNotEmpty())
+    {
+        const Looks::Look* from = looks.find (fromName);
+
+        for (const auto* look : looks.all())
+            if (from == nullptr && look->name.equalsIgnoreCase (fromName))
+                from = look;
+
+        if (from == nullptr || from->doc.model3d == nullptr)
+        {
+            juce::StringArray names;
+
+            for (const auto* look : looks.all())
+                if (look->doc.model3d != nullptr)
+                    names.add (look->name);
+
+            return done ((from == nullptr ? "There's no look called \"" + fromName + "\"" : "\"" + fromName + "\" isn't a 3D look")
+                             + (names.isEmpty() ? juce::String (". There are no 3D looks yet: leave from out and give a kind.")
+                                                : ". The 3D looks: " + names.joinIntoString (", ") + "."),
+                         true);
+        }
+
+        model = *from->doc.model3d;
+        doc = from->doc;
+        lookKind = from->kind;
+        fromLabel = from->name;
+    }
+    else
+    {
+        const auto kindText = input.getProperty ("kind", "knob").toString().trim().toLowerCase();
+        const bool across = kindText == "hslider";
+        const auto kind = kindText == "button" ? Model3D::Kind::button
+                        : kindText == "toggle" || kindText == "switch" ? Model3D::Kind::toggle
+                        : kindText.contains ("slider") ? Model3D::Kind::slider
+                                                       : Model3D::Kind::knob;
+
+        // A ready-made one: by its name (any case, or a part of it), else the kind's first.
+        const auto presets = Model3D::presetNames (kind);
+        const auto wanted = input.getProperty ("preset", {}).toString().trim();
+        auto index = 0;
+
+        if (wanted.isNotEmpty())
+        {
+            index = -1;
+
+            for (int i = 0; i < presets.size() && index < 0; ++i)
+                if (presets[i].equalsIgnoreCase (wanted))
+                    index = i;
+
+            for (int i = 0; i < presets.size() && index < 0; ++i)
+                if (presets[i].containsIgnoreCase (wanted))
+                    index = i;
+
+            if (index < 0)
+                return done ("A 3D " + Model3D::kindKey (kind) + " has no ready-made \"" + wanted + "\": " + presets.joinIntoString (", ") + ".", true);
+        }
+
+        model = Model3D::preset (kind, index);
+        doc = Model3D::newDocument (model, across);
+        lookKind = kind == Model3D::Kind::knob ? Looks::Kind::knob
+                 : kind == Model3D::Kind::slider ? (across ? Looks::Kind::sliderAcross : Looks::Kind::slider)
+                                                 : Looks::Kind::button;
+        fromLabel = presets[index];
+    }
+
+    // The settings given.
+    juce::StringArray changes, problems;
+
+    if (const auto* settings = input.getProperty ("settings", {}).getDynamicObject())
+    {
+        for (const auto& setting : settings->getProperties())
+        {
+            if (const auto problem = model.setByName (setting.name.toString(), setting.value); problem.isNotEmpty())
+                problems.add (problem);
+            else
+                changes.add (setting.name.toString() + " " + juce::JSON::toString (setting.value, true));
+        }
+    }
+
+    if (! problems.isEmpty())
+        return done ("Nothing made: " + problems.joinIntoString ("; ") + ". A 3D " + Model3D::kindKey (model.kind) + "'s settings:\n"
+                         + Model3D::describe (model.kind),
+                     true);
+
+    doc.model3d = std::make_shared<const Model3D> (model);
+
+    auto description = input.getProperty ("description", {}).toString().trim();
+
+    if (description.isEmpty())
+        description = "3D " + Model3D::kindNames()[(int) model.kind].toLowerCase();
+
+    looks.setProjectLook (name, lookKind, doc, description);
+
+    if (looks.find (name, Looks::Origin::project) == nullptr)
+        return done ("The 3D look couldn't be saved in gui/looks.", true);
+
+    if (onLayoutChanged != nullptr)
+        onLayoutChanged();
+
+    done ("Made the 3D look \"" + name + "\" (3D " + Model3D::kindKey (model.kind) + ", from \"" + fromLabel + "\")"
+              + (changes.isEmpty() ? juce::String() : ": " + changes.joinIntoString ("; "))
+              + ". It's this plugin's own: put it on controls with \"style\": \"" + name + "\" (edit_layout)"
+              + (lookKind == Looks::Kind::sliderAcross ? juce::String (", on sliders across (\"orientation\": \"horizontal\")") : juce::String())
+              + (lookKind == Looks::Kind::button ? juce::String (", on switches") : juce::String())
               + ".",
           false);
 }

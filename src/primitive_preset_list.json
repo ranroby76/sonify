@@ -1,0 +1,40 @@
+{
+  "name": "Preset drop list",
+  "category": "Presets",
+  "order": 52,
+  "icon": "presets",
+  "description": "The presets in a styled drop list under its bar: search, categories, Save and Load; its look in the Preset Studio.",
+  "widget": {
+    "type": "preset",
+    "w": 240,
+    "h": 30,
+    "settings": {
+      "presets": {
+        "style": "list",
+        "categories": "headings",
+        "search": true,
+        "actions": true,
+        "rowHeight": 26,
+        "listRows": 10,
+        "colour": "#FF2FB36B",
+        "panelColour": "#FF17191C",
+        "textColour": "#FFD8DADF",
+        "lineColour": "#FF2C2F35",
+        "keys": {
+          "render": "2d",
+          "style": "flat",
+          "shape": "rect",
+          "rounding": 20,
+          "gap": 8,
+          "capColour": "#FF1D1F23",
+          "capOnColour": "#FF233A2D",
+          "glowColour": "#FF2FB36B",
+          "glow": 25,
+          "labelColour": "#FFC8CBD0",
+          "labelOnColour": "#FFFFFFFF",
+          "textSize": 60
+        }
+      }
+    }
+  }
+}

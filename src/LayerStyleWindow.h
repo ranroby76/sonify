@@ -12,6 +12,8 @@
 
 #include <juce_gui_extra/juce_gui_extra.h>
 
+#include "UiHelpers.h"   // FineSlider
+
 #include <array>
 #include <functional>
 #include <vector>
@@ -87,7 +89,7 @@ private:
 
     LightPad pad;
     juce::Label angleLabel, altitudeLabel, note;
-    juce::Slider angleSlider, altitudeSlider;
+    FineSlider angleSlider, altitudeSlider;
     juce::ToggleButton previewToggle { "Preview" };
     juce::TextButton okButton { "OK" }, cancelButton { "Cancel" };
 
@@ -153,7 +155,7 @@ private:
     struct LightControls
     {
         AngleDial dial;
-        juce::Slider angle;
+        FineSlider angle;
         juce::ToggleButton global { "Use Global Light" };
         juce::Slider* altitude = nullptr;   // the bevel's
     };
@@ -189,41 +191,41 @@ private:
 
     // Bevel & Emboss
     juce::ComboBox bevelStyle, bevelTechnique;
-    juce::Slider bevelDepth, bevelSize, bevelSoften, bevelAltitude;
+    FineSlider bevelDepth, bevelSize, bevelSoften, bevelAltitude;
     juce::ToggleButton bevelUp { "Up" }, bevelDown { "Down" };
     LightControls bevelLight;
     ContourPresetButton glossContour;
     juce::ToggleButton glossAntiAliased { "Anti-aliased" };
     juce::ComboBox highlightMode, shadowMode;
     ColourSwatchButton highlightColour { "Highlight colour" }, shadowColour { "Shadow colour" };
-    juce::Slider highlightOpacity, shadowOpacity;
+    FineSlider highlightOpacity, shadowOpacity;
 
     // Contour
     ContourPresetButton contourPreset;
     ContourEditor contourEditor;
     juce::ToggleButton contourAntiAliased { "Anti-aliased" };
-    juce::Slider contourRange;
+    FineSlider contourRange;
 
     // Stroke
-    juce::Slider strokeSize, strokeOpacity;
+    FineSlider strokeSize, strokeOpacity;
     juce::ComboBox strokePosition, strokeBlend;
     ColourSwatchButton strokeColour { "Stroke colour" };
 
     // Inner Shadow
     juce::ComboBox innerBlend;
     ColourSwatchButton innerColour { "Inner shadow colour" };
-    juce::Slider innerOpacity, innerDistance, innerChoke, innerSize;
+    FineSlider innerOpacity, innerDistance, innerChoke, innerSize;
     LightControls innerLight;
 
     // Color Overlay
     juce::ComboBox overlayBlend;
     ColourSwatchButton overlayColour { "Overlay colour" };
-    juce::Slider overlayOpacity;
+    FineSlider overlayOpacity;
 
     // Drop Shadow
     juce::ComboBox dropBlend;
     ColourSwatchButton dropColour { "Drop shadow colour" };
-    juce::Slider dropOpacity, dropDistance, dropSpread, dropSize;
+    FineSlider dropOpacity, dropDistance, dropSpread, dropSize;
     LightControls dropLight;
     juce::ToggleButton dropKnockout { "Layer Knocks Out Drop Shadow" };
 

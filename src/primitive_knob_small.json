@@ -1,6 +1,6 @@
 {
   "name": "Small knob",
-  "category": "Controls",
+  "category": "Knobs & sliders",
   "order": 11,
   "icon": "knob_small",
   "description": "A small knob, for the settings around a big one.",

@@ -93,7 +93,7 @@ void PresetMenus::addActions (juce::PopupMenu& menu, const PresetMenu& presets, 
     const auto id = [firstId] (PresetAction action) { return firstId + (int) action; };
     const auto chosen = juce::isPositiveAndBelow (presets.current, presets.names.size()) ? presets.names[presets.current] : juce::String();
 
-    menu.addItem (id (PresetAction::save), chosen.isNotEmpty() && presets.canSave ? "Save \"" + chosen + "\"" : juce::String ("Save"), presets.canSave);
+    menu.addItem (id (PresetAction::save), chosen.isNotEmpty() && presets.canSave ? "Quick save \"" + chosen + "\"" : juce::String ("Quick save"), presets.canSave);
     menu.addItem (id (PresetAction::saveAs), juce::String::fromUTF8 ("Save as\xe2\x80\xa6"));
 
     if (presets.canSaveFactory)

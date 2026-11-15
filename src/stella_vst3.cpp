@@ -796,6 +796,16 @@ namespace
                 return kResultFalse;
             }
 
+            // Its size menu chose another size: the host's window follows.
+            window->onResizeRequest = [this] (int w, int h)
+            {
+                if (frame != nullptr)
+                {
+                    ViewRect rect (0, 0, w, h);
+                    frame->resizeView (this, &rect);
+                }
+            };
+
            #if defined (__linux__)
             handler = std::make_unique<RunLoopHandler> (*window);
             runLoop->registerTimer (handler.get(), 33);
@@ -846,9 +856,17 @@ namespace
             return window != nullptr && window->wantsKeys() ? kResultTrue : kResultFalse;
         }
 
-        tresult PLUGIN_API onSize (ViewRect*) override                 { return kResultTrue; }
+        // Its size: the host's window dragged bigger or smaller takes the nearest step (50%..200%).
+        tresult PLUGIN_API onSize (ViewRect* rect) override
+        {
+            if (rect != nullptr && window != nullptr)
+                window->setSize (rect->getWidth(), rect->getHeight());
+
+            return kResultTrue;
+        }
+
         tresult PLUGIN_API onFocus (TBool) override                    { return kResultTrue; }
-        tresult PLUGIN_API canResize() override                        { return kResultFalse; }
+        tresult PLUGIN_API canResize() override                        { return kResultTrue; }
 
         tresult PLUGIN_API setFrame (IPlugFrame* newFrame) override
         {
@@ -867,7 +885,20 @@ namespace
             if (size == nullptr)
                 return kInvalidArgument;
 
-            *size = ViewRect (0, 0, stella::gui::width, stella::gui::height);
+            int w = 0, h = 0;
+
+            if (window != nullptr)
+            {
+                window->getSize (w, h);
+            }
+            else
+            {
+                const auto scale = processor.windowScale();
+                w = stella::gui::scaledWidth (scale);
+                h = stella::gui::scaledHeight (scale);
+            }
+
+            *size = ViewRect (0, 0, w, h);
             return kResultOk;
         }
 
@@ -876,8 +907,10 @@ namespace
             if (rect == nullptr)
                 return kInvalidArgument;
 
-            rect->right = rect->left + stella::gui::width;
-            rect->bottom = rect->top + stella::gui::height;
+            // The nearest step, its shape kept.
+            const auto scale = stella::gui::scaleForSize (rect->getWidth(), rect->getHeight());
+            rect->right = rect->left + stella::gui::scaledWidth (scale);
+            rect->bottom = rect->top + stella::gui::scaledHeight (scale);
             return kResultTrue;
         }
 

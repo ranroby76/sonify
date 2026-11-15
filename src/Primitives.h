@@ -11,7 +11,7 @@
     A primitive: one item of the Edit UI tab's toolbox, FlowStone-style. Each is a small
     JSON file in the primitives folder, compiled into the app:
 
-        { "name": "Knob", "category": "Controls", "order": 10, "icon": "knob",
+        { "name": "Knob", "category": "Knobs & sliders", "order": 10, "icon": "knob",
           "description": "A round knob that turns one parameter.",
           "widget": { "type": "knob", "size": 56, "style": "black" } }
 

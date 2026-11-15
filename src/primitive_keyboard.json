@@ -1,6 +1,6 @@
 {
   "name": "Keyboard",
-  "category": "Controls",
+  "category": "Performance",
   "order": 45,
   "icon": "keyboard",
   "description": "A piano keyboard: click or slide across its keys to play the instrument's notes.",

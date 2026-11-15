@@ -667,6 +667,54 @@ namespace
 //==============================================================================
 juce::Path ObjectPaint::outline (const GuiWidget& w, float width, float height)
 {
+    auto path = geometry (w, width, height);
+
+    if (isFilled (w) || path.isEmpty())
+        return path;
+
+    // Not filled: its outline alone, a ring along its edge.
+    juce::Path ring;
+    juce::PathStrokeType (outlineWidthOf (w), juce::PathStrokeType::mitered, juce::PathStrokeType::butt).createStrokedPath (ring, path);
+    return ring;
+}
+
+bool ObjectPaint::isFilled (const GuiWidget& w)
+{
+    const auto found = w.settings.find ("filled");
+
+    if (w.shapeKind() == "line" || found == w.settings.end() || found->second.isVoid())
+        return true;
+
+    const auto& v = found->second;
+
+    if (v.isString())
+    {
+        const auto t = v.toString().trim().toLowerCase();
+        return ! (t == "false" || t == "no" || t == "0" || t == "none" || t == "off");
+    }
+
+    return (bool) v;
+}
+
+void ObjectPaint::setFilled (GuiWidget& w, bool filled)
+{
+    if (filled)
+    {
+        w.settings.erase ("filled");
+        return;
+    }
+
+    w.settings["filled"] = false;
+    w.strokeWidth = juce::jlimit (1.0f, maxOutlineWidth, w.strokeWidth < 1.0f ? 2.0f : w.strokeWidth);
+}
+
+float ObjectPaint::outlineWidthOf (const GuiWidget& w)
+{
+    return isFilled (w) ? juce::jmax (0.0f, w.strokeWidth) : juce::jmax (1.0f, w.strokeWidth);
+}
+
+juce::Path ObjectPaint::geometry (const GuiWidget& w, float width, float height)
+{
     const auto kind = w.shapeKind();
 
     // A line is its stroke: its points are where they are, past the box's edges if they go there.
@@ -1285,27 +1333,16 @@ LayerStyle ObjectPaint::styleOf (const GuiWidget& w)
         d.size = std::round (3.0f + std::fabs (depth) + shadow * 6.0f);
     }
 
-    if (w.strokeWidth > 0.0f)
-    {
-        // Its outline lay inside its box: the same, drawn inside its edge.
-        style.stroke.enabled = true;
-        style.stroke.size = w.strokeWidth;
-        style.stroke.position = StrokePosition::Inside;
-        style.stroke.colour = w.stroke.isTransparent() ? juce::Colours::black : w.stroke;
-    }
-
     return style;
 }
 
 void ObjectPaint::setStyle (GuiWidget& w, const LayerStyle& style)
 {
-    // Its older relief, shadow and outline are the style's now, and a light of its own gives
-    // way to the global light. An effect switched off keeps its settings for next time; with
-    // nothing set at all, there's nothing to keep.
+    // Its older relief and shadow are the style's now, and a light of its own gives way to the
+    // global light (its outline is its own). An effect switched off keeps its settings for next
+    // time; with nothing set at all, there's nothing to keep.
     for (const auto* key : { "depth", "shadow", "light", "altitude" })
         w.settings.erase (key);
-
-    w.strokeWidth = 0.0f;
 
     const auto effects = style.toVar();
 
@@ -1344,7 +1381,7 @@ void ObjectPaint::drawFlat (juce::Graphics& g, const GuiWidget& w, juce::Colour 
     if (b.isEmpty())
         return;
 
-    auto path = outline (w, b.getWidth(), b.getHeight());
+    auto path = geometry (w, b.getWidth(), b.getHeight());
     path.applyTransform (juce::AffineTransform::translation (b.getX(), b.getY()));
 
     juce::Graphics::ScopedSaveState state (g);
@@ -1367,6 +1404,13 @@ void ObjectPaint::drawFlat (juce::Graphics& g, const GuiWidget& w, juce::Colour 
         g.setColour (main);
     }
 
+    // Not filled: its outline alone, in its own colour.
+    if (! isFilled (w))
+    {
+        g.strokePath (path, juce::PathStrokeType (outlineWidthOf (w), juce::PathStrokeType::mitered, juce::PathStrokeType::butt));
+        return;
+    }
+
     g.fillPath (path);
 
     if (w.strokeWidth > 0.0f)
@@ -1383,7 +1427,7 @@ ObjectPaint::Job ObjectPaint::jobFor (const GuiWidget& w, juce::Colour fallback,
     job.width = juce::jmax (1, w.bounds.getWidth());
     job.height = juce::jmax (1, w.bounds.getHeight());
     job.angle = w.shownAngle();
-    job.outline = outline (w, (float) job.width, (float) job.height);
+    job.outline = geometry (w, (float) job.width, (float) job.height);
 
     const auto material = materialOf (w);
     job.material = material.isNotEmpty();
@@ -1411,13 +1455,21 @@ ObjectPaint::Job ObjectPaint::jobFor (const GuiWidget& w, juce::Colour fallback,
     job.strokeWidth = juce::jmax (0.0f, w.strokeWidth);
     job.stroke = job.strokeWidth > 0.0f && w.stroke.isTransparent() ? juce::Colours::black : w.stroke;
 
+    // Not filled: its outline is all of it, painted with its surface.
+    if (! isFilled (w))
+    {
+        job.ring = outlineWidthOf (w);
+        job.strokeWidth = 0.0f;
+        job.stroke = juce::Colours::transparentBlack;
+    }
+
     if (w.settings.count ("effects") > 0)
         job.style = styleOf (w);
 
     job.key = juce::String (job.width) + "x" + juce::String (job.height) + "|" + juce::String (job.angle, 2) + "|" + job.outline.toString()
             + "|" + juce::String (job.surface) + "|" + job.colour.toString() + "|" + job.colour2.toString() + "|" + juce::String ((int) job.material)
             + "|" + juce::String (job.depth, 2) + "|" + juce::String (job.shadow, 2) + "|" + juce::String (job.light, 1) + "|"
-            + juce::String (job.altitude, 1) + "|" + job.stroke.toString() + "|" + juce::String (job.strokeWidth, 2);
+            + juce::String (job.altitude, 1) + "|" + job.stroke.toString() + "|" + juce::String (job.strokeWidth, 2) + "|" + juce::String (job.ring, 2);
 
     if (job.style.any())
         job.key << "|" << juce::JSON::toString (job.style.toVar(), true) << "|" << juce::String (job.globalAngle, 1) << "/" << juce::String (job.globalAltitude, 1);
@@ -1429,7 +1481,7 @@ int ObjectPaint::pixelsOf (const Job& job)
 {
     const auto area = juce::Rectangle<float> ((float) job.width, (float) job.height)
                           .transformedBy (juce::AffineTransform::rotation (juce::degreesToRadians (job.angle), (float) job.width * 0.5f, (float) job.height * 0.5f));
-    const float margin = 4.0f + job.strokeWidth + std::fabs (job.depth) * 2.0f + job.shadow * 20.0f + (job.style.any() ? job.style.reach() : 0.0f);
+    const float margin = 4.0f + job.strokeWidth + job.ring + std::fabs (job.depth) * 2.0f + job.shadow * 20.0f + (job.style.any() ? job.style.reach() : 0.0f);
     return (int) ((area.getWidth() + margin * 2.0f) * (area.getHeight() + margin * 2.0f));
 }
 
@@ -1459,9 +1511,10 @@ ObjectPaint::Painting ObjectPaint::paint (const Job& job)
     const float relief = std::fabs (job.depth);
     const bool raised = job.depth >= 0.0f;
     const float strokeHalf = job.strokeWidth * 0.5f;
+    const float ringHalf = job.ring * 0.5f;   // not filled: its outline alone, either side of its edge
     const float shadowDistance = job.shadow > 0.0f ? 2.0f + relief * 1.1f + job.shadow * 4.0f : 0.0f;
     const float shadowSoftness = job.shadow > 0.0f ? 3.0f + relief + job.shadow * 6.0f : 0.0f;
-    const float margin = 2.0f + strokeHalf + (job.shadow > 0.0f && raised ? shadowDistance + shadowSoftness : 0.0f)
+    const float margin = 2.0f + strokeHalf + ringHalf + (job.shadow > 0.0f && raised ? shadowDistance + shadowSoftness : 0.0f)
                        + (job.style.any() ? job.style.reach() : 0.0f);
     const auto area = turned.getBounds().expanded (margin).getSmallestIntegerContainer();
     const int W = area.getWidth(), H = area.getHeight();
@@ -1503,7 +1556,7 @@ ObjectPaint::Painting ObjectPaint::paint (const Job& job)
         return result;
 
     // The signed distance to the outline (negative inside), exact near it, held at +-band beyond.
-    const float band = juce::jmax (relief, strokeHalf, shadowDistance + shadowSoftness) + 3.0f;
+    const float band = juce::jmax (relief, strokeHalf, shadowDistance + shadowSoftness) + ringHalf + 3.0f;
     std::vector<float> distance ((size_t) W * (size_t) H, band);
 
     for (const auto& s : segments)
@@ -1552,6 +1605,12 @@ ObjectPaint::Painting ObjectPaint::paint (const Job& job)
             }
         }
     }
+
+    // Not filled: the ring along its edge is the shape (inside it, the distance to its sides;
+    // the middle is outside, as the panel beyond is).
+    if (ringHalf > 0.0f)
+        for (auto& d : distance)
+            d = std::fabs (d) - ringHalf;
 
     auto distanceAt = [&distance, W, H, band] (float x, float y) noexcept
     {

@@ -8,6 +8,7 @@
 #include "LayerWorkspace.h"
 #include "Looks.h"
 #include "ShapeWorkspace.h"
+#include "Workspace3D.h"
 
 #include <functional>
 
@@ -66,6 +67,14 @@ public:
         on is kept in KnobMaker's library, so it's there again next time. No plugin, no Back. */
     void setWorkbench (bool isWorkbench);
 
+    /** KnobMaster 2: the 3D Studio (its own tab): the same studio on the plugin's 3D looks
+        (knobs, buttons, sliders and toggle switches built as objects, Workspace3D) instead of
+        its looks of layers. A look of the other sort opened (from a control, the Gallery, a
+        file) takes the studio there: onModeChanged says so. */
+    void setMode3d (bool shouldBe3d);
+    bool isMode3d() const noexcept    { return mode3d; }
+    std::function<void (bool is3d)> onModeChanged;
+
     /** A knob from a file, a Sonify knob (.fklayers) or a KnobMan one (.knob): KnobMaker opens
         it; on a plugin it replaces the look being designed (with none open: a new look). */
     void openKnobFile (const juce::File& file);
@@ -76,14 +85,25 @@ public:
         onPick the file; closeOnPick: the window goes then (one pick), else it stays (several).
         dragOut: its items can also be dragged out, onto Edit UI's window or the Knob Studio
         (galleryDrag). modal: nothing else in Sonify takes clicks while it's open; else it stays
-        beside, Sonify in use too (the Knob Studio's, for dragging both ways). Returns the window. */
+        beside, Sonify in use too (the Knob Studio's, for dragging both ways). models3d: the 3D
+        Gallery instead, the 3D Studio's: 3D models only (.fk3d), at first modelGalleryFolder().
+        Returns the window. */
     static juce::ResizableWindow* showGallery (const juce::String& title, std::function<void (const juce::File&)> onPick,
                                                bool closeOnPick, bool dragOut, juce::Component* near = nullptr,
-                                               const juce::String& pickText = {}, bool modal = true);
+                                               const juce::String& pickText = {}, bool modal = true, bool models3d = false);
+
+    /** The Gallery's knobs, sliders and switches (sort 0), 3D models (1) or kept shapes (2) as a
+        component of its own, for the Gallery window (GalleryHub): a double-click (or Add) gives
+        onPick the file; knobs and 3D models can also be dragged out onto Edit UI's window. */
+    static std::unique_ptr<juce::Component> makeGallery (std::function<void (const juce::File&)> onPick, int sort);
 
     /** Sonify's gallery: AppData\Fanan\Sonify\Knob Gallery (Library/Fanan/Sonify on a Mac),
         made the first time, the knobs installed with Sonify copied into it (each once). */
     static juce::File galleryFolder();
+
+    /** The 3D Gallery: the project's assets\knob_gallery_3d (else AppData ... Knob Gallery 3D),
+        its 3D models (.fk3d: a 3D look's document, as a file of its own to share). */
+    static juce::File modelGalleryFolder();
 
     /** A gallery item dragged out: its drag description, and the file back from one ("" when it isn't). */
     static juce::var galleryDrag (const juce::File& file);
@@ -127,13 +147,16 @@ private:
     void useOnControls (const juce::String& lookName);
 
     void showNewMenu();
+    void showNew3dMenu();
+    bool loadIntoBuilder (const LayerDoc& doc);   // into the builder its sort takes (false: the studio changed sort)
     void addLook (const juce::String& baseName, Looks::Kind kind, const LayerDoc& doc, const juce::String& description = {});
     void openLookFile();
     void addLookFromFile (const juce::File& file);      // a .knob or .fklayers file as a new look (New look's Gallery pick)
     void replaceCurrentFrom (const juce::File& file);   // ...or in place of the look being designed
     void builderChanged();                              // the builder's drawing saved as the look (every change)
     void importKnobFolder();
-    void exportFilmstrip();
+    void exportFilmstrip();                          // Export to PNG: what to export, then where
+    void exportPicture (int choice);                 // ...a filmstrip (1, 2: at 2x) or one picture of it (3 at rest, 4 full, 5 halfway, 6 at rest at 2x)
     juce::String ownerName() const;   // "this plugin", or "your library" (the workbench)
     void status (const juce::String& text);
 
@@ -142,7 +165,15 @@ private:
     void saveKnobFile();
     void chooseKnobFile (bool knobMan);
     void openGallery();
+    void closeGallery();     // the one beside the studio (not KnobMaker's modal one)
     void refreshGallery();   // the open Gallery reads its folder again
+
+    // KnobMaster 2's Shapes Gallery (the Knob Studio's, not the 3D Studio's): layers kept as
+    // shapes (.fkshapes, assets\shapes_gallery), to put on any look again.
+    void openShapesGallery();
+    void closeShapesGallery();
+    void keepShapes (const juce::File& intoFolder);       // the layers chosen in the builder, named, into it
+    void addShapesFromFile (const juce::File& file);      // a kept shape's layers onto the look being designed
 
     Looks& looks;
     GuiLayout layout;
@@ -167,10 +198,14 @@ private:
     juce::TextButton loadKnobButton { juce::String::fromUTF8 ("Load Sonify knob\xe2\x80\xa6") };
     juce::TextButton loadKnobManButton { juce::String::fromUTF8 ("Load KnobMan knob\xe2\x80\xa6") };
     juce::TextButton galleryButton { juce::String::fromUTF8 ("Select from Gallery\xe2\x80\xa6") };
+    juce::TextButton shapesGalleryButton { juce::String::fromUTF8 ("Shapes Gallery\xe2\x80\xa6") };
+    juce::Component::SafePointer<juce::ResizableWindow> shapesWindow;    // the Shapes Gallery, while it's open
     juce::Component::SafePointer<juce::ResizableWindow> galleryWindow;   // the Gallery it opened, while it's open
+    bool galleryIs3d = false;                                            // ...the 3D Studio's (3D models only)
     bool dropHover = false;                                          // a gallery knob dragged over it
     juce::String knobTitle { "New knob" };   // the knob's file name
     juce::File knobFolder;                   // where the last one was loaded or saved
+    juce::File modelFolder;                  // ...the last 3D model (.fk3d)
 
     /** Looks and Shapes; the Shapes tab reads the inventory again when it's shown. */
     struct Tabs final : public juce::TabbedComponent
@@ -182,6 +217,8 @@ private:
 
     LayerWorkspace layers;
     ShapeWorkspace shapes;
+    Workspace3D workspace3d;   // the 3D Studio's builder
+    bool mode3d = false;
     Tabs tabs;
     juce::Rectangle<int> headerText, statusArea;
     juce::String statusText;

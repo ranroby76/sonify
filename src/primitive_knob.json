@@ -1,6 +1,6 @@
 {
   "name": "Knob",
-  "category": "Controls",
+  "category": "Knobs & sliders",
   "order": 10,
   "icon": "knob",
   "description": "A round knob that turns one parameter.",

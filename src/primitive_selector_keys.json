@@ -1,0 +1,37 @@
+{
+  "name": "Selector keys",
+  "category": "Selectors",
+  "order": 33,
+  "icon": "selector",
+  "description": "A row of 3D keys with lamps: one lit at a time, each on its own, or several at once. Its look and behaviour in the Selector Studio.",
+  "widget": {
+    "type": "selector",
+    "w": 280,
+    "h": 70,
+    "options": [
+      "One",
+      "Two",
+      "Three",
+      "Four"
+    ],
+    "settings": {
+      "set": {
+        "render": "3d",
+        "formation": "row",
+        "shape": "rect",
+        "rounding": 14,
+        "gap": 14,
+        "led": "dot",
+        "ledColour": "#FFFF3B30",
+        "capColour": "#FF2C2E33",
+        "capOnColour": "#FF2C2E33",
+        "glow": 0,
+        "labelColour": "#FFD9DBE0",
+        "labelOnColour": "#FFFFFFFF",
+        "textSize": 26,
+        "material": "Satin plastic",
+        "height": 22
+      }
+    }
+  }
+}

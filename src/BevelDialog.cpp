@@ -7,6 +7,7 @@
 
 #include "BevelDialog.h"
 #include "LayerPanels.h"
+#include "ColourSwatch.h"   // the pickers' dropper
 #include "UiHelpers.h"
 
 namespace
@@ -764,8 +765,7 @@ void BevelDialog::openColour (juce::TextButton& button, bool highlight)
     selector->setSize (300, 380);
     selector->addChangeListener (this);
 
-    juce::CallOutBox::launchAsynchronously (std::move (selector),
-                                            button.getScreenBounds(), nullptr);
+    ColourDropper::launch (std::move (selector), button.getScreenBounds());
 }
 
 void BevelDialog::changeListenerCallback (juce::ChangeBroadcaster* source)

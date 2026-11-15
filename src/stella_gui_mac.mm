@@ -69,6 +69,91 @@ namespace
             [pasteboard setString: string forType: NSPasteboardTypeString];
         }
     };
+
+    NSString* nsString (const std::string& s)
+    {
+        NSString* string = [NSString stringWithUTF8String: s.c_str()];
+        return string != nil ? string : @"";
+    }
+
+    /** The preset commands' folder and dialogs: Documents, the save and open panels, an alert. */
+    class MacDesktop final : public stella::gui::Desktop
+    {
+    public:
+        std::string documentsFolder() override
+        {
+            NSArray* paths = NSSearchPathForDirectoriesInDomains (NSDocumentDirectory, NSUserDomainMask, YES);
+
+            if ([paths count] > 0)
+                if (const char* path = [[paths objectAtIndex: 0] fileSystemRepresentation])
+                    return path;
+
+            return {};
+        }
+
+        bool chooseFile (bool saving, const std::string& title, const std::string& folder, const std::string& name,
+                         const std::string& extension, std::string& chosen) override
+        {
+            NSURL* start = folder.empty() ? nil : [NSURL fileURLWithPath: nsString (folder) isDirectory: YES];
+            NSArray* types = [NSArray arrayWithObject: nsString (extension)];
+            NSURL* url = nil;
+
+            if (saving)
+            {
+                NSSavePanel* panel = [NSSavePanel savePanel];
+                [panel setTitle: nsString (title)];
+                [panel setCanCreateDirectories: YES];
+                [panel setAllowedFileTypes: types];
+                [panel setNameFieldStringValue: nsString (name)];
+
+                if (start != nil)
+                    [panel setDirectoryURL: start];
+
+                if ([panel runModal] == NSModalResponseOK)
+                    url = [panel URL];
+            }
+            else
+            {
+                NSOpenPanel* panel = [NSOpenPanel openPanel];
+                [panel setTitle: nsString (title)];
+                [panel setCanChooseFiles: YES];
+                [panel setCanChooseDirectories: NO];
+                [panel setAllowsMultipleSelection: NO];
+                [panel setAllowedFileTypes: types];
+
+                if (start != nil)
+                    [panel setDirectoryURL: start];
+
+                if ([panel runModal] == NSModalResponseOK && [[panel URLs] count] > 0)
+                    url = [[panel URLs] objectAtIndex: 0];
+            }
+
+            if (url == nil)
+                return false;
+
+            const char* path = [[url path] fileSystemRepresentation];
+            chosen = path != nullptr ? path : "";
+            return ! chosen.empty();
+        }
+
+        bool confirm (const std::string& question) override
+        {
+            const bool asking = question.find ('?') != std::string::npos;
+            NSAlert* alert = [[[NSAlert alloc] init] autorelease];
+            [alert setMessageText: nsString (question)];
+            [alert addButtonWithTitle: asking ? @"Yes" : @"OK"];
+
+            if (asking)
+                [alert addButtonWithTitle: @"No"];
+
+            return [alert runModal] == NSAlertFirstButtonReturn;
+        }
+
+        void showFolder (const std::string& path) override
+        {
+            [[NSWorkspace sharedWorkspace] openURL: [NSURL fileURLWithPath: nsString (path) isDirectory: YES]];
+        }
+    };
 }
 
 __attribute__ ((visibility ("default")))
@@ -76,31 +161,50 @@ __attribute__ ((visibility ("default")))
 {
     stella::gui::Editor* editor;
     stella::gui::Clipboard* clipboard;
+    stella::gui::Desktop* desktop;
+    BOOL inPresetCommand;   // a preset command's panel is up: the editor is deleted after it
+    BOOL releaseAfter;
     std::vector<std::uint32_t>* pixels;
     NSTimer* timer;
     NSTrackingArea* tracking;
     StellaViewGone gone;
     void* goneContext;
+    std::function<void (int, int)> resized;   // its size menu chose a size: the host's told (a VST3's, a CLAP's)
 }
 
 - (instancetype) initWithHost: (stella::gui::Host*) host gone: (StellaViewGone) whenGone context: (void*) context;
 - (void) releaseHost;
 - (BOOL) wantsKeys;
 - (BOOL) hostKey: (int) key character: (std::uint32_t) character modifiers: (int) modifiers;
+- (void) fitToEditor;
+- (void) sizeChosen;
+- (void) setResized: (std::function<void (int, int)>) callback;
+- (void) takeSize: (int) w height: (int) h;
+- (NSSize) editorSize;
 @end
 
 @implementation STELLA_VIEW_CLASS
 
 - (instancetype) initWithHost: (stella::gui::Host*) host gone: (StellaViewGone) whenGone context: (void*) context
 {
-    self = [super initWithFrame: NSMakeRect (0, 0, stella::gui::width, stella::gui::height)];
+    const auto scale = stella::gui::snapScale (host->windowScale());
+    self = [super initWithFrame: NSMakeRect (0, 0, stella::gui::scaledWidth (scale), stella::gui::scaledHeight (scale))];
 
     if (self != nil)
     {
         editor = new stella::gui::Editor (*host);
         clipboard = new MacClipboard();
         editor->setClipboard (clipboard);
-        pixels = new std::vector<std::uint32_t> ((size_t) stella::gui::width * (size_t) stella::gui::height, 0u);
+        desktop = new MacDesktop();
+        editor->setDesktop (desktop);
+        inPresetCommand = NO;
+        releaseAfter = NO;
+        pixels = new std::vector<std::uint32_t> ((size_t) editor->getWidth() * (size_t) editor->getHeight(), 0u);
+
+        // Its size menu chose another size: its pixels and itself that size (an Audio Unit's
+        // host sees the view's frame change), and the host told.
+        STELLA_VIEW_CLASS* me = self;
+        editor->onScaleChosen = [me] { [me sizeChosen]; };
         timer = nil;
         tracking = nil;
         gone = whenGone;
@@ -122,6 +226,14 @@ __attribute__ ((visibility ("default")))
 - (void) releaseHost
 {
     [self stopTimer];
+
+    if (inPresetCommand)
+    {
+        releaseAfter = YES;   // in the middle of a preset command: deleted once it's done
+        gone = nullptr;
+        return;
+    }
+
     delete editor;
     editor = nullptr;
     gone = nullptr;
@@ -136,12 +248,61 @@ __attribute__ ((visibility ("default")))
 
     delete editor;
     delete clipboard;
+    delete desktop;
     delete pixels;
 
     if (gone != nullptr)
         gone (goneContext, (void*) self);
 
     [super dealloc];
+}
+
+- (NSSize) editorSize
+{
+    return editor != nullptr ? NSMakeSize ((CGFloat) editor->getWidth(), (CGFloat) editor->getHeight())
+                             : NSMakeSize ((CGFloat) stella::gui::width, (CGFloat) stella::gui::height);
+}
+
+/** Its pixels, and itself, the Editor's size. */
+- (void) fitToEditor
+{
+    if (editor == nullptr)
+        return;
+
+    pixels->assign ((size_t) editor->getWidth() * (size_t) editor->getHeight(), 0u);
+    [self setFrameSize: [self editorSize]];
+    [self setNeedsDisplay: YES];
+}
+
+/** Its size menu chose a size: itself that size, and the host told. */
+- (void) sizeChosen
+{
+    [self fitToEditor];
+    const auto size = [self editorSize];
+
+    if (resized)
+        resized ((int) size.width, (int) size.height);
+}
+
+- (void) setResized: (std::function<void (int, int)>) callback
+{
+    resized = std::move (callback);
+}
+
+/** The host gives it a size: the step nearest it. */
+- (void) takeSize: (int) w height: (int) h
+{
+    if (editor == nullptr)
+        return;
+
+    const auto scale = stella::gui::scaleForSize (w, h);
+
+    if (scale == editor->getScale())
+        return;
+
+    editor->setScale (scale);
+    editor->getHost().setWindowScale (scale);
+    [self fitToEditor];
 }
 
 - (BOOL) isFlipped                              { return YES; }
@@ -178,6 +339,29 @@ __attribute__ ((visibility ("default")))
 - (void) tick: (NSTimer*) sender
 {
     (void) sender;
+
+    // A preset command a click asked for (its panel or alert runs its own loop): kept alive
+    // till it's done, should the host close the view meanwhile.
+    if (editor != nullptr && ! inPresetCommand)
+    {
+        [self retain];
+        inPresetCommand = YES;
+        editor->runQueuedPresetCommand();
+        inPresetCommand = NO;
+
+        if (releaseAfter)
+        {
+            delete editor;
+            editor = nullptr;
+            releaseAfter = NO;
+        }
+
+        [self autorelease];
+
+        if (editor == nullptr)
+            return;
+    }
+
     [self setNeedsDisplay: YES];
     [self followKeys: NO];
 }
@@ -224,9 +408,12 @@ __attribute__ ((visibility ("default")))
         return;
     }
 
-    editor->render (pixels->data());
+    const auto w = (size_t) editor->getWidth(), h = (size_t) editor->getHeight();
 
-    const auto w = (size_t) stella::gui::width, h = (size_t) stella::gui::height;
+    if (pixels->size() != w * h)
+        pixels->assign (w * h, 0u);
+
+    editor->render (pixels->data());
     auto* space = CGColorSpaceCreateWithName (kCGColorSpaceSRGB);
     auto* provider = CGDataProviderCreateWithData (nullptr, pixels->data(), w * h * 4, nullptr);
     auto* image = CGImageCreate (w, h, 8, 32, w * 4, space, (CGBitmapInfo) kCGBitmapByteOrder32Little | (CGBitmapInfo) kCGImageAlphaPremultipliedFirst,
@@ -270,6 +457,22 @@ static bool isFine (NSEvent* event)
     editor->mouseDown ((int) p.x, (int) p.y, isFine (event), [event clickCount] == 2);
     [self setNeedsDisplay: YES];
     [self followKeys: YES];
+}
+
+/** A right-click: the size menu. */
+- (void) rightMouseUp: (NSEvent*) event
+{
+    if (editor == nullptr)
+        return;
+
+    const auto p = [self pointOf: event];
+    editor->contextClick ((int) p.x, (int) p.y);
+    [self setNeedsDisplay: YES];
+}
+
+- (void) rightMouseDown: (NSEvent*) event
+{
+    (void) event;   // (its release opens the menu; the host doesn't get it)
 }
 
 - (void) mouseDragged: (NSEvent*) event
@@ -475,10 +678,18 @@ namespace stella::gui
         {
         public:
             explicit MacWindow (Host& host)
-                : view ((NSView*) createMacView (host, nullptr, nullptr)) {}
+                : view ((NSView*) createMacView (host, nullptr, nullptr))
+            {
+                [(STELLA_VIEW_CLASS*) view setResized: [this] (int w, int h)
+                                                       {
+                                                           if (onResizeRequest)
+                                                               onResizeRequest (w, h);
+                                                       }];
+            }
 
             ~MacWindow() override
             {
+                [(STELLA_VIEW_CLASS*) view setResized: nullptr];
                 [view removeFromSuperview];
                 [view release];
             }
@@ -500,6 +711,18 @@ namespace stella::gui
             bool wantsKeys() override
             {
                 return [(STELLA_VIEW_CLASS*) view wantsKeys] == YES;
+            }
+
+            void getSize (int& w, int& h) override
+            {
+                const auto size = [(STELLA_VIEW_CLASS*) view editorSize];
+                w = (int) size.width;
+                h = (int) size.height;
+            }
+
+            void setSize (int w, int h) override
+            {
+                [(STELLA_VIEW_CLASS*) view takeSize: w height: h];
             }
 
             bool keyDown (Key key, std::uint32_t character, int modifiers) override

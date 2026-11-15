@@ -259,7 +259,7 @@
     85
    ],
    "lineWidth": 2,
-   "color": "#B334D399",
+   "color": "#B3EF5A4E",
    "page": "Space"
   },
   {
@@ -271,7 +271,7 @@
    "h": 16,
    "size": 11,
    "bold": true,
-   "color": "#FF34D399",
+   "color": "#FFEF5A4E",
    "page": "Space"
   },
   {
@@ -286,8 +286,8 @@
    "y": 92,
    "w": 96,
    "h": 50,
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "settings": {
     "display": "pill"
    },
@@ -299,18 +299,17 @@
    "options": [
     "Single",
     "Dual",
-    "Ping-Pong",
-    "Rhythm"
+    "Ping-Pong"
    ],
    "label": "Mode",
    "x": 64,
    "y": 140,
    "w": 148,
    "h": 52,
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "settings": {
-    "display": "vfd",
+    "display": "dropdown",
     "background": "#FF07080A"
    },
    "page": "Space"
@@ -330,10 +329,10 @@
    "y": 140,
    "w": 148,
    "h": 52,
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "settings": {
-    "display": "vfd",
+    "display": "dropdown",
     "background": "#FF07080A"
    },
    "page": "Space"
@@ -350,8 +349,8 @@
    "y": 200,
    "w": 104,
    "h": 50,
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "settings": {
     "display": "pill"
    },
@@ -376,10 +375,10 @@
    "y": 200,
    "w": 196,
    "h": 52,
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "settings": {
-    "display": "vfd",
+    "display": "dropdown",
     "background": "#FF07080A"
    },
    "page": "Space"
@@ -392,9 +391,9 @@
    "y": 268,
    "w": 40,
    "h": 160,
-   "style": "Rivus fader green",
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "style": "Rivus fader red",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "page": "Space"
   },
   {
@@ -405,9 +404,9 @@
    "y": 268,
    "w": 40,
    "h": 160,
-   "style": "Rivus fader green",
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "style": "Rivus fader red",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "page": "Space"
   },
   {
@@ -418,9 +417,9 @@
    "y": 268,
    "w": 40,
    "h": 160,
-   "style": "Rivus fader green",
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "style": "Rivus fader red",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "page": "Space"
   },
   {
@@ -431,9 +430,9 @@
    "y": 268,
    "w": 40,
    "h": 160,
-   "style": "Rivus fader green",
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "style": "Rivus fader red",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "page": "Space"
   },
   {
@@ -444,9 +443,9 @@
    "y": 440,
    "w": 40,
    "h": 160,
-   "style": "Rivus fader green",
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "style": "Rivus fader red",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "page": "Space"
   },
   {
@@ -457,9 +456,9 @@
    "y": 440,
    "w": 40,
    "h": 160,
-   "style": "Rivus fader green",
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "style": "Rivus fader red",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "page": "Space"
   },
   {
@@ -470,9 +469,9 @@
    "y": 440,
    "w": 40,
    "h": 160,
-   "style": "Rivus fader green",
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "style": "Rivus fader red",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "page": "Space"
   },
   {
@@ -560,7 +559,7 @@
    "color": "#FFF5C842",
    "textColor": "#FFF5C842",
    "settings": {
-    "display": "vfd",
+    "display": "dropdown",
     "background": "#FF07080A"
    },
    "page": "Space"
@@ -690,7 +689,7 @@
     85
    ],
    "lineWidth": 2,
-   "color": "#B334D399",
+   "color": "#B3EF5A4E",
    "page": "Space"
   },
   {
@@ -735,7 +734,8 @@
     "Cathedral",
     "Spring",
     "Vintage Digital",
-    "Shimmer"
+    "Shimmer",
+    "Greyhole"
    ],
    "label": "Voicing",
    "x": 748,
@@ -745,7 +745,7 @@
    "color": "#FF34D399",
    "textColor": "#FF34D399",
    "settings": {
-    "display": "vfd",
+    "display": "dropdown",
     "background": "#FF07080A"
    },
    "page": "Space"
@@ -767,7 +767,7 @@
    "color": "#FF34D399",
    "textColor": "#FF34D399",
    "settings": {
-    "display": "vfd",
+    "display": "dropdown",
     "background": "#FF07080A"
    },
    "page": "Space"
@@ -928,7 +928,7 @@
   },
   {
    "type": "label",
-   "text": "RHYTHM  \u00b7  SIXTEEN STEPS OF THE NOTE VALUE",
+   "text": "RHYTHM  ·  SIXTEEN STEPS OF THE NOTE VALUE",
    "x": 64,
    "y": 96,
    "w": 884,
@@ -940,7 +940,7 @@
   },
   {
    "type": "label",
-   "text": "STEPS 1 \u2013 8",
+   "text": "STEPS 1 – 8",
    "x": 72,
    "y": 122,
    "w": 200,
@@ -1056,7 +1056,7 @@
   },
   {
    "type": "label",
-   "text": "STEPS 9 \u2013 16",
+   "text": "STEPS 9 – 16",
    "x": 72,
    "y": 358,
    "w": 200,
@@ -1188,30 +1188,27 @@
    "h": 14,
    "size": 9.5,
    "bold": true,
-   "color": "#FF34D399",
+   "color": "#FFEF5A4E",
    "page": "Rhythm"
   },
   {
    "type": "selector",
-   "param": "Mode",
+   "param": "Rhythm",
    "options": [
-    "Single",
-    "Dual",
-    "Ping-Pong",
-    "Rhythm"
+    "Off",
+    "On"
    ],
-   "label": "Mode",
+   "label": "Rhythm",
    "x": 684,
    "y": 136,
-   "w": 172,
-   "h": 52,
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "w": 160,
+   "h": 50,
+   "color": "#FFEF5A4E",
    "settings": {
-    "display": "vfd",
-    "background": "#FF07080A"
+    "display": "pill"
    },
-   "page": "Rhythm"
+   "page": "Rhythm",
+   "textColor": "#FFEF5A4E"
   },
   {
    "type": "selector",
@@ -1225,8 +1222,8 @@
    "y": 136,
    "w": 104,
    "h": 50,
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "settings": {
     "display": "pill"
    },
@@ -1251,12 +1248,23 @@
    "y": 196,
    "w": 288,
    "h": 52,
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "settings": {
-    "display": "vfd",
+    "display": "dropdown",
     "background": "#FF07080A"
    },
+   "page": "Rhythm"
+  },
+  {
+   "type": "label",
+   "text": "RHYTHM OFF: THE ECHO PLAYS ITS MODE (SPACE PAGE)",
+   "x": 684,
+   "y": 252,
+   "w": 300,
+   "h": 12,
+   "size": 8.5,
+   "color": "#FF9A9DA4",
    "page": "Rhythm"
   },
   {
@@ -1267,9 +1275,9 @@
    "y": 268,
    "w": 40,
    "h": 160,
-   "style": "Rivus fader green",
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "style": "Rivus fader red",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "page": "Rhythm"
   },
   {
@@ -1280,9 +1288,9 @@
    "y": 268,
    "w": 40,
    "h": 160,
-   "style": "Rivus fader green",
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "style": "Rivus fader red",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "page": "Rhythm"
   },
   {
@@ -1293,9 +1301,9 @@
    "y": 268,
    "w": 40,
    "h": 160,
-   "style": "Rivus fader green",
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "style": "Rivus fader red",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "page": "Rhythm"
   },
   {
@@ -1306,9 +1314,9 @@
    "y": 440,
    "w": 40,
    "h": 160,
-   "style": "Rivus fader green",
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "style": "Rivus fader red",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "page": "Rhythm"
   },
   {
@@ -1319,9 +1327,9 @@
    "y": 440,
    "w": 40,
    "h": 160,
-   "style": "Rivus fader green",
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "style": "Rivus fader red",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "page": "Rhythm"
   },
   {
@@ -1332,9 +1340,9 @@
    "y": 440,
    "w": 40,
    "h": 160,
-   "style": "Rivus fader green",
-   "color": "#FF34D399",
-   "textColor": "#FF34D399",
+   "style": "Rivus fader red",
+   "color": "#FFEF5A4E",
+   "textColor": "#FFEF5A4E",
    "page": "Rhythm"
   },
   {
@@ -1376,7 +1384,7 @@
   },
   {
    "type": "label",
-   "text": "DUCKER  \u00b7  THE WET DIPS UNDER THE KEY; THE DRY STAYS",
+   "text": "DUCKER  ·  THE WET DIPS UNDER THE KEY; THE DRY STAYS",
    "x": 64,
    "y": 96,
    "w": 884,

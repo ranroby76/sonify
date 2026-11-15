@@ -1,0 +1,27 @@
+{
+  "name": "Pitch and mod wheels",
+  "category": "Performance",
+  "order": 41,
+  "icon": "xy",
+  "description": "A pitch wheel that springs back to its middle and a mod wheel that stays, in one housing. Its look and behaviour in the Performance Studio.",
+  "widget": {
+    "type": "xy",
+    "w": 110,
+    "h": 170,
+    "params": {
+      "x": "pitchbend",
+      "y": "modwheel"
+    },
+    "settings": {
+      "mode": "bendmod",
+      "bendAxis": "x",
+      "perform": {
+        "kind": "wheels",
+        "housingColour": "#FF18191C",
+        "partColour": "#FF1E1F22",
+        "accentColour": "#FFF2F2EE",
+        "material": "Rubber"
+      }
+    }
+  }
+}

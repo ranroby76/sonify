@@ -11,7 +11,19 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
+
+#if defined (_WIN32)
+ #include <direct.h>
+ #include <io.h>
+ #include <wchar.h>
+#else
+ #include <dirent.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+#endif
 
 #if STELLA_ELEMENTS
  #include "stella_elements.h"
@@ -413,8 +425,13 @@ namespace stella::gui
                 case optionText:       t = index >= 0 && index < c->numOptions ? c->options[index] : nullptr; break;
                 case paramNameText:    t = index >= 0 && index <= c->numRoles ? c->slotNames[index] : nullptr; break;
                 case unitText:         t = index >= 0 && index <= c->numRoles ? c->slotUnits[index] : nullptr; break;
-                case presetNameText:   t = index >= 0 && index < numPresets ? presets[index].name : nullptr; break;
-                case presetGroupText:  t = index >= 0 && index < numPresets ? "Factory" : nullptr; break;
+                case presetNameText:
+                case presetGroupText:
+                    if (index < 0 || index >= editor.numAllPresets())
+                        return false;
+
+                    result = which == presetNameText ? editor.presetNameAt (index) : editor.presetGroupAt (index);
+                    return true;
 
                 case settingText:
                     for (int s = 0; s < c->numSettings; ++s)
@@ -472,28 +489,29 @@ namespace stella::gui
         }
 
         //======================================================================
-        // The presets: the plugin's factory presets, as the window's preset managers have them.
-        int presetInfo (int, int which, int) override
+        // The presets: the plugin's own, then the user's (their files), as every preset manager
+        // has them, with Save, Load, the banks...
+        int presetInfo (int, int which, int index) override
         {
             switch (which)
             {
-                case presetCountInfo:    return numPresets;
-                case presetCurrentInfo:  return editor.currentPreset >= 0 && editor.currentPreset < numPresets ? editor.currentPreset : -1;
+                case presetCountInfo:    return editor.numAllPresets();
+                case presetCurrentInfo:  return editor.currentPreset >= 0 && editor.currentPreset < editor.numAllPresets() ? editor.currentPreset : -1;
                 case presetVersionInfo:  return editor.presetVersion;
-                default:                 return 0;   // never modified here; Save and the rest are the studio's
+                case presetModifiedInfo: return editor.isPresetModified() ? 1 : 0;
+                case presetCanDoInfo:    return index >= 0 && index <= (int) PresetCommand::showFolder && editor.canDoPreset ((PresetCommand) index) ? 1 : 0;
+                default:                 return 0;
             }
         }
 
         void presetTask (int, int task, int index) override
         {
-            if (numPresets <= 0)
-                return;
-
             if (task == choosePresetTask)
-                editor.applyPreset (index);
+                editor.choosePreset (index);
             else if (task == stepPresetTask)
-                editor.applyPreset (editor.currentPreset < 0 ? (index < 0 ? numPresets - 1 : 0)
-                                                             : (editor.currentPreset + (index < 0 ? numPresets - 1 : 1)) % numPresets);
+                editor.stepPreset (index < 0 ? -1 : 1);
+            else if (task == presetCommandTask && index >= 0 && index <= (int) PresetCommand::showFolder)
+                editor.doPreset ((PresetCommand) index);
         }
 
         //======================================================================
@@ -1751,6 +1769,8 @@ namespace stella::gui
        #if STELLA_REGISTRATION
         registration = std::make_unique<Registration> (*this);
        #endif
+
+        scale = snapScale (host.windowScale());   // where the last window was left
     }
 
     Editor::~Editor()
@@ -1815,7 +1835,7 @@ namespace stella::gui
             const bool interactive = w.kind == Kind::knob || w.kind == Kind::slider || w.kind == Kind::toggle
                                   || w.kind == Kind::selector || w.kind == Kind::xy || w.kind == Kind::preset
                                   || w.kind == Kind::keyboard || w.kind == Kind::custom || w.kind == Kind::tabs
-                                  || w.kind == Kind::registration;
+                                  || w.kind == Kind::registration || w.kind == Kind::key || w.kind == Kind::perform;
 
             if (! interactive || ! isShown (i))
                 continue;
@@ -1848,6 +1868,25 @@ namespace stella::gui
             if (b.param >= 0)  host.setValue (b.param, valueAt (b.param, (ux - (float) (w.bx + 2)) / (float) std::max (1, w.bw - 4)));
             if (b.param2 >= 0) host.setValue (b.param2, valueAt (b.param2, ((float) (w.by + w.bh - 2) - uy) / (float) std::max (1, w.bh - 4)));
         }
+        else if (w.kind == Kind::perform)
+        {
+            // A pair of wheels: the one held, up and down; one way: along it; else both.
+            const auto across = (ux - (float) w.bx) / (float) std::max (1, w.bw), up = ((float) (w.by + w.bh) - uy) / (float) std::max (1, w.bh);
+            const bool pair = (w.vertical & 1) != 0;
+
+            if (pair)
+            {
+                const int param = performPart == 0 ? b.param : b.param2;
+
+                if (param >= 0)
+                    host.setValue (param, valueAt (param, up));
+            }
+            else
+            {
+                if (b.param >= 0 && w.count > 1)  host.setValue (b.param, valueAt (b.param, across));
+                if (b.param2 >= 0 && w.mode > 1)  host.setValue (b.param2, valueAt (b.param2, up));
+            }
+        }
     }
 
     void Editor::showPage (int index)
@@ -1875,6 +1914,15 @@ namespace stella::gui
 
     void Editor::mouseDown (int x, int y, bool fine, bool doubleClick)
     {
+        // The size menu, open, takes the click (outside it: it closes).
+        sizeMenuTookPress = sizeMenuMouse (x, y, true);
+
+        if (sizeMenuTookPress)
+            return;
+
+        x = toBaked (x);
+        y = toBaked (y);
+
         // Registration, while it's open, takes every click; its tab, when it shows one.
         if (registrationMouseDown (x, y, fine, doubleClick))
             return;
@@ -1985,15 +2033,7 @@ namespace stella::gui
             case Kind::preset:
             {
                 // The arrows step back and forth; the middle steps on.
-                if (numPresets <= 0)
-                    return;
-
-                const bool back = (ux - (float) w.bx) < (float) w.bw * 0.22f;
-
-                if (currentPreset < 0)
-                    applyPreset (back ? numPresets - 1 : 0);
-                else
-                    applyPreset ((currentPreset + (back ? numPresets - 1 : 1)) % numPresets);
+                stepPreset ((ux - (float) w.bx) < (float) w.bw * 0.22f ? -1 : 1);
                 break;
             }
 
@@ -2024,6 +2064,40 @@ namespace stella::gui
 
             case Kind::registration:
                 openRegistration();
+                break;
+
+            case Kind::key:
+            {
+                // One at a time: this one; by itself: on or off; several: its bit.
+                if (b.param < 0) return;
+                float min = 0.0f, max = 1.0f, def = 0.0f, skew = 1.0f;
+                host.getRange (b.param, min, max, def, skew);
+                host.beginEdit (b.param);
+
+                if (w.mode == 1)
+                {
+                    host.setValue (b.param, proportionOf (b.param) >= 0.5f ? min : max);
+                }
+                else if (w.mode == 2)
+                {
+                    const auto bits = (int) std::lround (host.getValue (b.param) - min) ^ (1 << std::max (0, std::min (30, w.count)));
+                    host.setValue (b.param, std::min (max, min + (float) bits));
+                }
+                else
+                {
+                    host.setValue (b.param, std::min (max, min + (float) w.count));
+                }
+
+                host.endEdit (b.param);
+                break;
+            }
+
+            case Kind::perform:
+                active = index;
+                performPart = (w.vertical & 1) != 0 && ux >= (float) w.bx + (float) w.bw * 0.5f ? 1 : 0;
+                if (b.param >= 0)  host.beginEdit (b.param);
+                if (b.param2 >= 0) host.beginEdit (b.param2);
+                setFromPointer (index, x, y);
                 break;
 
             case Kind::meter: case Kind::lamp: case Kind::scope: case Kind::envelope: case Kind::filter: case Kind::picture:
@@ -2064,31 +2138,735 @@ namespace stella::gui
 
     void Editor::applyPreset (int index)
     {
-        if (index < 0 || index >= numPresets)
+        if (index < 0 || index >= numAllPresets())
             return;
 
         currentPreset = index;
         ++presetVersion;
-        const auto& preset = presets[index];
 
-        for (int i = 0; i < preset.numValues; ++i)
+        auto put = [this] (const char* id, float value)
         {
-            if (preset.values[i].param == nullptr)
-                continue;
-
-            const auto param = host.findParam (preset.values[i].param);
+            const auto param = id != nullptr ? host.findParam (id) : -1;
 
             if (param >= 0)
             {
                 host.beginEdit (param);
-                host.setValue (param, preset.values[i].value);
+                host.setValue (param, value);
                 host.endEdit (param);
             }
+        };
+
+        if (index < numPresets)
+        {
+            const auto& preset = presets[index];
+
+            for (int i = 0; i < preset.numValues; ++i)
+                put (preset.values[i].param, preset.values[i].value);
+        }
+        else
+        {
+            for (const auto& [id, value] : userPresets[(size_t) (index - numPresets)].values)
+                put (id.c_str(), value);
+        }
+
+        keepChosenValues();
+    }
+
+    //==========================================================================
+    // The user's presets: files in Documents/<vendor>/<name> Presets ("My presets"), and a
+    // folder for each bank they loaded (a group of its own).
+    namespace
+    {
+        namespace files
+        {
+           #if defined (_WIN32)
+            std::wstring wide (const std::string& s)
+            {
+                std::wstring w;
+                size_t i = 0;
+
+                while (i < s.size())
+                {
+                    const auto c = (unsigned char) s[i];
+                    std::uint32_t code = c;
+                    int more = 0;
+
+                    if (c >= 0xf0)       { code = c & 0x07u; more = 3; }
+                    else if (c >= 0xe0)  { code = c & 0x0fu; more = 2; }
+                    else if (c >= 0xc0)  { code = c & 0x1fu; more = 1; }
+
+                    ++i;
+
+                    for (; more > 0 && i < s.size(); --more, ++i)
+                        code = (code << 6) | ((unsigned char) s[i] & 0x3fu);
+
+                    if (code >= 0x10000u)
+                    {
+                        code -= 0x10000u;
+                        w += (wchar_t) (0xd800u + (code >> 10));
+                        w += (wchar_t) (0xdc00u + (code & 0x3ffu));
+                    }
+                    else
+                    {
+                        w += (wchar_t) (code == '/' ? '\\' : code);
+                    }
+                }
+
+                return w;
+            }
+
+            std::string narrow (const wchar_t* w)
+            {
+                std::string s;
+
+                for (; *w != 0; ++w)
+                {
+                    std::uint32_t code = (std::uint32_t) *w;
+
+                    if (code >= 0xd800u && code < 0xdc00u && w[1] >= 0xdc00 && w[1] < 0xe000)
+                        code = 0x10000u + ((code - 0xd800u) << 10) + ((std::uint32_t) *++w - 0xdc00u);
+
+                    if (code < 0x80u)          s += (char) code;
+                    else if (code < 0x800u)    { s += (char) (0xc0u | (code >> 6)); s += (char) (0x80u | (code & 0x3fu)); }
+                    else if (code < 0x10000u)  { s += (char) (0xe0u | (code >> 12)); s += (char) (0x80u | ((code >> 6) & 0x3fu)); s += (char) (0x80u | (code & 0x3fu)); }
+                    else                       { s += (char) (0xf0u | (code >> 18)); s += (char) (0x80u | ((code >> 12) & 0x3fu));
+                                                 s += (char) (0x80u | ((code >> 6) & 0x3fu)); s += (char) (0x80u | (code & 0x3fu)); }
+                }
+
+                return s;
+            }
+
+            FILE* open (const std::string& path, bool writing)    { return _wfopen (wide (path).c_str(), writing ? L"wb" : L"rb"); }
+            bool makeOne (const std::string& path)                 { return _wmkdir (wide (path).c_str()) == 0; }
+            bool remove (const std::string& path)                  { return _wremove (wide (path).c_str()) == 0; }
+
+            /** What's in a folder: its files (or its folders). */
+            std::vector<std::string> list (const std::string& folder, bool folders)
+            {
+                std::vector<std::string> names;
+                _wfinddata_t found {};
+                const auto handle = _wfindfirst (wide (folder + "/*").c_str(), &found);
+
+                if (handle == -1)
+                    return names;
+
+                do
+                {
+                    const auto name = narrow (found.name);
+
+                    if (name != "." && name != ".." && ((found.attrib & _A_SUBDIR) != 0) == folders)
+                        names.push_back (name);
+                }
+                while (_wfindnext (handle, &found) == 0);
+
+                _findclose (handle);
+                return names;
+            }
+           #else
+            FILE* open (const std::string& path, bool writing)    { return std::fopen (path.c_str(), writing ? "wb" : "rb"); }
+            bool makeOne (const std::string& path)                 { return ::mkdir (path.c_str(), 0755) == 0; }
+            bool remove (const std::string& path)                  { return std::remove (path.c_str()) == 0; }
+
+            std::vector<std::string> list (const std::string& folder, bool folders)
+            {
+                std::vector<std::string> names;
+
+                if (auto* dir = ::opendir (folder.c_str()))
+                {
+                    while (const auto* entry = ::readdir (dir))
+                    {
+                        const std::string name = entry->d_name;
+                        struct stat info {};
+
+                        if (name != "." && name != ".." && ::stat ((folder + "/" + name).c_str(), &info) == 0
+                            && S_ISDIR (info.st_mode) == folders)
+                            names.push_back (name);
+                    }
+
+                    ::closedir (dir);
+                }
+
+                return names;
+            }
+           #endif
+
+            /** A folder and those it's in, made where they're missing. */
+            void make (const std::string& path)
+            {
+                for (size_t at = 1; at <= path.size(); ++at)
+                    if (at == path.size() || path[at] == '/' || path[at] == '\\')
+                        if (at > 0 && path[at - 1] != ':')
+                            makeOne (path.substr (0, at));
+            }
+
+            bool read (const std::string& path, std::string& text)
+            {
+                auto* f = open (path, false);
+
+                if (f == nullptr)
+                    return false;
+
+                text.clear();
+                char buffer[4096];
+
+                for (size_t n; (n = std::fread (buffer, 1, sizeof (buffer), f)) > 0;)
+                    text.append (buffer, n);
+
+                std::fclose (f);
+                return true;
+            }
+
+            bool write (const std::string& path, const std::string& text)
+            {
+                auto* f = open (path, true);
+
+                if (f == nullptr)
+                    return false;
+
+                const bool ok = std::fwrite (text.data(), 1, text.size(), f) == text.size();
+                return std::fclose (f) == 0 && ok;
+            }
+
+            bool endsWith (const std::string& s, const std::string& end)
+            {
+                if (s.size() < end.size())
+                    return false;
+
+                for (size_t i = 0; i < end.size(); ++i)
+                    if (std::tolower ((unsigned char) s[s.size() - end.size() + i]) != std::tolower ((unsigned char) end[i]))
+                        return false;
+
+                return true;
+            }
+
+            /** A file's name without its folder or its extension. */
+            std::string stem (const std::string& path)
+            {
+                const auto slash = path.find_last_of ("/\\");
+                auto name = slash == std::string::npos ? path : path.substr (slash + 1);
+                const auto dot = name.find_last_of ('.');
+                return dot == std::string::npos || dot == 0 ? name : name.substr (0, dot);
+            }
+
+            /** A name that can be a file's (no slashes, colons...). */
+            std::string safe (const std::string& name)
+            {
+                std::string s;
+
+                for (const auto c : name)
+                    s += std::strchr ("/\\:*?\"<>|", c) != nullptr || (unsigned char) c < 32 ? '_' : c;
+
+                while (! s.empty() && (s.back() == ' ' || s.back() == '.'))
+                    s.pop_back();
+
+                return s.empty() ? std::string ("Untitled") : s;
+            }
+
+            bool exists (const std::string& path)
+            {
+                auto* f = open (path, false);
+
+                if (f != nullptr)
+                    std::fclose (f);
+
+                return f != nullptr;
+            }
+        }
+
+        constexpr const char* presetExtension = "preset";
+        constexpr const char* bankExtension = "presetbank";
+
+        std::string trimmed (std::string s)
+        {
+            while (! s.empty() && (s.back() == '\r' || s.back() == ' ' || s.back() == '\t'))
+                s.pop_back();
+
+            size_t start = 0;
+
+            while (start < s.size() && (s[start] == ' ' || s[start] == '\t'))
+                ++start;
+
+            return s.substr (start);
+        }
+
+        /** A preset file's (or a bank's) presets: their names and values, by parameter id. */
+        struct ReadPreset
+        {
+            std::string name;
+            std::vector<std::pair<std::string, float>> values;
+        };
+
+        std::vector<ReadPreset> readPresets (const std::string& text, const std::string& fallbackName)
+        {
+            std::vector<ReadPreset> found;
+            size_t at = 0;
+            bool first = true, bank = false;
+
+            while (at <= text.size())
+            {
+                auto end = text.find ('\n', at);
+
+                if (end == std::string::npos)
+                    end = text.size();
+
+                const auto line = trimmed (text.substr (at, end - at));
+                at = end + 1;
+
+                if (first)
+                {
+                    first = false;
+
+                    if (line.rfind ("stella-bank", 0) == 0)
+                    {
+                        bank = true;
+                        continue;
+                    }
+
+                    if (line.rfind ("stella-preset", 0) == 0)
+                    {
+                        found.push_back ({ fallbackName, {} });
+                        continue;
+                    }
+
+                    return found;   // not one of ours
+                }
+
+                const auto equals = line.find ('=');
+
+                if (line.empty() || line[0] == '#' || equals == std::string::npos)
+                    continue;
+
+                const auto key = trimmed (line.substr (0, equals)), value = trimmed (line.substr (equals + 1));
+
+                if (key == "preset" && bank)
+                {
+                    found.push_back ({ value.empty() ? fallbackName : value, {} });
+                    continue;
+                }
+
+                if (found.empty())
+                    continue;
+
+                if (key == "name")
+                {
+                    if (! value.empty())
+                        found.back().name = value;
+                    continue;
+                }
+
+                char* stop = nullptr;
+                const auto number = std::strtof (value.c_str(), &stop);
+
+                if (stop != value.c_str() && std::isfinite (number))
+                    found.back().values.push_back ({ key, number });
+            }
+
+            return found;
+        }
+
+        std::string numberText (float value)
+        {
+            char buffer[48];
+            std::snprintf (buffer, sizeof (buffer), "%.9g", (double) value);
+            return buffer;
+        }
+    }
+
+    std::string Editor::presetFolder()
+    {
+        if (desktop == nullptr)
+            return {};
+
+        auto documents = desktop->documentsFolder();
+
+        if (documents.empty())
+            return {};
+
+        while (documents.size() > 1 && (documents.back() == '/' || documents.back() == '\\'))
+            documents.pop_back();
+
+        return documents + "/" + files::safe (host.vendorName()) + "/" + files::safe (host.pluginName()) + " Presets";
+    }
+
+    void Editor::findUserPresets()
+    {
+        presetsFound = true;
+        const std::string chosenFile = currentPreset >= numPresets && currentPreset - numPresets < (int) userPresets.size()
+                                         ? userPresets[(size_t) (currentPreset - numPresets)].file : std::string();
+        userPresets.clear();
+        const auto folder = presetFolder();
+
+        if (folder.empty())
+            return;
+
+        auto readFolder = [this] (const std::string& path, const std::string& group)
+        {
+            auto names = files::list (path, false);
+            std::sort (names.begin(), names.end(), [] (const std::string& a, const std::string& b)
+            {
+                for (size_t i = 0; i < a.size() && i < b.size(); ++i)
+                    if (std::tolower ((unsigned char) a[i]) != std::tolower ((unsigned char) b[i]))
+                        return std::tolower ((unsigned char) a[i]) < std::tolower ((unsigned char) b[i]);
+
+                return a.size() < b.size();
+            });
+
+            for (const auto& name : names)
+            {
+                std::string text;
+
+                if (! files::endsWith (name, std::string (".") + presetExtension) || ! files::read (path + "/" + name, text))
+                    continue;
+
+                const auto read = readPresets (text, files::stem (name));
+
+                if (! read.empty())
+                    userPresets.push_back ({ read.front().name, group, path + "/" + name, read.front().values });
+            }
+        };
+
+        readFolder (folder, "My presets");
+        auto banks = files::list (folder, true);
+        std::sort (banks.begin(), banks.end());
+
+        for (const auto& bank : banks)
+            readFolder (folder + "/" + bank, bank);
+
+        // The chosen preset where it is now (or none, when its file went).
+        if (! chosenFile.empty())
+        {
+            currentPreset = -1;
+
+            for (size_t i = 0; i < userPresets.size(); ++i)
+                if (userPresets[i].file == chosenFile)
+                    currentPreset = numPresets + (int) i;
+        }
+
+        ++presetVersion;
+    }
+
+    int Editor::numAllPresets()
+    {
+        if (! presetsFound)
+            findUserPresets();
+
+        return numPresets + (int) userPresets.size();
+    }
+
+    std::string Editor::presetNameAt (int index)
+    {
+        if (index >= 0 && index < numPresets)
+            return presets[index].name != nullptr ? presets[index].name : "";
+
+        const auto user = index - numPresets;
+        return index >= 0 && user < (int) userPresets.size() ? userPresets[(size_t) user].name : std::string();
+    }
+
+    std::string Editor::presetGroupAt (int index)
+    {
+        if (index >= 0 && index < numPresets)
+            return "Factory";
+
+        const auto user = index - numPresets;
+        return index >= 0 && user < (int) userPresets.size() ? userPresets[(size_t) user].group : std::string();
+    }
+
+    void Editor::keepChosenValues()
+    {
+        chosenValues.clear();
+
+        for (int p = 0, n = host.numParams(); p < n; ++p)
+            chosenValues.push_back (host.getValue (p));
+    }
+
+    bool Editor::isPresetModified()
+    {
+        if (currentPreset < 0 || chosenValues.empty() || (int) chosenValues.size() != host.numParams())
+            return false;
+
+        for (size_t p = 0; p < chosenValues.size(); ++p)
+        {
+            const auto now = host.getValue ((int) p), then = chosenValues[p];
+
+            if (std::abs (now - then) > 1.0e-5f * std::max (1.0f, std::abs (then)))
+                return true;
+        }
+
+        return false;
+    }
+
+    void Editor::choosePreset (int index)
+    {
+        applyPreset (index);
+    }
+
+    void Editor::stepPreset (int delta)
+    {
+        const auto count = numAllPresets();
+
+        if (count <= 0)
+            return;
+
+        if (currentPreset < 0 || currentPreset >= count)
+            applyPreset (delta < 0 ? count - 1 : 0);
+        else
+            applyPreset ((currentPreset + (delta < 0 ? count - 1 : 1)) % count);
+    }
+
+    std::string Editor::presetText (const std::string& name) const
+    {
+        std::string text = "stella-preset 1\nname=" + name + "\n";
+
+        for (int p = 0, n = host.numParams(); p < n; ++p)
+            if (const auto* id = host.paramId (p); id != nullptr && *id != 0)
+                text += std::string (id) + "=" + numberText (host.getValue (p)) + "\n";
+
+        return text;
+    }
+
+    bool Editor::canDoPreset (PresetCommand command)
+    {
+        if (desktop == nullptr || host.numParams() <= 0)
+            return command == PresetCommand::showFolder ? desktop != nullptr : false;
+
+        const bool users = currentPreset >= numPresets && currentPreset < numAllPresets();
+
+        switch (command)
+        {
+            case PresetCommand::saveFactory:  return false;   // the plugin's own: made in the studio
+            case PresetCommand::remove:       return users;
+            case PresetCommand::saveBank:     return numAllPresets() > 0;
+            default:                          return true;
+        }
+    }
+
+    void Editor::doPreset (PresetCommand command)
+    {
+        // Run from the window's timer, not in the middle of a click: its dialogs run their own
+        // event loops.
+        if (canDoPreset (command))
+        {
+            queuedCommand = command;
+            hasQueuedCommand = true;
+        }
+    }
+
+    void Editor::runQueuedPresetCommand()
+    {
+        if (! hasQueuedCommand)
+            return;
+
+        hasQueuedCommand = false;
+        const auto command = queuedCommand;
+
+        if (! canDoPreset (command))
+            return;
+
+        const auto folder = presetFolder();
+        const auto count = numAllPresets();
+        const bool users = currentPreset >= numPresets && currentPreset < count;
+
+        auto chooseFile = [this] (const std::string& path)
+        {
+            findUserPresets();
+
+            for (size_t i = 0; i < userPresets.size(); ++i)
+                if (userPresets[i].file == path)
+                {
+                    currentPreset = numPresets + (int) i;
+                    keepChosenValues();
+                    ++presetVersion;
+                    return;
+                }
+        };
+
+        switch (command)
+        {
+            case PresetCommand::save:
+            {
+                if (users)
+                {
+                    // Quick save: over the chosen preset of the user's.
+                    const auto& chosen = userPresets[(size_t) (currentPreset - numPresets)];
+
+                    if (files::write (chosen.file, presetText (chosen.name)))
+                        chooseFile (chosen.file);
+
+                    return;
+                }
+
+                [[fallthrough]];   // a factory preset (or none): a new one of the user's
+            }
+
+            case PresetCommand::saveAs:
+            {
+                files::make (folder);
+                std::string path;
+                const auto suggested = currentPreset >= 0 && currentPreset < count ? presetNameAt (currentPreset) : std::string ("New preset");
+
+                if (! desktop->chooseFile (true, "Save preset", folder, files::safe (suggested), presetExtension, path) || path.empty())
+                    return;
+
+                if (! files::endsWith (path, std::string (".") + presetExtension))
+                    path += std::string (".") + presetExtension;
+
+                if (files::write (path, presetText (files::stem (path))))
+                    chooseFile (path);
+
+                return;
+            }
+
+            case PresetCommand::load:
+            {
+                // A preset file from anywhere: kept among the user's, then chosen.
+                std::string path, text;
+
+                if (! desktop->chooseFile (false, "Load preset", folder, {}, presetExtension, path) || ! files::read (path, text))
+                    return;
+
+                const auto read = readPresets (text, files::stem (path));
+
+                if (read.empty() || read.front().values.empty())
+                {
+                    desktop->confirm ("That file has no preset of this plugin's in it.");
+                    return;
+                }
+
+                files::make (folder);
+                const auto copy = folder + "/" + files::stem (path) + "." + presetExtension;
+
+                if (copy != path)
+                    files::write (copy, text);
+
+                chooseFile (copy);
+
+                if (currentPreset >= numPresets)
+                    applyPreset (currentPreset);
+
+                return;
+            }
+
+            case PresetCommand::saveBank:
+            {
+                // Every preset, the plugin's and the user's, into one file.
+                files::make (folder);
+                std::string path;
+
+                if (! desktop->chooseFile (true, "Save bank", folder, files::safe (std::string (host.pluginName()) + " bank"), bankExtension, path)
+                    || path.empty())
+                    return;
+
+                if (! files::endsWith (path, std::string (".") + bankExtension))
+                    path += std::string (".") + bankExtension;
+
+                std::string text = "stella-bank 1\n";
+
+                for (int i = 0; i < numPresets; ++i)
+                {
+                    text += "preset=" + presetNameAt (i) + "\n";
+
+                    for (int v = 0; v < presets[i].numValues; ++v)
+                        if (presets[i].values[v].param != nullptr)
+                            text += std::string (presets[i].values[v].param) + "=" + numberText (presets[i].values[v].value) + "\n";
+                }
+
+                for (const auto& user : userPresets)
+                {
+                    text += "preset=" + user.name + "\n";
+
+                    for (const auto& [id, value] : user.values)
+                        text += id + "=" + numberText (value) + "\n";
+                }
+
+                files::write (path, text);
+                return;
+            }
+
+            case PresetCommand::loadBank:
+            {
+                // A bank's presets: a folder of their own (a group in the list), the first chosen.
+                std::string path, text;
+
+                if (! desktop->chooseFile (false, "Load bank", folder, {}, bankExtension, path) || ! files::read (path, text))
+                    return;
+
+                const auto read = readPresets (text, files::stem (path));
+
+                if (read.empty())
+                {
+                    desktop->confirm ("That file has no presets of this plugin's in it.");
+                    return;
+                }
+
+                auto bankFolder = folder + "/" + files::safe (files::stem (path));
+
+                for (int n = 2; ! files::list (bankFolder, false).empty() && n < 1000; ++n)
+                    bankFolder = folder + "/" + files::safe (files::stem (path)) + " " + std::to_string (n);
+
+                files::make (bankFolder);
+                std::string firstFile;
+
+                for (size_t i = 0; i < read.size(); ++i)
+                {
+                    std::string body = "stella-preset 1\nname=" + read[i].name + "\n";
+
+                    for (const auto& [id, value] : read[i].values)
+                        body += id + "=" + numberText (value) + "\n";
+
+                    char number[16];
+                    std::snprintf (number, sizeof (number), "%03d ", (int) i + 1);
+                    const auto file = bankFolder + "/" + number + files::safe (read[i].name) + "." + presetExtension;
+
+                    if (files::write (file, body) && firstFile.empty())
+                        firstFile = file;
+                }
+
+                if (! firstFile.empty())
+                {
+                    chooseFile (firstFile);
+
+                    if (currentPreset >= numPresets)
+                        applyPreset (currentPreset);
+                }
+
+                return;
+            }
+
+            case PresetCommand::remove:
+            {
+                const auto chosen = userPresets[(size_t) (currentPreset - numPresets)];
+
+                if (! desktop->confirm ("Delete the preset \"" + chosen.name + "\"?"))
+                    return;
+
+                if (files::remove (chosen.file))
+                {
+                    currentPreset = -1;
+                    chosenValues.clear();
+                    findUserPresets();
+                }
+
+                return;
+            }
+
+            case PresetCommand::showFolder:
+                files::make (folder);
+                desktop->showFolder (folder);
+                return;
+
+            case PresetCommand::saveFactory:
+                return;
         }
     }
 
     void Editor::mouseDrag (int x, int y, bool fine)
     {
+        if (sizeMenuTookPress || sizeMenuOpen)
+            return;
+
+        x = toBaked (x);
+        y = toBaked (y);
+
        #if STELLA_REGISTRATION
         if (registration != nullptr && registration->open)
         {
@@ -2138,6 +2916,12 @@ namespace stella::gui
 
     void Editor::mouseUp()
     {
+        if (sizeMenuTookPress)
+        {
+            sizeMenuTookPress = false;
+            return;
+        }
+
        #if STELLA_REGISTRATION
         if (registration != nullptr && registration->open)
         {
@@ -2176,16 +2960,28 @@ namespace stella::gui
 
         const auto& b = bound[(size_t) active];
 
+        // A performance control let go: a pitch bend goes back to its middle.
+        if (widgets[active].kind == Kind::perform)
+        {
+            const auto flags = widgets[active].vertical;
+
+            if ((flags & 2) != 0 && b.param >= 0)   host.setValue (b.param, valueAt (b.param, 0.5f));
+            if ((flags & 4) != 0 && b.param2 >= 0)  host.setValue (b.param2, valueAt (b.param2, 0.5f));
+        }
+
         if (b.param >= 0) host.endEdit (b.param);
-        if (widgets[active].kind == Kind::xy && b.param2 >= 0) host.endEdit (b.param2);
+        if ((widgets[active].kind == Kind::xy || widgets[active].kind == Kind::perform) && b.param2 >= 0) host.endEdit (b.param2);
 
         active = -1;
     }
 
     void Editor::mouseWheel (int x, int y, float notches)
     {
-        if (wantsKeys())
-            return;   // Registration is over the panel
+        if (wantsKeys() || sizeMenuOpen)
+            return;   // Registration (or the size menu) is over the panel
+
+        x = toBaked (x);
+        y = toBaked (y);
 
        #if STELLA_ELEMENTS
         if (elements != nullptr)
@@ -2221,6 +3017,12 @@ namespace stella::gui
 
     void Editor::mouseMove (int x, int y)
     {
+        if (sizeMenuMouse (x, y, false))
+            return;
+
+        x = toBaked (x);
+        y = toBaked (y);
+
        #if STELLA_REGISTRATION
         if (registration != nullptr)
         {
@@ -2273,6 +3075,8 @@ namespace stella::gui
 
     void Editor::mouseExit()
     {
+        sizeMenuHovered = -1;
+
        #if STELLA_REGISTRATION
         if (registration != nullptr)
         {
@@ -2653,7 +3457,340 @@ namespace stella::gui
     }
 
     //==========================================================================
+    //==========================================================================
+    // Scaled: the baked window resampled (bilinear up, averaged down), on premultiplied pixels.
+    struct Editor::Resampler
+    {
+        struct Taps
+        {
+            std::vector<int> first, count, index, weight;   // per output pixel: its source pixels and weights (out of 256)
+        };
+
+        int srcW = 0, srcH = 0, dstW = 0, dstH = 0;
+        Taps across, down;
+        std::vector<std::uint32_t> middle;   // across done, down not yet
+
+        static Taps tapsFor (int src, int dst)
+        {
+            Taps t;
+            t.first.resize ((size_t) dst);
+            t.count.resize ((size_t) dst);
+
+            for (int d = 0; d < dst; ++d)
+            {
+                const auto start = (int) t.index.size();
+
+                if (dst >= src)
+                {
+                    // Bigger: between the two nearest.
+                    const float c = ((float) d + 0.5f) * (float) src / (float) dst - 0.5f;
+                    auto i0 = (int) std::floor (c);
+                    auto f = c - (float) i0;
+
+                    if (i0 < 0)            { i0 = 0; f = 0.0f; }
+                    if (i0 >= src - 1)     { i0 = src - 1; f = 0.0f; }
+
+                    const auto w1 = (int) std::lround (f * 256.0f);
+                    t.index.push_back (i0);                        t.weight.push_back (256 - w1);
+                    t.index.push_back (std::min (i0 + 1, src - 1)); t.weight.push_back (w1);
+                }
+                else
+                {
+                    // Smaller: every source pixel it covers, by how much.
+                    const float a = (float) d * (float) src / (float) dst, b = (float) (d + 1) * (float) src / (float) dst;
+                    const float span = b - a;
+                    int sum = 0;
+
+                    for (auto i = (int) std::floor (a); i < (int) std::ceil (b) && i < src; ++i)
+                    {
+                        const float overlap = std::min (b, (float) (i + 1)) - std::max (a, (float) i);
+                        const auto w = (int) std::lround (overlap / span * 256.0f);
+                        t.index.push_back (i);
+                        t.weight.push_back (w);
+                        sum += w;
+                    }
+
+                    if (t.weight.size() > (size_t) start)
+                        t.weight.back() += 256 - sum;   // exactly 256 together
+                }
+
+                t.first[(size_t) d] = start;
+                t.count[(size_t) d] = (int) t.index.size() - start;
+            }
+
+            return t;
+        }
+
+        static std::uint32_t mix (const std::uint32_t* source, int stride, const int* index, const int* weight, int count) noexcept
+        {
+            std::uint32_t rb = 0, ag = 0;
+
+            for (int k = 0; k < count; ++k)
+            {
+                const auto p = source[(size_t) index[k] * (size_t) stride];
+                const auto w = (std::uint32_t) weight[k];
+                rb += (p & 0x00ff00ffu) * w;
+                ag += ((p >> 8) & 0x00ff00ffu) * w;
+            }
+
+            return ((rb >> 8) & 0x00ff00ffu) | (ag & 0xff00ff00u);
+        }
+
+        void run (const std::uint32_t* src, int sw, int sh, std::uint32_t* dst, int dw, int dh)
+        {
+            if (sw != srcW || dw != dstW)    { across = tapsFor (sw, dw); srcW = sw; dstW = dw; }
+            if (sh != srcH || dh != dstH)    { down = tapsFor (sh, dh); srcH = sh; dstH = dh; }
+
+            middle.resize ((size_t) dw * (size_t) sh);
+
+            for (int y = 0; y < sh; ++y)
+            {
+                const auto* row = src + (size_t) y * (size_t) sw;
+                auto* out = middle.data() + (size_t) y * (size_t) dw;
+
+                for (int x = 0; x < dw; ++x)
+                    out[x] = mix (row, 1, across.index.data() + across.first[(size_t) x], across.weight.data() + across.first[(size_t) x],
+                                  across.count[(size_t) x]);
+            }
+
+            for (int y = 0; y < dh; ++y)
+            {
+                const auto* index = down.index.data() + down.first[(size_t) y];
+                const auto* weight = down.weight.data() + down.first[(size_t) y];
+                const auto count = down.count[(size_t) y];
+                auto* out = dst + (size_t) y * (size_t) dw;
+
+                for (int x = 0; x < dw; ++x)
+                    out[x] = mix (middle.data() + x, dw, index, weight, count);
+            }
+        }
+    };
+
+    void Editor::setScale (float newScale)
+    {
+        scale = snapScale (newScale);
+        sizeMenuOpen = false;
+    }
+
+    int Editor::toBaked (int v) const noexcept
+    {
+        return scale == 1.0f ? v : (int) std::floor ((float) v / scale);
+    }
+
     void Editor::render (std::uint32_t* pixels)
+    {
+        // The preset managers' "*": drawn again when the values leave the chosen preset's (or return).
+        if (currentPreset >= 0 && ++modifiedCheck >= 8)
+        {
+            modifiedCheck = 0;
+
+            if (const bool modified = isPresetModified(); modified != wasModified)
+            {
+                wasModified = modified;
+                ++presetVersion;
+            }
+        }
+
+        const auto w = getWidth(), h = getHeight();
+
+        if (w == width && h == height)
+        {
+            renderBaked (pixels);
+        }
+        else
+        {
+            base.resize ((size_t) width * (size_t) height);
+            renderBaked (base.data());
+
+            if (resampler == nullptr)
+                resampler = std::make_unique<Resampler>();
+
+            resampler->run (base.data(), width, height, pixels, w, h);
+        }
+
+        drawSizeMenu (pixels);
+    }
+
+    //==========================================================================
+    // The size menu: a grid of the steps, 50% to 200%, the one chosen lit.
+    void Editor::contextClick (int x, int y)
+    {
+        if (wantsKeys())
+            return;   // Registration is open
+
+        sizeMenuOpen = true;
+        sizeMenuHovered = -1;
+        sizeMenuX = x;
+        sizeMenuY = y;
+    }
+
+    void Editor::layOutSizeMenu (int& columns, int& cellW, int& cellH, int& left, int& top) const
+    {
+        const auto W = getWidth(), H = getHeight();
+        const int pad = 6, margin = 4;
+        float best = -1.0f;
+
+        // As many across as fits it best into the window (a small window: smaller cells).
+        for (int c = 4; c <= 8; ++c)
+        {
+            const auto rows = (numScales + c - 1) / c;
+            const auto cw = std::max (8, std::min (58, (W - 2 * (pad + margin)) / c));
+            const auto ch = std::max (6, std::min (24, (H - 2 * (pad + margin)) / rows));
+            const auto fit = std::min ((float) cw / 58.0f, (float) ch / 24.0f);
+
+            if (fit > best + 0.001f)
+            {
+                best = fit;
+                columns = c;
+                cellW = cw;
+                cellH = ch;
+            }
+        }
+
+        const auto rows = (numScales + columns - 1) / columns;
+        const auto panelW = columns * cellW + 2 * pad, panelH = rows * cellH + 2 * pad;
+        left = std::max (margin, std::min (sizeMenuX, W - margin - panelW)) + pad;
+        top = std::max (margin, std::min (sizeMenuY, H - margin - panelH)) + pad;
+    }
+
+    int Editor::sizeMenuItemAt (int x, int y) const
+    {
+        int columns = 4, cellW = 58, cellH = 24, left = 0, top = 0;
+        layOutSizeMenu (columns, cellW, cellH, left, top);
+
+        if (x < left || y < top)
+            return -1;
+
+        const auto c = (x - left) / cellW, r = (y - top) / cellH;
+        const auto item = r * columns + c;
+        return c < columns && item < numScales ? item : -1;
+    }
+
+    bool Editor::sizeMenuMouse (int x, int y, bool down)
+    {
+        if (! sizeMenuOpen)
+            return false;
+
+        const auto item = sizeMenuItemAt (x, y);
+
+        if (! down)
+        {
+            sizeMenuHovered = item;
+            return true;
+        }
+
+        sizeMenuOpen = false;
+        sizeMenuHovered = -1;
+
+        if (item < 0)
+            return true;   // outside it: closed, nothing else
+
+        const auto chosen = snapScale (minScale + scaleStep * (float) item);
+
+        if (chosen != scale)
+        {
+            scale = chosen;
+            host.setWindowScale (scale);
+
+            if (onScaleChosen)
+                onScaleChosen();
+        }
+
+        return true;
+    }
+
+   #if ! STELLA_REGISTRATION
+    namespace
+    {
+        /** Figures and % as blocks (no fonts in this plugin): 3 x 5 cells each. */
+        void drawBlockText (std::uint32_t* pixels, int W, int H, const std::string& text, int centreX, int centreY, int cell, std::uint32_t colour)
+        {
+            static const char* const glyphs[11] { "111101101101111", "010110010010111", "111001111100111", "111001111001111", "101101111001001",
+                                                  "111100111001111", "111100111101111", "111001001001001", "111101111101111", "111101111001111",
+                                                  "101001010100101" };
+            const auto width = (int) text.size() * 4 * cell - cell;
+            auto x = centreX - width / 2;
+            const auto y = centreY - (5 * cell) / 2;
+
+            for (const auto ch : text)
+            {
+                const auto g = ch == '%' ? 10 : (ch >= '0' && ch <= '9' ? ch - '0' : -1);
+
+                if (g >= 0)
+                    for (int r = 0; r < 5; ++r)
+                        for (int c = 0; c < 3; ++c)
+                            if (glyphs[g][r * 3 + c] == '1')
+                                for (int py = y + r * cell; py < y + (r + 1) * cell; ++py)
+                                    for (int px = x + c * cell; px < x + (c + 1) * cell; ++px)
+                                        if (px >= 0 && py >= 0 && px < W && py < H)
+                                            pixels[(size_t) py * (size_t) W + (size_t) px] = colour;
+
+                x += 4 * cell;
+            }
+        }
+
+        void fillBox (std::uint32_t* pixels, int W, int H, int x, int y, int w, int h, std::uint32_t colour)
+        {
+            for (int py = std::max (0, y); py < std::min (H, y + h); ++py)
+                for (int px = std::max (0, x); px < std::min (W, x + w); ++px)
+                    blend (pixels[(size_t) py * (size_t) W + (size_t) px], colour);
+        }
+    }
+   #endif
+
+    void Editor::drawSizeMenu (std::uint32_t* pixels)
+    {
+        if (! sizeMenuOpen)
+            return;
+
+        const auto W = getWidth(), H = getHeight();
+        int columns = 4, cellW = 58, cellH = 24, left = 0, top = 0;
+        layOutSizeMenu (columns, cellW, cellH, left, top);
+        const auto rows = (numScales + columns - 1) / columns;
+        const auto current = (int) std::lround ((scale - minScale) / scaleStep);
+        const int pad = 6;
+
+       #if STELLA_REGISTRATION
+        Painter p (pixels, W, H);
+        const Rect panel { (float) (left - pad), (float) (top - pad), (float) (columns * cellW + 2 * pad), (float) (rows * cellH + 2 * pad) };
+        p.shadow (panel, 8.0f, 10.0f, 0.5f);
+        p.fill (panel, 8.0f, 0xff1e1f24u);
+        p.outline (panel, 8.0f, 1.0f, 0xff3a3c44u);
+        static Text text;
+       #else
+        fillBox (pixels, W, H, left - pad, top - pad, columns * cellW + 2 * pad, rows * cellH + 2 * pad, 0xf01e1f24u);
+       #endif
+
+        for (int i = 0; i < numScales; ++i)
+        {
+            const auto x = left + (i % columns) * cellW, y = top + (i / columns) * cellH;
+            const auto label = std::to_string ((int) std::lround ((minScale + scaleStep * (float) i) * 100.0f)) + "%";
+            const bool chosen = i == current, hovered = i == sizeMenuHovered;
+            const std::uint32_t ink = chosen ? 0xff101114u : (hovered ? 0xffffffffu : 0xffc9ccd4u);
+
+           #if STELLA_REGISTRATION
+            const Rect cell { (float) x + 1.0f, (float) y + 1.0f, (float) cellW - 2.0f, (float) cellH - 2.0f };
+
+            if (chosen)
+                p.fill (cell, 5.0f, 0xff2fb36bu);
+            else if (hovered)
+                p.fill (cell, 5.0f, 0xff34363eu);
+
+            const auto size = std::max (6.0f, std::min (13.0f, (float) cellH * 0.52f));
+            const auto tw = text.width (label, size, chosen);
+            text.draw (p, label, std::round (cell.x + (cell.w - tw) * 0.5f), Text::baselineFor (cell.centreY(), size), size, chosen, ink);
+           #else
+            if (chosen)
+                fillBox (pixels, W, H, x + 1, y + 1, cellW - 2, cellH - 2, 0xff2fb36bu);
+            else if (hovered)
+                fillBox (pixels, W, H, x + 1, y + 1, cellW - 2, cellH - 2, 0xff34363eu);
+
+            drawBlockText (pixels, W, H, label, x + cellW / 2, y + cellH / 2, std::max (1, cellH / 10), ink);
+           #endif
+        }
+    }
+
+    void Editor::renderBaked (std::uint32_t* pixels)
     {
         const auto* background = page < (int) backgrounds.size() ? &backgrounds[(size_t) page] : nullptr;
 
@@ -2721,6 +3858,34 @@ namespace stella::gui
                 case Kind::registration:   // the badge: frame 0 while anything is unregistered, 1 when all is
                     if (image != nullptr)
                         blitFrame (pixels, *image, strip->frameHeight, isRegistered (i) ? std::min (1, strip->frames - 1) : 0, w.x, w.y);
+                    break;
+
+                case Kind::key:            // lit over the set in the background
+                    if (image != nullptr && b.param >= 0)
+                    {
+                        float min = 0.0f, max = 1.0f, def = 0.0f, skew = 1.0f;
+                        host.getRange (b.param, min, max, def, skew);
+                        const auto at = (int) std::lround (host.getValue (b.param) - min);
+                        const bool on = w.mode == 1 ? proportionOf (b.param) >= 0.5f
+                                      : w.mode == 2 ? ((at >> std::max (0, std::min (30, w.count))) & 1) != 0
+                                                    : at == w.count;
+
+                        if (on)
+                            blitFrame (pixels, *image, strip->frameHeight, std::min (1, strip->frames - 1), w.x, w.y);
+                    }
+                    break;
+
+                case Kind::perform:        // its picture for where it is: across, then up
+                    if (image != nullptr)
+                    {
+                        const int across = std::max (1, w.count), up = std::max (1, w.mode);
+                        const bool pair = (w.vertical & 1) != 0;
+                        const float px = b.param >= 0 ? proportionOf (b.param) : 0.5f, py = b.param2 >= 0 ? proportionOf (b.param2) : 0.5f;
+                        const int ix = across > 1 ? (int) std::lround (px * (float) (across - 1)) : 0;
+                        const int iy = up > 1 ? (int) std::lround (py * (float) (up - 1)) : 0;
+                        (void) pair;
+                        blitFrame (pixels, *image, strip->frameHeight, std::min (strip->frames - 1, std::max (0, iy * across + ix)), w.x, w.y);
+                    }
                     break;
 
                 case Kind::meter:     drawMeter (pixels, w, i, image, strip); break;

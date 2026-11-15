@@ -6,6 +6,7 @@
 */
 
 #include "LayerDoc.h"
+#include "Model3D.h"
 #include "KnobFile.h"
 #include "KnobManEngine.h"
 
@@ -260,8 +261,9 @@ float LayerStyle::reach() const noexcept
     if (stroke.enabled && stroke.position != StrokePosition::Inside)
         r = juce::jmax (r, stroke.position == StrokePosition::Centre ? stroke.size * 0.5f : stroke.size);
 
+    // A bevel's band, softened (Soften, and Smooth's own quarter of its size) past it.
     if (bevel.enabled && bevel.style != BevelStyle::InnerBevel)
-        r = juce::jmax (r, bevel.size + (stroke.enabled ? stroke.size : 0.0f));
+        r = juce::jmax (r, bevel.size * 1.25f + bevel.soften + 1.0f + (stroke.enabled ? stroke.size : 0.0f));
 
     if (dropShadow.enabled)
         r = juce::jmax (r, dropShadow.distance + dropShadow.size + (stroke.enabled ? stroke.size : 0.0f));
@@ -983,6 +985,9 @@ juce::ValueTree LayerDoc::toValueTree() const
             pt.setProperty ("shapePoints", pts.joinIntoString (" "), nullptr);
         }
 
+        if (p.shapePath.isNotEmpty())
+            pt.setProperty ("shapePath", p.shapePath, nullptr);
+
         lt.appendChild (pt, nullptr);
 
         // ---- effect --------------------------------------------------------
@@ -1013,6 +1018,10 @@ juce::ValueTree LayerDoc::toValueTree() const
 
         doc.appendChild (lt, nullptr);
     }
+
+    // Stella: a 3D look's model.
+    if (model3d != nullptr)
+        doc.appendChild (model3d->toValueTree(), nullptr);
 
     // Imported from KnobMan: the file's own text, read again as it opens.
     if (knobman != nullptr)
@@ -1228,6 +1237,8 @@ LayerDoc LayerDoc::fromValueTree (const juce::ValueTree& tree)
                                                s.fromFirstOccurrenceOf (",", false, false).getFloatValue() });
                 }
             }
+
+            p.shapePath = pt.getProperty ("shapePath", {}).toString();
         }
 
         if (auto et = lt.getChildWithName ("Effect"); et.isValid())
@@ -1260,6 +1271,9 @@ LayerDoc LayerDoc::fromValueTree (const juce::ValueTree& tree)
 
     if (doc.layers.empty())
         doc.layers.push_back (DocLayer());
+
+    if (auto model = tree.getChildWithName ("Model3D"); model.isValid())
+        doc.model3d = Model3D::fromValueTree (model);
 
     if (auto km = tree.getChildWithName ("KnobMan"); km.isValid())
     {

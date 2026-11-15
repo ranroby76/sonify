@@ -3,17 +3,21 @@
 
 #pragma once
 
+#include "UiHelpers.h"   // FineSlider
+
 #include "ColourSwatch.h"
 #include "PluginCanvas.h"
 #include "stella_element_host.h"
 
 //==============================================================================
 /**
-    The edit menu, the one menu a right-click opens: beside the element (or the window, for
-    its empty space, or the elements selected together). Under its title what it does with
+    The edit window, the one a right-click (or the E under an element) opens: a window of its
+    own beside the element (or the window, for its empty space, or the elements selected
+    together), following what's selected. Under its title what it does with
     them: Copy, Paste, Duplicate and the layers (a list of its own); then its settings in tabs
-    (Object, Control, Meter, Text, Look, Shape, Surface, Pattern; the window's: Window,
-    Background, Pattern), one
+    (Object, Control, Meter, Text, Look, Shape, Surface, Pattern, and for a selector, an X-Y pad,
+    a matrix or a preset manager, Advanced edit: its studio; the window's: Window, Background,
+    Pattern), one
     setting a line, each named above it, a line between groups of them. At its foot, an
     instruction for Sonify AI about this very element: "make it gold and a bit bigger".
 */
@@ -30,6 +34,7 @@ public:
     void showForSeveral (const std::vector<int>& indexes);
 
     int getWidgetIndex() const noexcept    { return widget; }
+    juce::String heading() const           { return title; }   // what it edits
 
     /** What it edits is being dragged (moved, resized, turned): its position, size and angle
         show where it is now. */
@@ -45,6 +50,21 @@ public:
     void forgetTyped()    { typedBox = nullptr; }
 
     int getIdealHeight() const;
+
+    /** The size it wants: as wide as the menu and as tall as its tallest tab, or in the
+        Advanced edit tab, the studio's. */
+    juce::Point<int> getIdealSize() const;
+
+    /** The Advanced edit tab: an element's studio (a selector's keys, a performance control, a
+        matrix, a preset manager), as the E under it opens it. */
+    static constexpr const char* advancedTab = "Advanced edit";
+    bool isAdvanced() const;
+
+    /** The tab shown next (the E: Advanced edit). */
+    void preferTab (const juce::String& name)    { chosenTab = name; }
+
+    /** Closed: the studio's let go. */
+    void closed()    { dropStudio(); }
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -133,7 +153,7 @@ private:
         as an id, for a parameter the plugin doesn't have yet. */
     juce::String paramIdFor (const juce::String& typed) const;
     juce::String paramCaption (const juce::String& caption, const juce::String& id) const;
-    int footerSize() const    { return several.empty() ? 118 : 0; }
+    int footerSize() const    { return several.empty() && canvas.onAskAi != nullptr ? 118 : 0; }   // Fanan AI's corner (none without an AI)
 
     PluginCanvas& canvas;
     int widget = -1;
@@ -211,6 +231,8 @@ private:
 
     ShiftBox textShift;
     juce::TextButton textEffectsButton;   // its words' layer style (Photoshop's), in a window of its own
+    juce::TextButton textIconButton, optionsIconButton;   // an icon from the library into its text, its positions (IconBrowser)
+    void putIcon (juce::TextEditor& into, const juce::String& name);
     juce::ComboBox fontBox;     // its text's font (FontLibrary's)
     FontSample fontSample;
     ColourSwatchButton colour { "Colour" };
@@ -220,7 +242,9 @@ private:
     juce::StringArray lookNames;   // the Look list's entries, by item id - 1
     static constexpr int standardLookId = 9000;   // the Look list's "Standard look": none chosen
     juce::TextButton originalLookButton, restoreLookButton;   // back to the look it had; a built-in look as it came
-    juce::Slider presetRounding;   // the preset manager's corners
+    FineSlider presetRounding;   // the preset manager's corners (a drop-down list's too)
+    juce::ComboBox dropLookBox;  // a drop-down list: a rectangle (rounded up to a pill) or its words alone
+    juce::TextButton iconPickButton;   // an icon element: its icon, from the library
 
     // Pages: the element's, and the window's list.
     juce::ComboBox pageBox;
@@ -236,8 +260,13 @@ private:
     // its texture, a pattern layer over it (Photoshop-style, with a blend mode), and its key
     // light's pool (it's lit by the global light).
     juce::ComboBox surfaceMaterial, surfaceFinish, patternBox, blendBox;
+    juce::ComboBox materialLookBox;   // a shape's built-in material looks (MaterialArchetypes)
+    juce::TextButton lookThisButton { "Apply to this panel" }, lookAllButton { "Apply to all panels" };
+    juce::ToggleButton lookControlsToggle { "Controls too" };   // all panels: the knobs, sliders and switches as well
+    juce::ToggleButton lookThemeToggle { "Displays and fonts too" };   // ...and the displays, fonts and camera
+    juce::ToggleButton lookPaintToggle { "Painted panel too" };        // ...and the painted background behind it
     ColourSwatchButton surfaceColour { "Main colour" }, surfaceColour2 { "Second colour" }, patternColour { "Pattern colour" };
-    juce::Slider textureSize, textureStrength, patternOpacity, patternSize, patternAngle, keyLight;
+    FineSlider textureSize, textureStrength, patternOpacity, patternSize, patternAngle, keyLight;
     juce::var surfaceRecipe;   // how the selected picture was painted, with the changes asked for since
 
     juce::Colour lastMain;     // the main colour as it was: the second follows it until it's chosen
@@ -254,7 +283,7 @@ private:
     // scale.
     juce::ComboBox meterDisplay;
     ColourSwatchButton meterLow { "Low colour" }, meterMid { "Middle colour" }, meterHigh { "Top colour" }, meterBack { "Background" };
-    juce::Slider meterSegments, meterGlow;
+    FineSlider meterSegments, meterGlow;
     juce::ToggleButton meterPeakToggle { "Peak hold" }, meterScaleToggle { "dB scale" };
     void showMeter (const GuiWidget&);
     void applyMeter();
@@ -262,29 +291,47 @@ private:
     // A lamp's, selector's, keyboard's or label's display (PanelParts): how it looks; a lamp
     // that follows the level; a label's arrowheads.
     juce::ComboBox partDisplay, arrowsBox;
+    juce::ComboBox badgeBox;                               // an icon's badge: none, rectangle, circle, rhombus, polygons...
+    ColourSwatchButton badgeColour { "Badge colour" };
     juce::ToggleButton followToggle { "Follows the level" };
+    FineSlider keyTilt, keyYaw, keyPerspective;   // a keyboard seen in 3D (PanelParts::isKeyboard3d)
+
+    // A label's LED digits (SegmentDisplay): their segments, cells, colour, how much the dark
+    // bars show, their glow, slant and thickness, their window and its colour.
+    juce::ComboBox ledSegmentsBox, ledColourBox, ledWindowBox;
+    FineSlider ledCells, ledGhost, ledGlow, ledSlant, ledThickness;
+    ColourSwatchButton ledBack { "Window colour" };
     void showPart (const GuiWidget&);
     void applyPart();
 
     // Every element is an object: where it lies, how big, turned and see-through.
     juce::TextEditor xBox, yBox, wBox, hBox, angleBox;
-    juce::Slider opacitySlider;
+    FineSlider opacitySlider;
     void showObject (const GuiWidget&);
     void applyObject();
 
     // A shape: its kind (in the Type list), its geometry (its corners' rounding: a rectangle
     // goes all the way to a pill), and Photoshop's Layer Style for it (bevel, contour, stroke,
     // shadows, colour overlay) in a window of its own.
-    juce::Slider cornerRadius, starPoints, starInner, topPoint, middleX, middleY, leanX, leanY;
+    FineSlider cornerRadius, starPoints, starInner, topPoint, middleX, middleY, leanX, leanY;
     juce::TextButton layerStyleButton;
+
+    // ...filled or not (its outline alone), its outline's width (filled 0 to 12, not filled 1
+    // to 12) and, filled, its outline's colour.
+    juce::ComboBox fillBox;
+    FineSlider outlineWidth;
+    ColourSwatchButton outlineColour { "Outline colour" };
     void showShape (const GuiWidget&);
     void applyShape();
 
     // A line: its width, its arrowheads and ends, and straight again.
-    juce::Slider lineWidthSlider;
+    FineSlider lineWidthSlider;
     juce::ComboBox lineArrowBox, lineCapBox;
     juce::TextButton straightenButton { "Straighten it" };
     juce::ToggleButton perCornerToggle { "Per corner" };   // its corners dragged one by one (Photoshop's Distort)
+
+    // A frame: resizing it scales what's inside it (its "scaleContents"; on as standard).
+    juce::ToggleButton frameScaleToggle { "Resizing it scales what's inside" };
 
     // A line's bend points: which one (the canvas's activeBend), its kind, more or fewer.
     juce::ComboBox bendPick, bendKind;
@@ -293,6 +340,32 @@ private:
     // The panel's one light, in Photoshop's Global Light window (a lit element's Look tab, a
     // shape's Shape tab, the window's Window tab).
     juce::TextButton globalLightButton, shapeLightButton, windowLightButton;
+
+    // The window's panel camera (GuiLayout::camera): how the 3D looks lean by where they are.
+    FineSlider cameraSlider;
+
+    // The window's 3D body (GuiLayout::body): its editor, a window of its own.
+    juce::TextButton bodyButton;
+
+    // Start from a layout: Fanan AI lays the window out again from a ready-made layout
+    // (PanelLayouts), bound to the plugin's own parameters, and dresses it in a material look.
+    juce::ComboBox layoutStartBox, layoutLookBox;
+    juce::ToggleButton layoutControlsToggle { "Controls too" }, layoutThemeToggle { "Displays and fonts too" },
+                       layoutPaintToggle { "Painted panel too" };
+    juce::TextButton layoutStartButton;
+    void startFromLayout();
+    juce::TextButton showroomButton;   // ...and the finished instrument, seen from round it
+
+    // The Advanced edit tab: a selector's keys (the Selector Studio), an X-Y pad as a
+    // performance control (the Performance Studio), a modulation matrix (the Matrix Studio), a
+    // preset manager (the Preset Studio). Made when the tab's picked, let go when another one
+    // is (so the two never edit it at once); the window's size in it is kept.
+    std::unique_ptr<juce::Component> studio;
+    int studioWidget = -1, studioType = -1;
+    juce::Point<int> advancedSize;
+    bool hasAdvanced() const;      // one element with a studio
+    void showStudio();             // the tab picked: made for this element (if it isn't already)
+    void dropStudio();
 
     Rows rows;
     juce::Viewport viewport;

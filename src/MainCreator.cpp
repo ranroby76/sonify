@@ -3,7 +3,7 @@
 // The Plugins Creator Studio (CreatorStudio): Stella AI Studio inside Sonify, with Sonify AI
 // building. It's native, so it lives in a window of its own laid over the page's studio area
 // while the studio is in front (as the web tabs do), and steps aside for the page's dialogs and
-// menus. Its tabs: Build with AI, Edit UI and Knob Studio.
+// menus. Its tabs: Build with AI, Edit UI, Knob Studio, 3D Studio, Protection and Store.
 //
 // Build with AI makes everything, MIDI FX included: a MIDI FX is one of Sonify's devices, made by
 // the Device Studio (MainDevices.cpp) and its own Sonify AI, shown in the studio's conversation. A

@@ -1,0 +1,24 @@
+{
+  "name": "Mod matrix grid",
+  "category": "Modulation",
+  "order": 45,
+  "icon": "xy",
+  "description": "Sources down, destinations across: a pin where they meet, its ring the amount (VCS3 style). Its look in the Matrix Studio.",
+  "widget": {
+    "type": "matrix",
+    "w": 420,
+    "h": 280,
+    "param": "mod",
+    "settings": {
+      "matrix": {
+        "style": "grid",
+        "routes": 16,
+        "cell": "pin",
+        "colour": "#FFE84A3A",
+        "panelColour": "#FFE4E0D6",
+        "textColour": "#FF2A2622",
+        "lineColour": "#FFBDB6A8"
+      }
+    }
+  }
+}

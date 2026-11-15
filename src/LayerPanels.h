@@ -15,9 +15,12 @@
 
 #pragma once
 
+#include "UiHelpers.h"   // FineSlider
+
 #include "LayerDoc.h"
 
 #include <functional>
+#include <set>
 
 //==============================================================================
 class AnimRow final : public juce::Component
@@ -39,8 +42,8 @@ private:
     void modeChanged();
 
     juce::Label    label;
-    juce::Slider   fromSlider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
-    juce::Slider   toSlider   { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
+    FineSlider   fromSlider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
+    FineSlider   toSlider   { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
     juce::ComboBox modeBox;
 
     // What setValue was given, handed back for a slider the user hasn't moved since: a
@@ -73,7 +76,7 @@ public:
 
 private:
     juce::Label  label;
-    juce::Slider slider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
+    FineSlider slider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
 
     // As AnimRow: the value setValue was given, until the user moves the slider.
     float given = 0.0f;
@@ -103,6 +106,19 @@ public:
 
     int  getSelectedIndex() const noexcept { return selectedIndex; }
     void setSelectedIndex (int);
+
+    /** Stella: layers picked together (Shift+click adds a layer, or takes it away again), by
+        their index in the document; empty while one alone is selected. */
+    const std::set<int>& getPickedLayers() const noexcept { return picked; }
+
+    /** Stella: Ctrl+M: the layers picked together merged into one shape (LayerMerge), selected. */
+    void mergePicked();
+
+    /** Stella: the frame shown, which layers that move differently are merged at. */
+    std::function<float()> currentFrame;
+
+    /** Stella: what Merge did, for the status line. */
+    std::function<void (const juce::String&)> onMessage;
 
     void resized() override;
     void paint (juce::Graphics&) override;
@@ -139,6 +155,7 @@ private:
 
     LayerDoc* document = nullptr;
     int selectedIndex = 0;
+    std::set<int> picked;   // Stella: layers picked together, by document index (two or more)
 
     juce::Viewport  listViewport;
     juce::Component rowHolder;

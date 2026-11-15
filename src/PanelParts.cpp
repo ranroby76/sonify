@@ -3,9 +3,12 @@
 #include "PanelParts.h"
 #include "FontLibrary.h"
 #include "LayerRender.h"   // the text effects: Photoshop's layer style
+#include "SegmentDisplay.h"
+#include "IconLibrary.h"      // icons among the words: {name}
 #include <map>
 #include "stella_keys.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace
@@ -808,6 +811,578 @@ namespace
             g.fillRoundedRectangle (key.reduced (key.getWidth() * 0.2f, 0.0f).withTrimmedBottom (key.getHeight() * 0.15f).withTrimmedTop (2.0f), 1.5f);
         }
     }
+
+    //==========================================================================
+    // Keyboards in 3D: seen from above at an angle ("tilt": 0 from straight above, up to 75
+    // from the player's seat), from one side ("yaw": -45 the left .. 45 the right) and with
+    // "perspective" (0 none .. 100 close up). The keys are boxes: the naturals' tops and their
+    // front edges, the sharps standing on them with their fronts and sides; their tops are the
+    // flat keyboard's own, drawn by its display and mapped onto them.
+
+    /** The keyboard flat, seen from straight above: its display's keys. */
+    void paintFlatKeyboard (juce::Graphics& g, const GuiWidget& w)
+    {
+        const auto display = PanelParts::keyboardDisplayOf (w);
+
+        if (display == "reverse")        paintReverseKeys (g, w);
+        else if (display == "modern")    paintModernKeys (g, w);
+        else if (display == "graphite")  paintGraphiteKeys (g, w);
+        else                             paintClassicKeys (g, w);
+
+        if (display != "classic")
+            return;
+
+        // The felt strip's shadow along the top.
+        const auto b = w.bounds.toFloat();
+        const auto shadow = b.withHeight (juce::jmax (4.0f, b.getHeight() * 0.08f));
+        g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (0.55f), shadow.getX(), shadow.getY(),
+                                                 juce::Colours::transparentBlack, shadow.getX(), shadow.getBottom(), false));
+        g.fillRect (shadow);
+    }
+
+    float keyboardTilt (const GuiWidget& w)          { return juce::jlimit (0.0f, 75.0f, w.number ("tilt", 0.0f)); }
+    float keyboardYaw (const GuiWidget& w)           { return juce::jlimit (-45.0f, 45.0f, w.number ("yaw", 0.0f)); }
+    float keyboardPerspective (const GuiWidget& w)   { return juce::jlimit (0.0f, 100.0f, w.number ("perspective", 40.0f)); }
+
+    bool keyboardIn3d (const GuiWidget& w)
+    {
+        return w.type == GuiWidget::Type::keyboard && (keyboardTilt (w) >= 0.5f || std::abs (keyboardYaw (w)) >= 0.5f);
+    }
+
+    struct Vec3 { double x = 0, y = 0, z = 0; };
+
+    /** The keyboard as a model and the camera on it, its picture stretched to the box. Model:
+        x across (0..W, the box's width), z from the back (0) to the front (D, the box's height),
+        y up from the naturals' tops. */
+    struct KeyboardView
+    {
+        double W = 1, D = 1;                  // the keys' area, top down (the box's size)
+        double whiteW = 1, raise = 1, thick = 1, blackLen = 1, blackW = 1, gap = 0.5;
+        double cp = 1, sp = 0, cy = 1, sy = 0;
+        double L = 1.0e6;
+        bool ortho = true;
+        double minX = 0, minY = 0, kx = 1, ky = 1;   // the projection fitted to the box
+        int low = 48, high = 84;
+
+        explicit KeyboardView (const GuiWidget& w)
+        {
+            W = juce::jmax (8, w.bounds.getWidth());
+            D = juce::jmax (8, w.bounds.getHeight());
+            low = w.lowNote;
+            high = w.highNote;
+
+            whiteW = W / (double) stella::keys::numWhite (low, high);
+            blackW = whiteW * stella::keys::blackWidth;
+            blackLen = D * stella::keys::blackHeight;
+            raise = juce::jmin (whiteW * 0.42, D * 0.12);    // the sharps stand this high on the naturals
+            thick = juce::jmin (whiteW * 0.55, D * 0.16);    // the naturals' front edge
+            gap = juce::jmax (0.4, whiteW * 0.035);
+
+            const double pitch = juce::degreesToRadians ((double) keyboardTilt (w));
+            const double yaw = juce::degreesToRadians ((double) keyboardYaw (w));
+            cp = std::cos (pitch); sp = std::sin (pitch);
+            cy = std::cos (yaw);   sy = std::sin (yaw);
+
+            const double strength = keyboardPerspective (w) / 100.0;
+            ortho = strength < 0.005;
+            L = ortho ? 1.0e6 : juce::jmax (W, D) * (0.55 + 5.0 * (1.0 - strength) * (1.0 - strength));
+
+            // Fitted to the box: everything the keys can show.
+            double x0 = 1.0e30, x1 = -1.0e30, y0 = 1.0e30, y1 = -1.0e30;
+
+            for (const auto& p : { Vec3 { 0, 0, 0 }, Vec3 { W, 0, 0 }, Vec3 { 0, 0, D }, Vec3 { W, 0, D },
+                                   Vec3 { 0, -thick, D }, Vec3 { W, -thick, D }, Vec3 { 0, -thick, 0 }, Vec3 { W, -thick, 0 },
+                                   Vec3 { 0, raise, 0 }, Vec3 { W, raise, 0 }, Vec3 { 0, raise, blackLen }, Vec3 { W, raise, blackLen } })
+            {
+                const auto q = raw (p);
+                x0 = juce::jmin (x0, q.x); x1 = juce::jmax (x1, q.x);
+                y0 = juce::jmin (y0, q.y); y1 = juce::jmax (y1, q.y);
+            }
+
+            minX = x0;
+            minY = y0;
+            kx = W / juce::jmax (1.0e-6, x1 - x0);
+            ky = D / juce::jmax (1.0e-6, y1 - y0);
+        }
+
+        /** Seen by the camera, before it's fitted to the box. */
+        juce::Point<double> raw (Vec3 p) const
+        {
+            const double X = p.x - W * 0.5, Z = p.z - D * 0.5;
+            const double X1 = X * cy - Z * sy, Z1 = X * sy + Z * cy;
+            const double sxv = X1, syv = Z1 * cp - p.y * sp;
+            const double depth = -p.y * cp - Z1 * sp;
+            const double f = ortho ? 1.0 : L / juce::jmax (L * 0.05, L + depth);
+            return { sxv * f, syv * f };
+        }
+
+        /** Where a point of the model lands in the box (0, 0 at its top-left). */
+        juce::Point<float> at (Vec3 p) const
+        {
+            const auto q = raw (p);
+            return { (float) ((q.x - minX) * kx), (float) ((q.y - minY) * ky) };
+        }
+
+        /** Where the camera is (ortho: very far off, the same way). */
+        Vec3 camera() const
+        {
+            return { W * 0.5 + L * sp * sy, L * cp, D * 0.5 + L * sp * cy };
+        }
+
+        /** Whether a face at p, facing n, faces the camera. */
+        bool faces (Vec3 p, Vec3 n) const
+        {
+            const auto c = camera();
+            return (c.x - p.x) * n.x + (c.y - p.y) * n.y + (c.z - p.z) * n.z > 1.0e-9;
+        }
+
+        /** The plane y = level, from the box back to the model: (x, z), or false when the point
+            is past the plane's horizon. */
+        bool onPlane (double level, double u, double v, double& x, double& z) const
+        {
+            // The projection of the plane is a homography of (X, Z): its matrix, inverted.
+            const double a1 = cy, a2 = -sy;
+            const double b1 = cp * sy, b2 = cp * cy, b0 = -sp * level;
+            double c1 = -sp * sy, c2 = -sp * cy, c0 = L - cp * level;
+
+            double m[3][3];
+
+            if (ortho)
+            {
+                m[0][0] = kx * a1;  m[0][1] = kx * a2;  m[0][2] = -kx * minX;
+                m[1][0] = ky * b1;  m[1][1] = ky * b2;  m[1][2] = ky * (b0 - minY);
+                m[2][0] = 0;        m[2][1] = 0;        m[2][2] = 1;
+            }
+            else
+            {
+                m[0][0] = kx * (L * a1 - minX * c1);  m[0][1] = kx * (L * a2 - minX * c2);  m[0][2] = kx * (-minX * c0);
+                m[1][0] = ky * (L * b1 - minY * c1);  m[1][1] = ky * (L * b2 - minY * c2);  m[1][2] = ky * (L * b0 - minY * c0);
+                m[2][0] = c1;                         m[2][1] = c2;                         m[2][2] = c0;
+            }
+
+            const double det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+                             - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+                             + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+
+            if (std::abs (det) < 1.0e-12)
+                return false;
+
+            // The inverse, by its cofactors.
+            const double i00 =  (m[1][1] * m[2][2] - m[1][2] * m[2][1]) / det, i01 = -(m[0][1] * m[2][2] - m[0][2] * m[2][1]) / det;
+            const double i02 =  (m[0][1] * m[1][2] - m[0][2] * m[1][1]) / det, i10 = -(m[1][0] * m[2][2] - m[1][2] * m[2][0]) / det;
+            const double i11 =  (m[0][0] * m[2][2] - m[0][2] * m[2][0]) / det, i12 = -(m[0][0] * m[1][2] - m[0][2] * m[1][0]) / det;
+            const double i20 =  (m[1][0] * m[2][1] - m[1][1] * m[2][0]) / det, i21 = -(m[0][0] * m[2][1] - m[0][1] * m[2][0]) / det;
+            const double i22 =  (m[0][0] * m[1][1] - m[0][1] * m[1][0]) / det;
+
+            const double X = i00 * u + i01 * v + i02, Z = i10 * u + i11 * v + i12, H = i20 * u + i21 * v + i22;
+
+            if (std::abs (H) < 1.0e-12)
+                return false;
+
+            x = X / H + W * 0.5;
+            z = Z / H + D * 0.5;
+
+            // In front of the camera only.
+            if (! ortho)
+            {
+                const double Xm = x - W * 0.5, Zm = z - D * 0.5;
+                const double Z1 = Xm * sy + Zm * cy;
+
+                if (L + (-level * cp - Z1 * sp) <= L * 0.05)
+                    return false;
+            }
+
+            return true;
+        }
+
+        juce::Path quad (Vec3 a, Vec3 b, Vec3 c, Vec3 d) const
+        {
+            juce::Path p;
+            p.startNewSubPath (at (a));
+            p.lineTo (at (b));
+            p.lineTo (at (c));
+            p.lineTo (at (d));
+            p.closeSubPath();
+            return p;
+        }
+
+        // The keys' boxes (x across, z depth).
+        juce::Range<double> whiteSpan (int note) const
+        {
+            int before = 0;
+
+            for (int n = low; n < note; ++n)
+                before += stella::keys::isBlack (n) ? 0 : 1;
+
+            return { before * whiteW, (before + 1) * whiteW };
+        }
+
+        juce::Range<double> blackSpan (int note) const
+        {
+            const auto k = stella::keys::keyOf (note, low, high, 0.0f, 0.0f, (float) W, (float) D);
+            return { (double) k.x, (double) k.x + (double) k.w };
+        }
+
+        /** A natural's top and front faces. */
+        juce::Path whiteTop (int note) const
+        {
+            const auto s = whiteSpan (note);
+            return quad ({ s.getStart() + gap * 0.5, 0, 0 }, { s.getEnd() - gap * 0.5, 0, 0 }, { s.getEnd() - gap * 0.5, 0, D }, { s.getStart() + gap * 0.5, 0, D });
+        }
+
+        juce::Path whiteFront (int note) const
+        {
+            const auto s = whiteSpan (note);
+            return quad ({ s.getStart() + gap * 0.5, 0, D }, { s.getEnd() - gap * 0.5, 0, D }, { s.getEnd() - gap * 0.5, -thick, D }, { s.getStart() + gap * 0.5, -thick, D });
+        }
+
+        enum Face { top = 0, front, left, right };
+
+        /** A sharp's face (empty when it faces away). */
+        juce::Path blackFace (int note, Face face) const
+        {
+            const auto s = blackSpan (note);
+            const double x0 = s.getStart(), x1 = s.getEnd(), z1 = blackLen, h = raise;
+
+            switch (face)
+            {
+                case top:   return quad ({ x0, h, 0 }, { x1, h, 0 }, { x1, h, z1 }, { x0, h, z1 });
+                case front: return faces ({ x0, h, z1 }, { 0, 0, 1 }) ? quad ({ x0, h, z1 }, { x1, h, z1 }, { x1, 0, z1 }, { x0, 0, z1 }) : juce::Path();
+                case left:  return faces ({ x0, h, 0 }, { -1, 0, 0 }) ? quad ({ x0, h, 0 }, { x0, h, z1 }, { x0, 0, z1 }, { x0, 0, 0 }) : juce::Path();
+                case right: return faces ({ x1, h, 0 }, { 1, 0, 0 }) ? quad ({ x1, h, 0 }, { x1, h, z1 }, { x1, 0, z1 }, { x1, 0, 0 }) : juce::Path();
+                default:    return {};
+            }
+        }
+
+        /** All of a sharp as it shows. */
+        juce::Path blackOutline (int note) const
+        {
+            juce::Path all;
+
+            for (const auto f : { top, front, left, right })
+                all.addPath (blackFace (note, f));
+
+            return all;
+        }
+
+        /** The sharps far to near, as they're drawn (the near ones over the far). */
+        std::vector<int> blacksFarToNear() const
+        {
+            std::vector<std::pair<double, int>> order;
+            const auto c = camera();
+
+            for (int n = low; n <= high; ++n)
+            {
+                if (! stella::keys::isBlack (n))
+                    continue;
+
+                const auto s = blackSpan (n);
+                const double dx = s.getStart() + s.getLength() * 0.5 - c.x, dz = blackLen * 0.5 - c.z, dy = raise - c.y;
+                order.push_back ({ dx * dx + dy * dy + dz * dz, n });
+            }
+
+            std::sort (order.begin(), order.end(), [] (const auto& a, const auto& b) { return a.first > b.first; });
+            std::vector<int> notes;
+
+            for (const auto& [distance, note] : order)
+                notes.push_back (note);
+
+            return notes;
+        }
+
+        /** The note at a point of the box (the sharps first: they stand in front), and how
+            hard it's struck there; -1: none. */
+        int noteAt (juce::Point<float> local, float& velocity) const
+        {
+            const auto blacks = blacksFarToNear();
+
+            for (auto it = blacks.rbegin(); it != blacks.rend(); ++it)
+            {
+                if (blackFace (*it, top).contains (local))
+                {
+                    double x = 0, z = 0;
+                    velocity = onPlane (raise, local.x, local.y, x, z) ? (float) juce::jlimit (0.05, 1.0, 0.35 + 0.65 * z / blackLen) : 0.7f;
+                    return *it;
+                }
+
+                if (blackOutline (*it).contains (local))
+                {
+                    velocity = 1.0f;
+                    return *it;
+                }
+            }
+
+            for (int n = low; n <= high; ++n)
+            {
+                if (! stella::keys::isBlack (n) && whiteFront (n).contains (local) && faces ({ 0, 0, D }, { 0, 0, 1 }))
+                {
+                    velocity = 1.0f;
+                    return n;
+                }
+            }
+
+            double x = 0, z = 0;
+
+            if (! onPlane (0.0, local.x, local.y, x, z) || x < 0 || z < 0 || x >= W || z >= D)
+                return -1;
+
+            int index = (int) (x / whiteW), seen = 0;
+
+            for (int n = low; n <= high; ++n)
+            {
+                if (stella::keys::isBlack (n))
+                    continue;
+
+                if (seen++ == index)
+                {
+                    velocity = (float) juce::jlimit (0.05, 1.0, 0.35 + 0.65 * z / D);
+                    return n;
+                }
+            }
+
+            return -1;
+        }
+    };
+
+    /** A picture's pixel at a point, premultiplied (bilinear; past its edges: see-through). */
+    juce::PixelARGB sampleAt (const juce::Image::BitmapData& data, int w, int h, double px, double py)
+    {
+        const double fx = px - 0.5, fy = py - 0.5;
+        const int ix = (int) std::floor (fx), iy = (int) std::floor (fy);
+        const float tx = (float) (fx - ix), ty = (float) (fy - iy);
+
+        auto get = [&data, w, h] (int x, int y) -> juce::PixelARGB
+        {
+            if (x < 0 || y < 0 || x >= w || y >= h)
+                return juce::PixelARGB (0, 0, 0, 0);
+
+            return *reinterpret_cast<const juce::PixelARGB*> (data.getPixelPointer (x, y));
+        };
+
+        const auto a = get (ix, iy), b = get (ix + 1, iy), c = get (ix, iy + 1), d = get (ix + 1, iy + 1);
+        auto mix = [tx, ty] (float p, float q, float r, float s) { return (p + (q - p) * tx) * (1.0f - ty) + (r + (s - r) * tx) * ty; };
+
+        return juce::PixelARGB ((juce::uint8) juce::roundToInt (mix (a.getAlpha(), b.getAlpha(), c.getAlpha(), d.getAlpha())),
+                                (juce::uint8) juce::roundToInt (mix (a.getRed(), b.getRed(), c.getRed(), d.getRed())),
+                                (juce::uint8) juce::roundToInt (mix (a.getGreen(), b.getGreen(), c.getGreen(), d.getGreen())),
+                                (juce::uint8) juce::roundToInt (mix (a.getBlue(), b.getBlue(), c.getBlue(), d.getBlue())));
+    }
+
+    /** The flat keyboard's colour at a point of the model (top down). */
+    juce::Colour flatColourAt (const juce::Image::BitmapData& flat, int fw, int fh, double scale, double x, double z)
+    {
+        auto p = sampleAt (flat, fw, fh, x * scale, z * scale);
+        p.unpremultiply();
+        return juce::Colour (p);
+    }
+
+    /** One plane of the model (y = level, within x0..x1, z0..z1) painted from the flat keyboard,
+        pixel by pixel, over what's in the picture. */
+    void mapPlane (juce::Image::BitmapData& out, int ow, int oh, double scale, const KeyboardView& view,
+                   const juce::Image::BitmapData& flat, int fw, int fh, double level,
+                   double x0, double x1, double z0, double z1, juce::Rectangle<int> area)
+    {
+        area = area.getIntersection ({ 0, 0, ow, oh });
+
+        for (int py = area.getY(); py < area.getBottom(); ++py)
+        {
+            for (int px = area.getX(); px < area.getRight(); ++px)
+            {
+                double x = 0, z = 0;
+
+                if (! view.onPlane (level, ((double) px + 0.5) / scale, ((double) py + 0.5) / scale, x, z))
+                    continue;
+
+                // Its edge softened over a pixel of the picture.
+                const double inside = juce::jmin (x - x0, x1 - x, z - z0, z1 - z) * scale;
+
+                if (inside <= -0.5)
+                    continue;
+
+                const auto src = sampleAt (flat, fw, fh, x * scale, z * scale);
+                const auto cover = (juce::uint32) juce::roundToInt (juce::jlimit (0.0, 1.0, inside + 0.5) * 256.0);
+
+                auto* dest = reinterpret_cast<juce::PixelARGB*> (out.getPixelPointer (px, py));
+                dest->blend (src, juce::BlendMode::sourceOver, cover);
+            }
+        }
+    }
+
+    /** A face filled down its height, from a colour to a darker one. */
+    void fillFace (juce::Graphics& g, const juce::Path& face, juce::Colour top, juce::Colour bottom)
+    {
+        if (face.isEmpty())
+            return;
+
+        const auto b = face.getBounds();
+        g.setGradientFill (juce::ColourGradient (top, b.getX(), b.getY(), bottom, b.getX(), b.getBottom(), false));
+        g.fillPath (face);
+    }
+
+    struct Keyboard3dPicture
+    {
+        juce::Image image;
+        int scaleTimes100 = 100;
+    };
+
+    std::map<juce::String, Keyboard3dPicture>& keyboard3dPictures()
+    {
+        static std::map<juce::String, Keyboard3dPicture> pictures;
+        return pictures;
+    }
+
+    /** The keyboard in 3D at rest, as a picture of its box (its pixels scale to one). */
+    juce::Image keyboard3dPicture (const GuiWidget& w, float scale)
+    {
+        const auto key = PanelParts::keyboardDisplayOf (w) + "|" + setting (w, "whiteKeys") + "|" + setting (w, "blackKeys") + "|" + juce::String (w.lowNote)
+                       + "-" + juce::String (w.highNote) + "|" + juce::String (w.bounds.getWidth()) + "x" + juce::String (w.bounds.getHeight())
+                       + "|" + juce::String (keyboardTilt (w), 2) + "|" + juce::String (keyboardYaw (w), 2) + "|" + juce::String (keyboardPerspective (w), 2)
+                       + "|" + juce::String (scale, 2);
+
+        auto& pictures = keyboard3dPictures();
+
+        if (const auto found = pictures.find (key); found != pictures.end())
+            return found->second.image;
+
+        if (pictures.size() > 48)
+            pictures.clear();
+
+        const KeyboardView view (w);
+        const int ow = juce::jmax (1, (int) std::ceil (view.W * scale)), oh = juce::jmax (1, (int) std::ceil (view.D * scale));
+
+        // The keys flat, top down, as the display draws them: their tops' looks.
+        juce::Image flat (juce::Image::ARGB, ow, oh, true, juce::SoftwareImageType());
+        {
+            auto topDown = w;
+            topDown.bounds = { 0, 0, w.bounds.getWidth(), w.bounds.getHeight() };
+            topDown.settings.erase ("tilt");
+            topDown.settings.erase ("yaw");
+            juce::Graphics fg (flat);
+            fg.addTransform (juce::AffineTransform::scale (scale));
+            paintFlatKeyboard (fg, topDown);
+        }
+
+        juce::Image picture (juce::Image::ARGB, ow, oh, true, juce::SoftwareImageType());
+        juce::Image::BitmapData flatData (flat, juce::Image::BitmapData::readOnly);
+
+        auto sample = [&] (double x, double z) { return flatColourAt (flatData, ow, oh, scale, x, z); };
+        const auto rail = juce::Colour (0xff0b0b0d);
+
+        // The naturals' tops (and the bed between them), from the flat keys.
+        {
+            juce::Image::BitmapData out (picture, juce::Image::BitmapData::readWrite);
+            mapPlane (out, ow, oh, scale, view, flatData, ow, oh, 0.0, 0.0, view.W, 0.0, view.D, { 0, 0, ow, oh });
+        }
+
+        juce::Graphics g (picture);
+        g.addTransform (juce::AffineTransform::scale (scale));
+
+        // The keyboard's ends, under the naturals' level, where they face the camera.
+        for (const bool right : { false, true })
+        {
+            const double x = right ? view.W : 0.0;
+
+            if (view.faces ({ x, 0, 0 }, { right ? 1.0 : -1.0, 0, 0 }))
+                fillFace (g, view.quad ({ x, 0, 0 }, { x, 0, view.D }, { x, -view.thick, view.D }, { x, -view.thick, 0 }), rail.brighter (0.15f), rail);
+        }
+
+        // The naturals' front edges: the bed's dark rail, then each key's edge on it.
+        if (view.faces ({ 0, 0, view.D }, { 0, 0, 1 }))
+        {
+            g.setColour (rail);
+            g.fillPath (view.quad ({ 0, 0, view.D }, { view.W, 0, view.D }, { view.W, -view.thick, view.D }, { 0, -view.thick, view.D }));
+
+            for (int n = view.low; n <= view.high; ++n)
+            {
+                if (stella::keys::isBlack (n))
+                    continue;
+
+                const auto s = view.whiteSpan (n);
+                const auto lip = sample (s.getStart() + s.getLength() * 0.5, view.D - juce::jmax (1.0, view.D * 0.02)).withAlpha (1.0f);
+                fillFace (g, view.whiteFront (n), lip.withMultipliedBrightness (0.86f), lip.withMultipliedBrightness (0.58f));
+            }
+        }
+
+        // The sharps, far to near: their fronts and sides, then their tops from the flat keys.
+        for (const auto n : view.blacksFarToNear())
+        {
+            const auto s = view.blackSpan (n);
+            const auto face = sample (s.getStart() + s.getLength() * 0.5, view.blackLen * 0.5).withAlpha (1.0f);
+
+            fillFace (g, view.blackFace (n, KeyboardView::left),  face.withMultipliedBrightness (0.82f), face.withMultipliedBrightness (0.62f));
+            fillFace (g, view.blackFace (n, KeyboardView::right), face.withMultipliedBrightness (0.55f), face.withMultipliedBrightness (0.4f));
+            fillFace (g, view.blackFace (n, KeyboardView::front), face.withMultipliedBrightness (0.7f),  face.withMultipliedBrightness (0.45f));
+
+            // Its top, mapped from the flat key (just inside its bounds, so its own edge shows).
+            const auto area = view.blackFace (n, KeyboardView::top).getBounds().expanded (1.0f)
+                                  .transformedBy (juce::AffineTransform::scale (scale)).getSmallestIntegerContainer();
+            juce::Image::BitmapData out (picture, juce::Image::BitmapData::readWrite);
+            mapPlane (out, ow, oh, scale, view, flatData, ow, oh, view.raise, s.getStart(), s.getEnd(), 0.0, view.blackLen, area);
+        }
+
+        pictures[key] = { picture, juce::roundToInt (scale * 100.0f) };
+        return picture;
+    }
+
+    void paintKeyboard3d (juce::Graphics& g, const GuiWidget& w)
+    {
+        const auto scale = juce::jlimit (1.0f, 4.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
+        const auto picture = keyboard3dPicture (w, scale);
+
+        // Solid, whatever colour was set last (a picture is drawn as see-through as that is).
+        juce::Graphics::ScopedSaveState state (g);
+        g.setOpacity (1.0f);
+        g.drawImage (picture, w.bounds.toFloat(), juce::RectanglePlacement::stretchToFit);
+    }
+
+    void paintKeysDown3d (juce::Graphics& g, const GuiWidget& w, const std::function<bool (int)>& isDown, juce::Colour accent)
+    {
+        const KeyboardView view (w);
+        const auto origin = juce::AffineTransform::translation ((float) w.bounds.getX(), (float) w.bounds.getY());
+        bool whiteDown = false;
+
+        for (int note = w.lowNote; note <= w.highNote; ++note)
+        {
+            if (stella::keys::isBlack (note) || ! isDown (note))
+                continue;
+
+            g.setColour (accent.withAlpha (0.55f));
+            g.fillPath (view.whiteTop (note), origin);
+
+            if (view.faces ({ 0, 0, view.D }, { 0, 0, 1 }))
+            {
+                g.setColour (accent.withAlpha (0.7f));
+                g.fillPath (view.whiteFront (note), origin);
+            }
+
+            whiteDown = true;
+        }
+
+        // The sharps stand in front: as they were, over a natural that went down.
+        if (whiteDown)
+        {
+            juce::Path blacks;
+
+            for (int note = w.lowNote; note <= w.highNote; ++note)
+                if (stella::keys::isBlack (note))
+                    blacks.addPath (view.blackOutline (note));
+
+            juce::Graphics::ScopedSaveState state (g);
+            g.reduceClipRegion (blacks, origin);
+            paintKeyboard3d (g, w);
+        }
+
+        for (int note = w.lowNote; note <= w.highNote; ++note)
+        {
+            if (! stella::keys::isBlack (note) || ! isDown (note))
+                continue;
+
+            g.setColour (accent.withAlpha (0.8f));
+            g.fillPath (view.blackFace (note, KeyboardView::top), origin);
+            g.setColour (accent.withAlpha (0.6f));
+            g.fillPath (view.blackFace (note, KeyboardView::front), origin);
+        }
+    }
 }
 
 //==============================================================================
@@ -861,13 +1436,14 @@ void PanelParts::paintLamp (juce::Graphics& g, juce::Rectangle<float> area, cons
 //==============================================================================
 const juce::StringArray& PanelParts::selectorDisplays()
 {
-    static const juce::StringArray ids { "cells", "pill", "keys", "lamps", "vfd", "tiles" };
+    static const juce::StringArray ids { "cells", "pill", "keys", "lamps", "vfd", "dropdown", "tiles" };
     return ids;
 }
 
 const juce::StringArray& PanelParts::selectorDisplayNames()
 {
-    static const juce::StringArray names { "Buttons in a row", "Sliding pill", "Console keys", "Names with lamps", "Glowing display", "Colour tiles" };
+    static const juce::StringArray names { "Buttons in a row", "Sliding pill", "Console keys", "Names with lamps", "Glowing display (< >)",
+                                           "Drop-down list", "Colour tiles" };
     return names;
 }
 
@@ -878,7 +1454,9 @@ juce::String PanelParts::selectorDisplayOf (const GuiWidget& w)
                                                       { "key", "keys" }, { "keycaps", "keys" }, { "console", "keys" }, { "consolekeys", "keys" },
                                                       { "pushbuttons", "keys" }, { "lit", "keys" }, { "lamp", "lamps" }, { "leds", "lamps" },
                                                       { "radio", "lamps" }, { "list", "lamps" }, { "display", "vfd" }, { "screen", "vfd" },
-                                                      { "window", "vfd" }, { "stepper", "vfd" }, { "lcd", "vfd" }, { "tile", "tiles" },
+                                                      { "window", "vfd" }, { "stepper", "vfd" }, { "lcd", "vfd" }, { "arrows", "vfd" },
+                                                      { "droplist", "dropdown" }, { "drop-down", "dropdown" }, { "combo", "dropdown" },
+                                                      { "combobox", "dropdown" }, { "menu", "dropdown" }, { "popup", "dropdown" }, { "tile", "tiles" },
                                                       { "colours", "tiles" }, { "colors", "tiles" }, { "swatches", "tiles" }, { "ramp", "tiles" } });
 }
 
@@ -1013,8 +1591,11 @@ void PanelParts::paintSelector (juce::Graphics& g, juce::Rectangle<float> area, 
         return;
     }
 
-    if (display == "vfd")
+    if (display == "vfd" || display == "dropdown")
     {
+        // The same glowing window: a vfd steps with its arrows, a drop-down list opens at a
+        // click (its chevron says so).
+        const bool dropdown = display == "dropdown";
         const auto window = area.reduced (1.0f);
         const auto glow = w.colour.isTransparent() ? juce::Colour (0xff6af5e6) : accent;
         g.setColour (colourSetting (w, "background", juce::Colour (0xff060c0c)));
@@ -1025,16 +1606,27 @@ void PanelParts::paintSelector (juce::Graphics& g, juce::Rectangle<float> area, 
         g.setColour (juce::Colours::white.withAlpha (0.08f));
         g.drawRoundedRectangle (window.reduced (0.5f), 4.0f, 1.0f);
 
-        // The arrows that step it, and the chosen name, glowing.
+        // The arrows that step it (or the chevron that opens it), and the chosen name, glowing.
         const auto arrow = juce::jmin (window.getHeight() * 0.22f, 7.0f);
         juce::Path arrows;
-        arrows.addTriangle (window.getX() + 7.0f, window.getCentreY(), window.getX() + 7.0f + arrow, window.getCentreY() - arrow, window.getX() + 7.0f + arrow, window.getCentreY() + arrow);
-        arrows.addTriangle (window.getRight() - 7.0f, window.getCentreY(), window.getRight() - 7.0f - arrow, window.getCentreY() - arrow, window.getRight() - 7.0f - arrow, window.getCentreY() + arrow);
+
+        if (dropdown)
+        {
+            const auto cx = window.getRight() - 7.0f - arrow, cy = window.getCentreY() - arrow * 0.35f;
+            arrows.addTriangle (cx - arrow, cy, cx + arrow, cy, cx, cy + arrow * 1.1f);
+        }
+        else
+        {
+            arrows.addTriangle (window.getX() + 7.0f, window.getCentreY(), window.getX() + 7.0f + arrow, window.getCentreY() - arrow, window.getX() + 7.0f + arrow, window.getCentreY() + arrow);
+            arrows.addTriangle (window.getRight() - 7.0f, window.getCentreY(), window.getRight() - 7.0f - arrow, window.getCentreY() - arrow, window.getRight() - 7.0f - arrow, window.getCentreY() + arrow);
+        }
+
         g.setColour (glow.withAlpha (0.55f));
         g.fillPath (arrows);
 
         const auto text = juce::isPositiveAndBelow (chosen, count) ? nameOf (chosen) : juce::String ("-");
-        const auto box = window.reduced (arrow + 12.0f, 1.0f).toNearestInt();
+        const auto box = (dropdown ? window.withTrimmedLeft (8.0f).withTrimmedRight (2.0f * arrow + 14.0f).reduced (0.0f, 1.0f)
+                                   : window.reduced (arrow + 12.0f, 1.0f)).toNearestInt();
         g.setFont (FontLibrary::font (w.font.isNotEmpty() ? w.font : juce::String ("Share Tech Mono"), juce::jlimit (10.0f, 30.0f, window.getHeight() * 0.56f), w.bold));
         g.setColour (glow.withAlpha (0.16f));
 
@@ -1100,6 +1692,9 @@ int PanelParts::selectorPick (const GuiWidget& w, juce::Rectangle<float> area, i
     count = juce::jmax (1, count);
     const auto display = selectorDisplayOf (w);
 
+    if (display == "dropdown")
+        return -1;      // nothing yet: a click opens its list (PluginCanvas)
+
     if (display == "vfd")
     {
         // The left arrow steps back, anywhere else steps on (round past the ends).
@@ -1149,26 +1744,40 @@ juce::String PanelParts::keyboardDisplayOf (const GuiWidget& w)
 
 void PanelParts::paintKeyboard (juce::Graphics& g, const GuiWidget& w)
 {
-    const auto display = keyboardDisplayOf (w);
+    if (keyboardIn3d (w))
+        paintKeyboard3d (g, w);
+    else
+        paintFlatKeyboard (g, w);
+}
 
-    if (display == "reverse")        paintReverseKeys (g, w);
-    else if (display == "modern")    paintModernKeys (g, w);
-    else if (display == "graphite")  paintGraphiteKeys (g, w);
-    else                           paintClassicKeys (g, w);
+bool PanelParts::isKeyboard3d (const GuiWidget& w)
+{
+    return keyboardIn3d (w);
+}
 
-    if (display != "classic")
-        return;
-
-    // The felt strip's shadow along the top.
+int PanelParts::keyboardNoteAt (const GuiWidget& w, juce::Point<float> at, float& velocity)
+{
     const auto b = w.bounds.toFloat();
-    const auto shadow = b.withHeight (juce::jmax (4.0f, b.getHeight() * 0.08f));
-    g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (0.55f), shadow.getX(), shadow.getY(),
-                                             juce::Colours::transparentBlack, shadow.getX(), shadow.getBottom(), false));
-    g.fillRect (shadow);
+
+    if (keyboardIn3d (w))
+        return KeyboardView (w).noteAt (at - b.getPosition(), velocity);
+
+    const auto note = stella::keys::noteAt (at.x, at.y, w.lowNote, w.highNote, b.getX(), b.getY(), b.getWidth(), b.getHeight());
+
+    if (note >= 0)
+        velocity = stella::keys::velocityAt (at.y, stella::keys::keyOf (note, w.lowNote, w.highNote, b.getX(), b.getY(), b.getWidth(), b.getHeight()));
+
+    return note;
 }
 
 void PanelParts::paintKeysDown (juce::Graphics& g, const GuiWidget& w, const std::function<bool (int)>& isDown, juce::Colour accent)
 {
+    if (keyboardIn3d (w))
+    {
+        paintKeysDown3d (g, w, isDown, accent);
+        return;
+    }
+
     const auto display = keyboardDisplayOf (w);
     const bool modern = display == "modern" || display == "graphite";
     bool whiteDown = false;
@@ -1230,13 +1839,13 @@ void PanelParts::paintKeysDown (juce::Graphics& g, const GuiWidget& w, const std
 //==============================================================================
 const juce::StringArray& PanelParts::labelDisplays()
 {
-    static const juce::StringArray ids { "plain", "readout", "vfd", "lcd" };
+    static const juce::StringArray ids { "plain", "readout", "vfd", "lcd", "led", "icon" };
     return ids;
 }
 
 const juce::StringArray& PanelParts::labelDisplayNames()
 {
-    static const juce::StringArray names { "Plain words", "Value readout", "Glowing display (VFD)", "Backlit LCD" };
+    static const juce::StringArray names { "Plain words", "Value readout", "Glowing display (VFD)", "Backlit LCD", "LED digits", "An icon (fills its box)" };
     return names;
 }
 
@@ -1246,12 +1855,20 @@ juce::String PanelParts::labelDisplayOf (const GuiWidget& w)
                                                    { "valueframe", "readout" }, { "numeric", "readout" }, { "number", "readout" },
                                                    { "counter", "readout" }, { "fluorescent", "vfd" }, { "glow", "vfd" }, { "neon", "vfd" },
                                                    { "screen", "vfd" }, { "segments", "lcd" }, { "segment", "lcd" }, { "14segment", "lcd" },
-                                                   { "backlit", "lcd" }, { "display", "lcd" } });
+                                                   { "backlit", "lcd" }, { "display", "lcd" }, { "7segment", "led" }, { "16segment", "led" },
+                                                   { "leddigits", "led" }, { "digits", "led" }, { "seg", "led" },
+                                                   { "symbol", "icon" }, { "glyph", "icon" } });
+}
+
+bool PanelParts::labelShowsValue (const GuiWidget& w)
+{
+    const auto display = labelDisplayOf (w);
+    return display == "readout" || display == "led";
 }
 
 bool PanelParts::labelMoves (const GuiWidget& w)
 {
-    return labelDisplayOf (w) == "readout" && w.param.isNotEmpty();
+    return labelShowsValue (w) && w.param.isNotEmpty();
 }
 
 juce::Colour PanelParts::standardCaptionColour()
@@ -1329,9 +1946,10 @@ void PanelParts::drawStyledText (juce::Graphics& g, const GuiWidget& w, const ju
         return;
 
     const bool effects = hasTextEffects (w);
+    const bool icons = IconLibrary::hasIcons (text);
 
     // Plain: as JUCE draws words.
-    if (! w.italic && ! w.underline && ! effects)
+    if (! w.italic && ! w.underline && ! effects && ! icons)
     {
         g.setColour (colour);
         g.setFont (font);
@@ -1345,25 +1963,42 @@ void PanelParts::drawStyledText (juce::Graphics& g, const GuiWidget& w, const ju
     }
 
     // Laid out as JUCE lays them out (from the area's top-left), then leant about the baseline,
-    // the underline under them: one outline.
-    juce::GlyphArrangement glyphs;
+    // the underline under them: one outline. Icons among them: laid out with them.
+    juce::Path words;
+    float baseline = 0.0f;
+    juce::Rectangle<float> spread;
 
-    if (fitted)
+    if (icons)
     {
-        glyphs.addFittedText (font, text, 0.0f, 0.0f, area.getWidth(), area.getHeight(), justification, 1, 0.75f);
+        words = IconText::fitted (text, font, { 0.0f, 0.0f, area.getWidth(), area.getHeight() }, justification, fitted ? 0.75f : 1.0f, &baseline);
+
+        if (words.isEmpty())
+            return;
+
+        spread = words.getBounds();
     }
     else
     {
-        glyphs.addCurtailedLineOfText (font, text, 0.0f, 0.0f, area.getWidth(), true);
-        glyphs.justifyGlyphs (0, glyphs.getNumGlyphs(), 0.0f, 0.0f, area.getWidth(), area.getHeight(), justification);
+        juce::GlyphArrangement glyphs;
+
+        if (fitted)
+        {
+            glyphs.addFittedText (font, text, 0.0f, 0.0f, area.getWidth(), area.getHeight(), justification, 1, 0.75f);
+        }
+        else
+        {
+            glyphs.addCurtailedLineOfText (font, text, 0.0f, 0.0f, area.getWidth(), true);
+            glyphs.justifyGlyphs (0, glyphs.getNumGlyphs(), 0.0f, 0.0f, area.getWidth(), area.getHeight(), justification);
+        }
+
+        if (glyphs.getNumGlyphs() == 0)
+            return;
+
+        glyphs.createPath (words);
+        baseline = glyphs.getGlyph (0).getBaselineY();
+        spread = glyphs.getBoundingBox (0, -1, true);
     }
 
-    if (glyphs.getNumGlyphs() == 0)
-        return;
-
-    juce::Path words;
-    glyphs.createPath (words);
-    const auto baseline = glyphs.getGlyph (0).getBaselineY();
     const auto lean = w.italic ? 0.2f : 0.0f;
 
     if (lean != 0.0f)
@@ -1371,9 +2006,8 @@ void PanelParts::drawStyledText (juce::Graphics& g, const GuiWidget& w, const ju
 
     if (w.underline)
     {
-        const auto box = glyphs.getBoundingBox (0, -1, true);
         const auto thickness = juce::jmax (1.0f, font.getHeight() * 0.07f);
-        words.addRectangle (box.getX(), baseline + juce::jmax (1.0f, font.getDescent() * 0.45f), box.getWidth(), thickness);
+        words.addRectangle (spread.getX(), baseline + juce::jmax (1.0f, font.getDescent() * 0.45f), spread.getWidth(), thickness);
     }
 
     if (! effects)
@@ -1420,11 +2054,150 @@ void PanelParts::drawStyledText (juce::Graphics& g, const GuiWidget& w, const ju
     g.drawImage (made.image, made.where.translated (area.getX(), area.getY()), juce::RectanglePlacement::stretchToFit);
 }
 
-void PanelParts::paintLabel (juce::Graphics& g, const GuiWidget& w, const juce::String& text, juce::Colour ink, float size)
+juce::String PanelParts::badgeOf (const GuiWidget& w)
+{
+    const auto shape = w.settingText ("badge").trim().toLowerCase();
+    return shape == "rect" || shape == "square" || shape == "rectangle" ? juce::String ("rect")
+         : shape == "circle" || shape == "round"                        ? juce::String ("circle")
+         : shape == "rhombus" || shape == "diamond"                     ? juce::String ("rhombus")
+         : shape == "hexagon"                                           ? juce::String ("hexagon")
+         : shape == "pentagon"                                          ? juce::String ("pentagon")
+         : shape == "octagon"                                           ? juce::String ("octagon")
+         : shape == "triangle"                                          ? juce::String ("triangle")
+         : shape == "wide" || shape == "wide rectangle"                 ? juce::String ("wide")
+         : shape == "small" || shape == "small square"                  ? juce::String ("small")
+                                                                         : juce::String ("none");
+}
+
+juce::Colour PanelParts::badgeColourOf (const GuiWidget& w)
+{
+    return colourSetting (w, "badgeColour", juce::Colour (standardBadgeColour));
+}
+
+juce::Rectangle<float> PanelParts::paintBadge (juce::Graphics& g, juce::Rectangle<float> box, const juce::String& shape, juce::Colour colour)
+{
+    const auto side = juce::jmin (box.getWidth(), box.getHeight());
+    juce::Path outline;
+    juce::Rectangle<float> inner;
+
+    if (shape == "circle")
+    {
+        const auto r = box.withSizeKeepingCentre (side, side).reduced (side * 0.03f);
+        outline.addEllipse (r);
+        inner = r.withSizeKeepingCentre (r.getWidth() * 0.6f, r.getHeight() * 0.6f);
+    }
+    else if (shape == "rhombus")
+    {
+        const auto r = box.reduced (side * 0.03f);
+        outline.startNewSubPath (r.getCentreX(), r.getY());
+        outline.lineTo (r.getRight(), r.getCentreY());
+        outline.lineTo (r.getCentreX(), r.getBottom());
+        outline.lineTo (r.getX(), r.getCentreY());
+        outline.closeSubPath();
+        outline = outline.createPathWithRoundedCorners (side * 0.06f);
+        const auto s = juce::jmin (r.getWidth(), r.getHeight()) * 0.46f;
+        inner = r.withSizeKeepingCentre (s, s);
+    }
+    else if (shape == "hexagon" || shape == "pentagon" || shape == "octagon" || shape == "triangle")
+    {
+        // A regular polygon on the box's centre, point up (the hexagon and octagon flat on top).
+        const int sides = shape == "hexagon" ? 6 : shape == "pentagon" ? 5 : shape == "octagon" ? 8 : 3;
+        const bool triangle = sides == 3;
+        auto c = box.getCentre();
+        const float radius = side * (triangle ? 0.60f : 0.50f) * 0.97f;
+
+        if (triangle)
+            c = c.translated (0.0f, side * 0.10f);   // its middle low, so the whole of it fits
+
+        const float rotation = sides % 2 == 0 ? juce::MathConstants<float>::pi / (float) sides : 0.0f;
+
+        for (int i = 0; i < sides; ++i)
+        {
+            const float a = rotation + juce::MathConstants<float>::twoPi * (float) i / (float) sides;
+            const juce::Point<float> pt (c.x + radius * std::sin (a), c.y - radius * std::cos (a));
+
+            if (i == 0) outline.startNewSubPath (pt);
+            else        outline.lineTo (pt);
+        }
+
+        outline.closeSubPath();
+        outline = outline.createPathWithRoundedCorners (radius * 0.12f);
+        const auto s = radius * (triangle ? 0.62f : 0.9f);
+        inner = juce::Rectangle<float> (s, s).withCentre (triangle ? c.translated (0.0f, radius * 0.12f) : c);
+    }
+    else if (shape == "wide")
+    {
+        // A wide rectangle: as wide as the box, its height a bit over half that.
+        const auto w = box.getWidth() * 0.97f;
+        const auto h = juce::jmin (box.getHeight() * 0.97f, w * 0.62f);
+        const auto r = box.withSizeKeepingCentre (w, h);
+        outline.addRoundedRectangle (r, h * 0.2f);
+        const auto s = h * 0.68f;
+        inner = r.withSizeKeepingCentre (s, s);
+    }
+    else if (shape == "small")
+    {
+        // A small square: the icon nearly fills it.
+        const auto r = box.withSizeKeepingCentre (side * 0.72f, side * 0.72f);
+        outline.addRoundedRectangle (r, side * 0.14f);
+        const auto s = side * 0.5f;
+        inner = r.withSizeKeepingCentre (s, s);
+    }
+    else
+    {
+        const auto r = box.reduced (side * 0.03f);
+        outline.addRoundedRectangle (r, side * 0.18f);
+        const auto s = side * 0.64f;
+        inner = r.withSizeKeepingCentre (s, s);
+    }
+
+    if (colour.isTransparent())
+        return inner;
+
+    // Its body, lit from above: lighter at the top, a rim of light and a darker edge.
+    const auto bounds = outline.getBounds();
+    g.setGradientFill (juce::ColourGradient (colour.brighter (0.22f), 0.0f, bounds.getY(), colour.darker (0.28f), 0.0f, bounds.getBottom(), false));
+    g.fillPath (outline);
+    g.setColour (juce::Colours::white.withAlpha (0.22f * colour.getFloatAlpha()));
+    g.strokePath (outline, juce::PathStrokeType (juce::jmax (0.8f, side * 0.025f)),
+                  juce::AffineTransform::translation (0.0f, side * 0.012f));
+    g.setColour (juce::Colours::black.withAlpha (0.35f * colour.getFloatAlpha()));
+    g.strokePath (outline, juce::PathStrokeType (juce::jmax (0.6f, side * 0.015f)));
+    return inner;
+}
+
+void PanelParts::paintLabel (juce::Graphics& g, const GuiWidget& w, const juce::String& text, juce::Colour ink, float size, int cells)
 {
     const auto b = w.bounds.toFloat();
     const auto display = labelDisplayOf (w);
     const bool own = ! w.colour.isTransparent();
+
+    // An icon on its badge (a rectangle, a circle, a rhombus, a polygon...): the icon in its colour (its fore).
+    if (display == "icon" && badgeOf (w) != "none")
+    {
+        const auto inner = paintBadge (g, b, badgeOf (w), badgeColourOf (w));
+        const auto font = FontLibrary::font (w.font, inner.getHeight() / IconText::aloneScale, w.bold);
+        drawStyledText (g, w, text, inner.withSizeKeepingCentre (inner.getWidth(), juce::jmax (inner.getHeight(), font.getHeight())),
+                        juce::Justification::centred, font, own ? w.colour : juce::Colours::white, true);
+        return;
+    }
+
+    // An icon (or a few): as big as its box, in its colour and text style.
+    if (display == "icon")
+    {
+        const auto side = juce::jmax (4.0f, juce::jmin (b.getWidth(), b.getHeight()));
+        const auto font = FontLibrary::font (w.font, side / IconText::aloneScale, w.bold);
+        drawStyledText (g, w, text, b.withSizeKeepingCentre (b.getWidth(), juce::jmax (b.getHeight(), font.getHeight())), juce::Justification::centred,
+                        font, own ? w.colour : ink, true);
+        return;
+    }
+
+    // LED digits: filling its box, in its colour.
+    if (display == "led")
+    {
+        SegmentDisplay::paint (g, b, text, SegmentDisplay::styleOf (w), cells);
+        return;
+    }
 
     if (display == "readout" || display == "vfd")
     {

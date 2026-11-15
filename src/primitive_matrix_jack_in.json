@@ -1,0 +1,22 @@
+{
+  "name": "Jack (input)",
+  "category": "Modulation",
+  "order": 48,
+  "icon": "xy",
+  "description": "A parameter's input jack, anywhere on the panel: a cable plugged into it modulates that parameter. Its parameter in the Matrix Studio.",
+  "widget": {
+    "type": "matrix",
+    "w": 64,
+    "h": 84,
+    "param": "mod",
+    "settings": {
+      "matrix": {
+        "style": "jack",
+        "role": "in",
+        "jack": "eurorack",
+        "colour": "#FF4FC35A",
+        "textColour": "#FFE6E6E6"
+      }
+    }
+  }
+}

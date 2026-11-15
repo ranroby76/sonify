@@ -17,7 +17,9 @@
 
     So the four KnobMan defaults — Checkers, Fabric, Hairline, Sand — are
     generated in code at whatever resolution is asked for, and anything else
-    comes from the user's own folder, exactly as KnobMan does it.
+    comes from the user's own folder, exactly as KnobMan does it. KnobMaster 2
+    adds four more, made the same way: Water (caustics in a swirl), Veins
+    (marble), Spun (spun metal, its rays round the middle) and Stones.
 
     Every texture is returned as ARGB. Procedural ones are greyscale, because a
     Bump-mode layer only wants a height field. A user image keeps its colour so

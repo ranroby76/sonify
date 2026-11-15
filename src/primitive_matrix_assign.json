@@ -1,0 +1,22 @@
+{
+  "name": "Assign button",
+  "category": "Modulation",
+  "order": 51,
+  "icon": "xy",
+  "description": "Compact assign: switch it on, then click the controls its source should modulate; drag up and down on one to set the amount.",
+  "widget": {
+    "type": "matrix",
+    "w": 130,
+    "h": 28,
+    "param": "mod",
+    "settings": {
+      "matrix": {
+        "style": "assign",
+        "source": 1,
+        "colour": "#FFFF8A2A",
+        "panelColour": "#FF1C1E22",
+        "textColour": "#FFE6E6E6"
+      }
+    }
+  }
+}

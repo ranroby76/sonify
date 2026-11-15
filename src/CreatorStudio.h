@@ -118,6 +118,7 @@ private:
     void playFinishSound();   // Sonify AI has finished
     void saveProject();       // what's waiting is written now
     void saveProjectAs();     // a copy in a new folder, under a new name, and work goes on there
+    void exportSource();      // the plugin's source code, in <project>\source (SourceExport): on every Save
 
     void projectChanged();
     void previewChanged();
@@ -247,6 +248,9 @@ private:
     bool adding = false;             // Add to Sonify is writing the plugin
     bool addWhenPlaying = false;     // Add to Sonify pressed while it built: it's added once it plays
     bool exportingPlugin = false;    // Export Plugin is building plugin files
+
+    // The plugin's source, written on every Save, one at a time, after the studio has gone on.
+    juce::ThreadPool sourceWriter { juce::ThreadPoolOptions{}.withThreadName ("Sonify source export").withNumberOfThreads (1) };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CreatorStudio)
 };

@@ -607,7 +607,8 @@ PluginExporter::Gui PluginExporter::prepareGui (const GuiLayout& layout, const P
         if (! juce::isPositiveAndBelow (item.widget, (int) layout.widgets.size()))
             continue;
 
-        const auto& w = layout.widgets[(size_t) item.widget];
+        // A matrix or a preset manager stands in as a built-in element the bake describes.
+        const auto& w = item.element != nullptr ? *item.element : layout.widgets[(size_t) item.widget];
         juce::String p1, p2, p3, p4, source;
 
         switch (w.type)
@@ -636,6 +637,13 @@ PluginExporter::Gui PluginExporter::prepareGui (const GuiLayout& layout, const P
         // A layer in front of something that moves is a picture, whatever it is.
         if (item.kind == "picture")
             p1 = p2 = p3 = p4 = source = {};
+
+        // A key of a set by itself, a performance control's axes (a wheel of a pair): its own.
+        if (item.ownParams)
+        {
+            p1 = item.param;
+            p2 = item.param2;
+        }
 
         // A programmed element without a colour picks its own.
         const auto colour = w.type == GuiWidget::Type::custom ? (w.colour.isTransparent() ? 0u : w.colour.getARGB())
@@ -725,7 +733,7 @@ PluginExporter::Gui PluginExporter::prepareGui (const GuiLayout& layout, const P
             cutoffScale = unit.equalsIgnoreCase ("Hz") ? 1.0f : (unit.equalsIgnoreCase ("kHz") ? 1000.0f : 0.0f);
         }
 
-        const auto vertical = w.type == GuiWidget::Type::slider && w.vertical ? 1 : 0;
+        const auto vertical = item.kind == "key" || item.kind == "perform" ? item.flags : (w.type == GuiWidget::Type::slider && w.vertical ? 1 : 0);
         const auto& a = item.area;
         const auto& b = item.box;
 
@@ -748,6 +756,11 @@ PluginExporter::Gui PluginExporter::prepareGui (const GuiLayout& layout, const P
         else
             ++gui.numWidgets;
     }
+
+    // Pictures the bake made for the elements standing in (a preset manager's keys, a patch bay's jacks).
+    for (const auto& [name, image] : bake.pictures)
+        if (image.isValid())
+            gui.pictures.push_back ({ name, false, png (image) });
 
     // Programmed elements may ask for the plugin's pictures and fonts by name.
     if (gui.numCustom > 0)

@@ -1,0 +1,28 @@
+{
+  "name": "Ball on a cross",
+  "category": "Performance",
+  "order": 42,
+  "icon": "xy",
+  "description": "A ball riding a cross: moves two parameters at once, freely, or as pitch bend and modulation. Its look in the Performance Studio.",
+  "widget": {
+    "type": "xy",
+    "w": 160,
+    "h": 180,
+    "params": {
+      "x": "padx",
+      "y": "pady"
+    },
+    "settings": {
+      "mode": "free",
+      "perform": {
+        "kind": "joystick",
+        "style": "ball",
+        "housingColour": "#FF141518",
+        "partColour": "#FFE8E8EA",
+        "accentColour": "#FFB8BCC4",
+        "material": "Gloss plastic",
+        "travel": 100
+      }
+    }
+  }
+}

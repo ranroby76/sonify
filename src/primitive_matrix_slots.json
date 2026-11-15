@@ -1,0 +1,23 @@
+{
+  "name": "Mod matrix",
+  "category": "Modulation",
+  "order": 44,
+  "icon": "xy",
+  "description": "Routes the plugin's modulation sources to its parameters: a source, a destination and an amount a route, as many routes as it's given. Its look in the Matrix Studio.",
+  "widget": {
+    "type": "matrix",
+    "w": 420,
+    "h": 260,
+    "param": "mod",
+    "settings": {
+      "matrix": {
+        "style": "slots",
+        "routes": 8,
+        "colour": "#FF2FB36B",
+        "panelColour": "#FF141518",
+        "textColour": "#FFD8DADF",
+        "lineColour": "#FF2A2C31"
+      }
+    }
+  }
+}

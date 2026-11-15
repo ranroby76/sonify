@@ -240,7 +240,8 @@ namespace
             tap1, tap16 = tap1 + 15,
             duckOn, duckKey, duckTarget,
             duckLow,                       // its eight: on, freq, Q, depth, threshold, ratio, attack, release
-            duckHigh = duckLow + 8
+            duckHigh = duckLow + 8,
+            rhythmOn = duckHigh + 8        // the Rhythm pattern in place of the echo's mode (added: the Rhythm page's switch)
         };
     }
 
@@ -266,8 +267,8 @@ namespace
             { SpaceParam::routing,    "Routing",     0.0,     3.0,     0.0, "",   0, true, false, true, nullptr,
               { "Echo > Reverb", "Reverb in Echo", "Reverb > Echo", "Parallel" } },
             { SpaceParam::blend,      "Blend",       0.0,   100.0,    50.0, "%",  0 },
-            { SpaceParam::voicing,    "Voicing",     0.0,     7.0,     0.0, "",   0, true, false, true, nullptr,
-              { "Plate", "Hall", "Room", "Chamber", "Cathedral", "Spring", "Vintage Digital", "Shimmer" } },
+            { SpaceParam::voicing,    "Voicing",     0.0,     8.0,     0.0, "",   0, true, false, true, nullptr,
+              { "Plate", "Hall", "Room", "Chamber", "Cathedral", "Spring", "Vintage Digital", "Shimmer", "Greyhole" } },
             { SpaceParam::shape,      "Shape",       0.0,     3.0,     0.0, "",   0, true, false, true, nullptr,
               { "Decay", "Gate", "Reverse", "Bloom" } },
             { SpaceParam::shapeTime,  "Shape Time", 20.0,  2000.0,   350.0, "ms", 0 },
@@ -276,6 +277,9 @@ namespace
             { SpaceParam::reverbOn,   "Reverb On",   0.0,     1.0,     1.0, "",   0, true, false, true, nullptr, { "Off", "On" } },
 
             { SpaceParam::echoOn,     "Echo On",     0.0,     1.0,     1.0, "",   0, true, false, true, nullptr, { "Off", "On" } },
+            // Mode's fourth, Rhythm, stays for the songs and presets that chose it before the
+            // Rhythm switch came (its page's switch is the way now: Mode is then what plays
+            // with it off).
             { SpaceParam::mode,       "Mode",        0.0,     3.0,     0.0, "",   0, true, false, true, nullptr,
               { "Single", "Dual", "Ping-Pong", "Rhythm" } },
             { SpaceParam::style,      "Style",       0.0,     4.0,     0.0, "",   0, true, false, true, nullptr,
@@ -324,6 +328,7 @@ namespace
             specs.push_back ({ band.base + 7, band.names[7], 20.0, 1000.0, 260.0, "ms", 0 });
         }
 
+        specs.push_back ({ SpaceParam::rhythmOn, "Rhythm", 0.0, 1.0, 0.0, "", 0, true, false, true, nullptr, { "Off", "On" } });
         return specs;
     }
 
@@ -376,18 +381,28 @@ namespace
             drawResponse (destination, numSamples, 24.0, [&] (double hz) { return duckBellsDb (bells, amounts, hz, rate); });
         }
 
-        /** Kept with the song: that it's Space Lifter 4's (a song without it is Sonify Reverb's). */
+        /** Kept with the song: that it's Space Lifter 4's (a song without it is Sonify Reverb's),
+            and which (2: since the Rhythm switch). */
         juce::var saveExtra() const override
         {
             auto* extra = new juce::DynamicObject();
-            extra->setProperty ("space", 1);
+            extra->setProperty ("space", 2);
             return juce::var (extra);
         }
 
         void loadExtra (const juce::var& extra) override
         {
             if (extra.isObject() && extra.hasProperty ("space"))
+            {
+                // From before the Rhythm switch, on Mode's Rhythm: the switch on, as it sounded.
+                if (static_cast<int> (extra["space"]) < 2 && valueOf (SpaceParam::mode) >= 2.5)
+                {
+                    setValue (SpaceParam::rhythmOn, 1.0);
+                    setValue (SpaceParam::mode, 0.0);
+                }
+
                 return;
+            }
 
             // A Sonify Reverb song: its hall alone, as it was.
             setValue (SpaceParam::voicing, 1.0);
@@ -450,7 +465,8 @@ namespace
             r.freeze = frozen;
 
             auto& e = s.echo;
-            e.mode = static_cast<EchoMode> (juce::jlimit (0, 3, choice (valueOf (SpaceParam::mode))));
+            const auto modeChoice = juce::jlimit (0, 3, choice (valueOf (SpaceParam::mode)));
+            e.mode = valueOf (SpaceParam::rhythmOn) > 0.5 || modeChoice == 3 ? EchoMode::rhythm : static_cast<EchoMode> (modeChoice);
             e.style = static_cast<EchoStyle> (juce::jlimit (0, 4, choice (valueOf (SpaceParam::style))));
             e.timeMs = static_cast<float> (echoMs());
             e.time2 = percent (valueOf (SpaceParam::time2));

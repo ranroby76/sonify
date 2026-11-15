@@ -1,0 +1,40 @@
+{
+  "name": "Preset table popup",
+  "category": "Presets",
+  "order": 54,
+  "icon": "presets",
+  "description": "A bar that opens a table of preset buttons in a popup; its look in the Preset Studio.",
+  "widget": {
+    "type": "preset",
+    "w": 240,
+    "h": 30,
+    "settings": {
+      "presets": {
+        "style": "table",
+        "open": "popup",
+        "columns": 4,
+        "rows": 4,
+        "categories": "tabs",
+        "actions": true,
+        "colour": "#FFF2B33A",
+        "panelColour": "#FF1A1B1E",
+        "textColour": "#FFE6E6E6",
+        "lineColour": "#FF33353A",
+        "keys": {
+          "render": "2d",
+          "style": "glossy",
+          "shape": "rect",
+          "rounding": 16,
+          "gap": 10,
+          "capColour": "#FF26282C",
+          "capOnColour": "#FF4A3A18",
+          "glowColour": "#FFF2B33A",
+          "glow": 40,
+          "labelColour": "#FFD0D3D8",
+          "labelOnColour": "#FFFFFFFF",
+          "textSize": 42
+        }
+      }
+    }
+  }
+}

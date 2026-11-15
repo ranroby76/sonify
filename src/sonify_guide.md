@@ -727,10 +727,10 @@ Always in the **Effects** tab:
 
 ### Space Lifter 4 (reverb-echo)
 A reverb and an echo in one: their mix makes repeats that bloom and spread instead of repeating the same note. Space Lifter 3's successor, it took Sonify Reverb's place: songs made with Sonify Reverb open in it as their hall, with the echo off, and the presets you saved for Sonify Reverb are copied into its own folder (`<user data>\Presets\Space Lifter 4`) the first time its window opens. Its window has three pages, **Space**, **Rhythm** and **Ducker**; beside its preset manager, **Save** (a name, into its folder), **Load** (a preset file, from its folder) and **Quick Save** (the preset playing, saved in place; a factory preset asks for a name, as Save does).
-- **Echo**: **Echo On**; **Mode** **Single** (the repeats in the middle), **Dual** (two echoes, left and right; **Echo 2** sets the second's time against the first), **Ping-Pong** (left, right, left...) or **Rhythm** (sixteen steps, on the **Rhythm** page); **Style** **Tape** (wow, flutter, saturation, darker each pass), **BBD** (warm and dark, darker the longer the time), **Oil Can** (a deep warble, smeared repeats), **Clean Digital** or **Vintage Digital** (narrow band, 12 bits). **Sync** to the song's tempo with a **Note** value, or **Free** with **Free Time** in milliseconds. **Feedback**, **Groove** (every second repeat late, or early: swing), **Feel** (every repeat late or early, in milliseconds), **Accent** (the first or the second of each pair louder; in Rhythm, the beats), **Drive**.
-- **Reverb**: **Reverb On**; **Voicing** **Plate** (the default), **Hall**, **Room**, **Chamber**, **Cathedral**, **Spring**, **Vintage Digital** or **Shimmer** (rising an octave as it rings). **Size**, **Decay**, **Pre-Delay**, **Damping** (how fast the highs die), **Color** (darker or brighter), **Texture** (grainy to smooth), **Early** and **Early Size** (the reflections off near walls). **Shape** the tail: **Decay** (as it rings), **Gate** (cut **Shape Time** after the sound stops), **Reverse** (rising into a stop), **Bloom** (swelling up after the hit over **Shape Time**).
+- **Echo**: **Echo On**; **Mode** **Single** (the repeats in the middle), **Dual** (two echoes, left and right; **Echo 2** sets the second's time against the first), **Ping-Pong** (left, right, left...); the **Rhythm** page's switch puts its sixteen steps in the mode's place; **Style** **Tape** (wow, flutter, saturation, darker each pass), **BBD** (warm and dark, darker the longer the time), **Oil Can** (a deep warble, smeared repeats), **Clean Digital** or **Vintage Digital** (narrow band, 12 bits). **Sync** to the song's tempo with a **Note** value, or **Free** with **Free Time** in milliseconds. **Feedback**, **Groove** (every second repeat late, or early: swing), **Feel** (every repeat late or early, in milliseconds), **Accent** (the first or the second of each pair louder; in Rhythm, the beats), **Drive**.
+- **Reverb**: **Reverb On**; **Voicing** **Plate** (the default), **Hall**, **Room**, **Chamber**, **Cathedral**, **Spring**, **Vintage Digital**, **Shimmer** (rising an octave as it rings) or **Greyhole** (a dark, diffuse space that swirls and builds as it rings: Julian Parker's). **Size**, **Decay**, **Pre-Delay**, **Damping** (how fast the highs die), **Color** (darker or brighter), **Texture** (grainy to smooth), **Early** and **Early Size** (the reflections off near walls). **Shape** the tail: **Decay** (as it rings), **Gate** (cut **Shape Time** after the sound stops), **Reverse** (rising into a stop: at once when the sound is a hit, else when it stops), **Bloom** (swelling up after the hit over **Shape Time**).
 - **Space**: **Routing** **Echo > Reverb** (the repeats into the reverb), **Reverb in Echo** (each repeat goes round through the reverb: more diffuse each time), **Reverb > Echo** (the reverb's tail repeated) or **Parallel**. **Blend** from all echo to all reverb (with Reverb in Echo, also how much goes round the reverb). **Mod** (movement in both), **Freeze** (holds what rings, endlessly), **Width**, **Low Cut** and **High Cut** of the wet, **Dry** and **Wet** apart.
-- **Rhythm**: sixteen faders, each a step of the Note value after the sound (at 1/16, a bar), repeating after the sixteenth as Feedback allows.
+- **Rhythm**: its **Rhythm** switch (off: the echo plays its Mode, the traditional echo), then sixteen faders, each a step of the Note value after the sound (at 1/16, a bar), repeating after the sixteenth as Feedback allows. The windows that name a choice (Mode, Style, Note, Routing, Voicing, Shape) are drop-down lists: click one for the list.
 - **Ducker**: the wet dips under the playing and comes back up in the gaps, while the dry stays as it is. **Duck On**, **Duck Key** **Self** (the dry sound itself) or **Sidechain** (another track sent to it), **Duck Target** **Both**, **Echo** or **Reverb**; two bands as Sonify Ducker's (frequency, depth, threshold, ratio, Q, attack, release), with their key and reduction meters and the curve as it dips.
 
 Each opens a designed window (double-click it in the Console or the Inspector): its knobs, its meters, and an EQ curve where it has one. The window resizes from its corner, keeping its shape. Percentages move in whole steps (0 to 100%) and other values show at most two decimals.
@@ -1227,10 +1227,11 @@ The pads don't play: to hear what you built, play the song as usual. The transpo
 
 The Plugins Creator Studio is where you make your own instruments, effects and MIDI devices by asking Fanan AI. Open it from the studio selector, **View > Plugins Creator Studio** or **Ctrl+5**.
 
-### The five tabs
+### The six tabs
 - **Build with AI**: describe what you want; Fanan AI builds it, playing live as it works.
 - **Edit UI**: reshape the plugin's panel and play it.
-- **Knob Studio**: design how its knobs, sliders and switches look.
+- **Knob Studio**: design how its knobs, sliders and switches look, in layers.
+- **3D Studio**: the same, as 3D objects: knobs, buttons, toggle switches and sliders built in materials and rendered.
 - **Protection**: protect it with its own serial formula, so it plays as a demo until a buyer registers it.
 - **Store**: Sonify's notice board: ads for what users made, with links to their sites; post your own.
 
@@ -1293,7 +1294,15 @@ At the foot of every menu, "Tell Fanan AI what to do with it": type something li
 ### Shapes and lines
 A shape's **Shape** tab has its form: rounding, points, its middle, its lean, and **Per corner**: tick it and drag each of its four corners on its own, as Photoshop's Distort (it starts from the shape as it is; untick to go back to its box). A **line** runs through its bend points (yellow handles): drag one to move it, double-click it to switch it between an **arc** (the line curves through it, a diamond) and a **corner** (it turns sharply, a square). In the line's menu, **Bend point** picks one, **Its bend** sets its kind, **Add bend point** adds one halfway along the part after it, and **Remove it** takes it away. Zigzags, waves and curves for graph art. A line with one arc bend point also bows when you drag the line itself.
 
-A keyboard's **Look** tab has **White keys** and **Black keys**: any colour for each, shaded the way its display shades its keys (see-through: the display's own). Its **Colour** is the colour of the keys that are down.
+A shape's **Fill** is **Filled** (its colour or material inside its outline) or **Not filled (its outline alone)**: a ring, a frame, a line drawing. Its **Outline width** goes from 0 to 12 when filled (0: none) and from 1 to 12 when not, in its **Outline colour**. **Shift**+click several shapes and press **Ctrl+M** to merge them into one shape, as Photoshop merges shapes: the area they cover between them, filled or not like any shape.
+
+A keyboard's **Look** tab has **White keys** and **Black keys**: any colour for each, shaded the way its display shades its keys (see-through: the display's own). Its **Colour** is the colour of the keys that are down. **Seen from** (0 above, 75 from the player's seat), **From the side** and **Perspective** show it in 3D, its keys as real keys seen at an angle.
+
+### Colours
+Whenever a colour picker is open (a shape's, a layer's, a 3D look's), click the panel, the knob or the 3D preview to take the colour under the mouse: the picker stays open for another. A click anywhere else closes it.
+
+### The panel camera
+The window's menu (right-click empty space), **Window** tab, has **3D panel camera**: the 3D knobs, buttons and sliders seen as one camera over the whole panel sees them, as in a photo of real hardware (one on the left shows a little of its right side). 0 sees each one straight on; 100 is a wide lens close to the panel.
 
 ### Designing the GUI first
 With no plugin open, Edit UI shows your **draft GUI**: design a window before there's a plugin, with the whole toolbox, the **Gallery…** and every menu (parts can't be played yet). Give each control a caption, and if you like a parameter name in its **Parameter** box: they tell Fanan AI what each one is for. The draft is kept when Sonify closes; **Clear draft** starts it over.
@@ -1319,14 +1328,26 @@ Under **Edit in Knob Studio**, **Apply this knob on similars** (slider, switch) 
 
 - Every change is saved into the plugin at once and shows on the panel.
 - The header has **Use on** this control, **Give this knob its own look** and **Back to the plugin**.
-- The left panel starts with KnobMaker's buttons, working on the look being designed:
+- The left panel has the buttons working on the look being designed:
   - **Save as Sonify knob…** saves it as a .fklayers file (into Sonify's gallery at first, so it's there to pick).
-  - **Export to PNG…** writes its frames, top to bottom, as a PNG filmstrip.
+  - **Export to PNG…** writes it as a PNG: a filmstrip of its frames, top to bottom (at 1x or 2x), or one picture of it (at rest, turned all the way, halfway, or at rest at 2x).
   - **Load Sonify knob…** and **Load KnobMan knob…** replace it with a .fklayers or .knob file (with no look open, the file becomes a new look).
-  - **Select from Gallery…** opens Sonify's gallery beside the studio, and it stays open. Double-click a knob there (or click **Use**, or drag it onto the studio) and it replaces the look being designed; drag a look from the list below into the gallery to keep it there. Only the same kind replaces (a knob for a knob).
-- Under them, the plugin's looks, with **+ New look** (built-in, empty, one from the Gallery, a KnobMan file or a whole folder of them), **Duplicate**, **Save to my looks** (for every project) and **Delete**.
+  - **Select from Gallery…** opens Sonify's gallery beside the studio, and it stays open. Double-click a knob there (or click **Use**, or drag it onto the studio) and it replaces the look being designed. Only the same kind replaces (a knob for a knob). Its pictures fill in as they're drawn, the window ready at once, and they're kept, so it opens quickly next time. **Export as PNG…** there writes the one selected as a PNG (the same choices as above), or every one shown, each its own PNG, into a folder you choose.
+  - **Shapes Gallery…** opens the shapes you keep (AppData\Fanan\Sonify\Shapes Gallery): **Save selected layers…** keeps the layer selected (or the layers picked together with **Shift**+click) as a shape, with its colour, bevel and the rest; double-click one (or **Add**) to put it on top of the look being designed.
+- At the bottom, **+ New look** (built-in, empty, one from the Gallery, a KnobMan file or a whole folder of them), **Duplicate**, **Save to my looks** (for every project) and **Delete**.
+- **Shift**+click layers in the layer list to pick several (Shift+click again to leave one out), then **Ctrl+M** to merge them into one shape layer, as Photoshop merges shapes.
 - A look from a KnobMan file is drawn exactly as KnobMan draws it, pictures and textures inside the file included. Edit it here like any look (colours, sizes, turns, masks, layers added, removed or moved) and it stays drawn KnobMan's way; a setting KnobMan has no equivalent for (Bevel & Emboss, say) is left out, and the status line says so. Its **Sonify lighting** switch (above the canvas) lights its spheres and metal circles the way Sonify does, everything else staying as KnobMan draws it.
 - The control's **Look** tab can undo the Knob Studio's changes to a built-in look.
+
+## 3D Studio
+
+The 3D Studio designs 3D looks: knobs, buttons, toggle switches and sliders built as real objects (a turned knob with its skirt, grip, cap, pointer and light ring; a cap on its bezel that goes down and lights up; a lever on its nut; a fader on its track) in materials such as plastics, rubber, bakelite, brushed and spun aluminium, chrome, steel, gold, brass, copper and anodized metal, rendered and lit by the panel's global light. It's the Knob Studio's sister: a control wearing a 3D look opens here from its menu (**Edit in Knob Studio**), and a 3D look opened in the Knob Studio takes you here.
+
+- The preview on the left turns through its frames (drag it, or the wheel, or **Play**); its size and frames are above it.
+- The settings on the right, in groups (Shape, Skirt, Grip, Top cap, Pointer, Body, Light ring, Movement, View...), change the preview at once. **Start from…** puts a ready-made one in its place. The pointer's **Y position** moves it nearer the rim or the centre; **Seen from** goes from 0 (straight above) to 60 degrees.
+- **+ New look** makes a new 3D look from a ready-made knob, button, toggle switch or slider, or **From the 3D Gallery…**.
+- **Save as 3D model…** saves it as a .fk3d file, to share (into the 3D Gallery at first); **Load 3D model…** opens one; **Export to PNG…** as in the Knob Studio.
+- **Select from 3D Gallery…** opens the 3D Gallery (AppData\Fanan\Sonify\Knob Gallery 3D: the 3D models installed with Sonify, and any you add): 3D models only, with **Export as PNG…** too.
 
 ## Presets
 

@@ -304,8 +304,9 @@ namespace
                 b.useGlobalLight = false;
                 b.angle     = p.lightDir;
                 b.altitude  = 30.0f;
-                b.highlightOpacity = juce::jlimit (0.0f, 100.0f, p.embossDiffuse);
-                b.shadowOpacity    = juce::jlimit (0.0f, 100.0f, p.embossDiffuse);
+                // Emboss Diffuse is how softly KnobMan's emboss goes into the face, not how
+                // strong it is (read as its opacity, the usual 0 left no bevel at all).
+                b.soften = b.size * juce::jlimit (0.0f, 100.0f, p.embossDiffuse) * 0.01f;
             }
         }
 

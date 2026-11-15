@@ -1,6 +1,6 @@
 {
   "name": "Big knob",
-  "category": "Controls",
+  "category": "Knobs & sliders",
   "order": 12,
   "icon": "knob_big",
   "description": "A big knob, for the main control.",

@@ -11,9 +11,15 @@
 // Sonify's own plugins, each written as a plugin is (a juce::AudioProcessor with a window of its
 // own) and compiled into Sonify. Their folders under src are theirs alone: Sonify reaches them
 // only through the entries at the bottom of this file.
-#include "axis/PluginProcessor.h"
 #include "natura/PluginProcessor.h"
 #include "zax/PluginProcessor.h"
+
+// The guitar plugins are set aside for now (CMakeLists.txt, SONIFY_GUITAR_PLUGINS): AXIS stays
+// compiled, Timber Wolf isn't built, neither is listed.
+#if SONIFY_GUITAR_PLUGINS
+ #include "axis/PluginProcessor.h"
+ #include "timberwolf/PluginProcessor.h"
+#endif
 
 namespace
 {
@@ -394,9 +400,15 @@ const std::vector<Internals::Entry>& Internals::entries()
           { "instrument", "drum-machine" }, Plugin::Role::instrument,
           [] { return std::unique_ptr<juce::AudioProcessor> (new ZaxProcessor()); } },
 
+#if SONIFY_GUITAR_PLUGINS
         { juce::String (Builtins::idPrefix) + "axis", "AXIS", "Sonify", "1.0.0", "Guitar",
           { "audio-effect", "distortion", "stereo" }, Plugin::Role::effect,
           [] { return std::unique_ptr<juce::AudioProcessor> (new AxisAudioProcessor()); } },
+
+        { juce::String (Builtins::idPrefix) + "timberwolf", "Timber Wolf", "Sonify", "1.0.0", "Guitar",
+          { "audio-effect", "distortion", "stereo" }, Plugin::Role::effect,
+          [] { return std::unique_ptr<juce::AudioProcessor> (new TimberWolfProcessor()); } },
+#endif
     };
 
     return list;

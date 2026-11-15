@@ -112,7 +112,8 @@ public:
         into width x height and centred, with overhang (below) more on every side for its
         shadows and glows: draw it over the box expanded by that much. resolution: pixels per
         plugin pixel (a zoomed-in view asks for more). Kept until the look changes. */
-    juce::Image frame (const Look& look, Kind kind, int width, int height, float value, float resolution = 1.0f);
+    juce::Image frame (const Look& look, Kind kind, int width, int height, float value, float resolution = 1.0f,
+                       juce::Point<float> lean = {}, juce::Point<float> slope = {});
 
     /** How far a look's drop shadows, glows and outside outlines reach past a width x height
         box, in plugin pixels: they fall on the panel around the control, never cut off at
@@ -121,7 +122,19 @@ public:
 
     /** For Export: every frame, stacked top to bottom, each the box plus its overhang on
         every side. */
-    juce::Image strip (const Look& look, Kind kind, int width, int height);
+    juce::Image strip (const Look& look, Kind kind, int width, int height, juce::Point<float> lean = {}, juce::Point<float> slope = {});
+
+    /** A 3D look seen by the panel camera (lean: GuiLayout::cameraLean), rounded so controls
+        close together share their frames; nothing for a look of layers (it's the same anywhere).
+        The key strips and caches add to tell them apart. */
+    static juce::Point<float> leanFor (const Look& look, juce::Point<float> lean);
+    static juce::String leanKey (juce::Point<float> lean);
+
+    /** ...standing on a sloped face of the window's 3D body (slope: degrees rising towards the
+        back, rising to the left; Render3D::Face), rounded to whole degrees; nothing for a look
+        of layers. */
+    static juce::Point<float> slopeFor (const Look& look, juce::Point<float> slope);
+    static juce::String slopeKey (juce::Point<float> slope);
 
     /** A shape in the Shapes inventory was saved or deleted: the looks whose Shape layers draw
         from the inventory are drawn again (a new revision each, and onChanged). */
@@ -133,6 +146,8 @@ public:
     //==========================================================================
     static constexpr const char* folderName = "looks";        // in the project's gui folder
     static constexpr const char* fileExtension = ".fklayers";
+    static constexpr const char* modelExtension = ".fk3d";     // KnobMaster 2: a 3D look as a file of its own (the same document)
+    static constexpr const char* shapesExtension = ".fkshapes"; // KnobMaster 2: layers kept in the Shapes Gallery (a document of just those)
     static juce::File myLooksFolder();
 
     /** A .fklayers file: KnobMaker's layer document, plus what Stella knows about it

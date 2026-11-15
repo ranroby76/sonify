@@ -1,0 +1,39 @@
+{
+  "name": "Selector triangles",
+  "category": "Selectors",
+  "order": 35,
+  "icon": "selector",
+  "description": "Triangles zipped tip up and tip down, each a choice. Its look and behaviour in the Selector Studio.",
+  "widget": {
+    "type": "selector",
+    "w": 300,
+    "h": 80,
+    "options": [
+      "Saw",
+      "Square",
+      "Triangle",
+      "Sine",
+      "Noise"
+    ],
+    "settings": {
+      "set": {
+        "render": "3d",
+        "formation": "zipper",
+        "shape": "triangle",
+        "gap": 10,
+        "rounding": 30,
+        "capColour": "#FFD6D7DA",
+        "capOnColour": "#FFF4F4F2",
+        "glowColour": "#FFFFB547",
+        "glow": 60,
+        "edge": true,
+        "edgeOff": 0,
+        "labelColour": "#FF2A2B2E",
+        "labelOnColour": "#FF101010",
+        "textSize": 30,
+        "material": "Satin plastic",
+        "height": 20
+      }
+    }
+  }
+}

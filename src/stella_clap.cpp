@@ -47,6 +47,7 @@ namespace
         clap_plugin_t clap {};
         const clap_host_t* host = nullptr;
         const clap_host_params_t* hostParams = nullptr;
+        const clap_host_gui_t* hostGui = nullptr;   // asked for the window's new size (its size menu)
         bool active = false;
         std::vector<clap_id> ids;
 
@@ -345,6 +346,7 @@ namespace
         if (p->host != nullptr)
         {
             p->hostParams = static_cast<const clap_host_params_t*> (p->host->get_extension (p->host, CLAP_EXT_PARAMS));
+            p->hostGui = static_cast<const clap_host_gui_t*> (p->host->get_extension (p->host, CLAP_EXT_GUI));
 
            #if defined (__linux__)
             p->hostTimers = static_cast<const clap_host_timer_support_t*> (p->host->get_extension (p->host, CLAP_EXT_TIMER_SUPPORT));
@@ -542,7 +544,18 @@ namespace
        #endif
 
         p->window = stella::gui::Window::create (*p);
-        return p->window != nullptr;
+
+        if (p->window == nullptr)
+            return false;
+
+        // Its size menu chose another size: the host's window follows.
+        p->window->onResizeRequest = [p] (int w, int h)
+        {
+            if (p->hostGui != nullptr && p->hostGui->request_resize != nullptr)
+                p->hostGui->request_resize (p->host, (uint32_t) w, (uint32_t) h);
+        };
+
+        return true;
     }
 
     void guiDestroy (const clap_plugin_t* plugin)
@@ -557,26 +570,62 @@ namespace
     }
 
     bool guiSetScale (const clap_plugin_t*, double)                        { return false; }
-    bool guiCanResize (const clap_plugin_t*)                               { return false; }
-    bool guiGetResizeHints (const clap_plugin_t*, clap_gui_resize_hints_t*) { return false; }
+
+    // Its size: 50% to 200% of the baked window, in steps of 5%, its shape kept.
+    bool guiCanResize (const clap_plugin_t*)                               { return true; }
+
+    bool guiGetResizeHints (const clap_plugin_t*, clap_gui_resize_hints_t* hints)
+    {
+        hints->can_resize_horizontally = true;
+        hints->can_resize_vertically = true;
+        hints->preserve_aspect_ratio = true;
+        hints->aspect_ratio_width = (uint32_t) stella::gui::width;
+        hints->aspect_ratio_height = (uint32_t) stella::gui::height;
+        return true;
+    }
     bool guiSetTransient (const clap_plugin_t*, const clap_window_t*)      { return false; }
     void guiSuggestTitle (const clap_plugin_t*, const char*)               {}
 
-    bool guiGetSize (const clap_plugin_t*, uint32_t* width, uint32_t* height)
+    bool guiGetSize (const clap_plugin_t* plugin, uint32_t* width, uint32_t* height)
     {
-        *width = (uint32_t) stella::gui::width;
-        *height = (uint32_t) stella::gui::height;
+        auto* p = self (plugin);
+        int w = 0, h = 0;
+
+        if (p->window != nullptr)
+        {
+            p->window->getSize (w, h);
+        }
+        else
+        {
+            const auto scale = p->windowScale();
+            w = stella::gui::scaledWidth (scale);
+            h = stella::gui::scaledHeight (scale);
+        }
+
+        *width = (uint32_t) w;
+        *height = (uint32_t) h;
         return true;
     }
 
-    bool guiAdjustSize (const clap_plugin_t* plugin, uint32_t* width, uint32_t* height)
+    bool guiAdjustSize (const clap_plugin_t*, uint32_t* width, uint32_t* height)
     {
-        return guiGetSize (plugin, width, height);
+        const auto scale = stella::gui::scaleForSize ((int) *width, (int) *height);
+        *width = (uint32_t) stella::gui::scaledWidth (scale);
+        *height = (uint32_t) stella::gui::scaledHeight (scale);
+        return true;
     }
 
-    bool guiSetSize (const clap_plugin_t*, uint32_t width, uint32_t height)
+    bool guiSetSize (const clap_plugin_t* plugin, uint32_t width, uint32_t height)
     {
-        return width == (uint32_t) stella::gui::width && height == (uint32_t) stella::gui::height;
+        auto* p = self (plugin);
+
+        if (p->window == nullptr)
+            return false;
+
+        p->window->setSize ((int) width, (int) height);
+        int w = 0, h = 0;
+        p->window->getSize (w, h);
+        return (uint32_t) w == width && (uint32_t) h == height;
     }
 
     bool guiSetParent (const clap_plugin_t* plugin, const clap_window_t* window)

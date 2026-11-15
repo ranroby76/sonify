@@ -170,12 +170,16 @@ namespace
 
             PluginHeader::attach (*this, plugin);    // ON/OFF over the panel; the shape below is the panel's
             setContentNonOwned (&canvas, false);
-            canvas.setSize (layout.width, layout.height);
-            setContentComponentSize (layout.width, layout.height);
+            // Its window: the panel and the side panels joined to it (a preset manager's: wider
+            // while one is open).
+            const auto window = canvas.windowBounds();
+            shownWindow = window;
+            canvas.setSize (window.getWidth(), window.getHeight());
+            setContentComponentSize (window.getWidth(), window.getHeight());
             setResizable (true, false);
-            getConstrainer()->setSizeLimits (juce::jmax (120, layout.width / 3), juce::jmax (90, layout.height / 3), layout.width * 3, layout.height * 3);
-            getConstrainer()->setFixedAspectRatio (static_cast<double> (layout.width) / layout.height);
+            limitTo (window);
             centreWithSize (getWidth(), getHeight());
+            canvas.onWindowChanged = [this] { followWindow(); };
 
             startTimerHz (15);
         }
@@ -208,6 +212,32 @@ namespace
         void closeButtonPressed() override   { setVisible (false); }
 
     private:
+        void limitTo (juce::Rectangle<int> window)
+        {
+            getConstrainer()->setFixedAspectRatio (0.0);
+            getConstrainer()->setSizeLimits (juce::jmax (120, window.getWidth() / 3), juce::jmax (90, window.getHeight() / 3), window.getWidth() * 3, window.getHeight() * 3);
+            getConstrainer()->setFixedAspectRatio (static_cast<double> (window.getWidth()) / window.getHeight());
+        }
+
+        // A side panel opened or closed: the window as much wider or narrower, at the size it's
+        // shown (one on the left grows leftwards: the panel stays where it is).
+        void followWindow()
+        {
+            const auto window = canvas.windowBounds();
+            const double scale = shownWindow.getWidth() > 0 ? (double) canvas.getWidth() / shownWindow.getWidth() : 1.0;
+            const int left = juce::roundToInt ((shownWindow.getX() - window.getX()) * scale);
+            shownWindow = window;
+
+            getConstrainer()->setFixedAspectRatio (0.0);
+            getConstrainer()->setSizeLimits (1, 1, 1 << 16, 1 << 16);
+            const auto at = getPosition();
+            setContentComponentSize (juce::roundToInt (window.getWidth() * scale), juce::roundToInt (window.getHeight() * scale));
+            setTopLeftPosition (at.x - left, at.y);
+            limitTo (window);
+        }
+
+        juce::Rectangle<int> shownWindow;   // the window's plugin pixels, as last fitted
+
         void timerCallback() override
         {
             // Automation, the Hub's controls and undo move its knobs too (and a song or an undo,

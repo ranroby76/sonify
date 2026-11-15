@@ -5,6 +5,133 @@
 #include "ColourSwatch.h"
 
 //==============================================================================
+namespace
+{
+    constexpr const char* dropperSourceProperty = "km2ColourDropperSource";
+
+    /** The marked component under a point on the screen (or one it's in). */
+    juce::Component* dropperSourceAt (juce::Point<int> screen)
+    {
+        for (auto* c = juce::Desktop::getInstance().findComponentAt (screen); c != nullptr; c = c->getParentComponent())
+            if ((bool) c->getProperties()[dropperSourceProperty])
+                return c;
+
+        return nullptr;
+    }
+
+    /** The colour showing there, as it's drawn. */
+    std::optional<juce::Colour> colourOnScreenAt (juce::Point<int> screen)
+    {
+        auto* source = dropperSourceAt (screen);
+
+        if (source == nullptr)
+            return std::nullopt;
+
+        const auto local = source->getLocalPoint (nullptr, screen);
+
+        if (! source->getLocalBounds().contains (local))
+            return std::nullopt;
+
+        const auto pixel = source->createComponentSnapshot ({ local.x, local.y, 1, 1 }, true, 1.0f);
+
+        if (! pixel.isValid())
+            return std::nullopt;
+
+        return pixel.getPixelAt (0, 0);
+    }
+
+    /** The picker, and what the dropper does, said under it. */
+    struct DropperHolder final : public juce::Component
+    {
+        explicit DropperHolder (std::unique_ptr<juce::ColourSelector> s)
+            : selector (std::move (s))
+        {
+            addAndMakeVisible (*selector);
+            hint.setText ("Or click the knob (or the panel) to take a colour from it", juce::dontSendNotification);
+            hint.setFont (juce::FontOptions (12.0f));
+            hint.setJustificationType (juce::Justification::centred);
+            hint.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.6f));
+            addAndMakeVisible (hint);
+            setSize (juce::jmax (200, selector->getWidth()), selector->getHeight() + hintHeight);
+        }
+
+        void resized() override
+        {
+            auto area = getLocalBounds();
+            hint.setBounds (area.removeFromBottom (hintHeight));
+            selector->setBounds (area);
+        }
+
+        static constexpr int hintHeight = 24;
+        std::unique_ptr<juce::ColourSelector> selector;
+        juce::Label hint;
+    };
+
+    /** A call-out a click outside doesn't close when it lands on a dropper source: that click takes
+        the colour there (its see-through-ness kept as the picker has it). */
+    class DropperCallOut final : public juce::CallOutBox
+    {
+    public:
+        DropperCallOut (DropperHolder& holder, juce::Rectangle<int> area)
+            : juce::CallOutBox (holder, area, nullptr), selector (*holder.selector)
+        {
+        }
+
+        void inputAttemptWhenModal() override
+        {
+            if (const auto taken = colourOnScreenAt (juce::Desktop::getMousePosition()))
+            {
+                selector.setCurrentColour (taken->withAlpha (selector.getCurrentColour().getAlpha()), juce::sendNotification);
+                return;
+            }
+
+            juce::CallOutBox::inputAttemptWhenModal();
+        }
+
+    private:
+        juce::ColourSelector& selector;
+    };
+
+    /** As CallOutBox::launchAsynchronously: the call-out modal, deleted (with the picker) when it closes. */
+    class DropperLaunch final : public juce::ModalComponentManager::Callback,
+                                private juce::Timer
+    {
+    public:
+        DropperLaunch (std::unique_ptr<juce::ColourSelector> selector, juce::Rectangle<int> area)
+            : holder (std::make_unique<DropperHolder> (std::move (selector))),
+              callout (*holder, area)
+        {
+            callout.setVisible (true);
+            callout.enterModalState (true, this);
+            startTimer (200);
+        }
+
+        void modalStateFinished (int) override {}
+
+        void timerCallback() override
+        {
+            if (! juce::Process::isForegroundProcess())
+                callout.dismiss();
+        }
+
+    private:
+        std::unique_ptr<DropperHolder> holder;
+        DropperCallOut callout;
+    };
+}
+
+void ColourDropper::markAsSource (juce::Component& c)
+{
+    c.getProperties().set (dropperSourceProperty, true);
+}
+
+void ColourDropper::launch (std::unique_ptr<juce::ColourSelector> selector, juce::Rectangle<int> area)
+{
+    jassert (selector != nullptr);
+    new DropperLaunch (std::move (selector), area);   // (the modal manager deletes it when the call-out closes)
+}
+
+//==============================================================================
 ColourSwatchButton::ColourSwatchButton (const juce::String& name)
     : juce::Button (name)
 {
@@ -92,9 +219,7 @@ void ColourSwatchButton::openPicker()
     selector->setSize (300, 380);
     selector->addChangeListener (this);
 
-    juce::CallOutBox::launchAsynchronously (std::move (selector),
-                                            getScreenBounds(),
-                                            nullptr);
+    ColourDropper::launch (std::move (selector), getScreenBounds());
 }
 
 void ColourSwatchButton::showCopyPasteMenu()

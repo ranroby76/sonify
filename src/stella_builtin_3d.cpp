@@ -255,7 +255,8 @@ namespace stella::ui::builtin
             const float now = (float) seconds();
 
             cam.fit (-0.62f, 0.10f);
-            view3d::stage (g, cam, 0xff0d1117, 0xff050608, withAlpha (accent, 0.08f), -0.62f);
+            if (setting ("backdrop", 0.0f) > 0.5f)   // frameless unless asked: no box behind it
+                view3d::stage (g, cam, 0xff0d1117, 0xff050608, withAlpha (accent, 0.08f), -0.62f);
 
             const float playRow = position * (float) (rows - 1);
             const Colour dim = mix (0xff1b3a40, accent, 0.30f), hot = brighter (accent, 0.55f);
@@ -373,7 +374,8 @@ namespace stella::ui::builtin
             const float now = (float) seconds();
 
             cam.fit (-0.5f, 0.3f);
-            view3d::stage (g, cam, 0xff0f0d18, 0xff060508, withAlpha (mix (colourA, colourB, 0.5f), 0.08f), -0.5f);
+            if (setting ("backdrop", 0.0f) > 0.5f)   // frameless unless asked: no box behind it
+                view3d::stage (g, cam, 0xff0f0d18, 0xff060508, withAlpha (mix (colourA, colourB, 0.5f), 0.08f), -0.5f);
 
             const float playRow = blend * (float) (rows - 1);
 
@@ -507,7 +509,8 @@ namespace stella::ui::builtin
             glow = sounding > glow ? view3d::glide (glow, sounding, 0.6f) : glow * 0.92f;
 
             cam.fit (-0.5f, 0.34f, 8.0f, 30.0f);   // room under it for the frequencies and the caption
-            view3d::stage (g, cam, 0xff12100c, 0xff070605, withAlpha (accent, 0.07f), -0.5f);
+            if (setting ("backdrop", 0.0f) > 0.5f)   // frameless unless asked: no box behind it
+                view3d::stage (g, cam, 0xff12100c, 0xff070605, withAlpha (accent, 0.07f), -0.5f);
 
             view3d::terrain (g, cam, heights.data(), rows, points, 0.42f, -0.5f, [&] (int r)
             {
@@ -654,7 +657,8 @@ namespace stella::ui::builtin
             glow = loudness > glow ? view3d::glide (glow, loudness, 0.6f) : glow * 0.90f;
 
             cam.fit (-0.5f, spectrum ? 0.42f : 0.18f);
-            view3d::stage (g, cam, 0xff0c0e16, 0xff05060a, withAlpha (accent, 0.07f), -0.5f);
+            if (setting ("backdrop", 0.0f) > 0.5f)   // frameless unless asked: no box behind it
+                view3d::stage (g, cam, 0xff0c0e16, 0xff05060a, withAlpha (accent, 0.07f), -0.5f);
 
             view3d::terrain (g, cam, heights.data(), rows, points, spectrum ? 0.46f : 0.34f, -0.5f, [&] (int r)
             {

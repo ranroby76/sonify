@@ -1,6 +1,6 @@
 {
   "name": "Horizontal slider",
-  "category": "Controls",
+  "category": "Knobs & sliders",
   "order": 21,
   "icon": "slider_horizontal",
   "description": "A slider that moves left and right.",

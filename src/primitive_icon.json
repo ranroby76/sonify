@@ -1,0 +1,15 @@
+{
+  "name": "Icon",
+  "category": "Pictures & text",
+  "order": 245,
+  "icon": "icon:wave-sine",
+  "description": "An icon or symbol from the library (some 13,000: waves, filters, envelopes, transport, arrows...), as big as its box, in its colour, with text effects. Its text is the icon's name in braces; Choose its icon in its menu.",
+  "widget": {
+    "type": "label",
+    "w": 40,
+    "h": 40,
+    "text": "{wave-sine}",
+    "color": "#FFD8D4CA",
+    "settings": { "display": "icon" }
+  }
+}

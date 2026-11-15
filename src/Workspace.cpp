@@ -1,6 +1,7 @@
 // D:\workspace\Fanan_web_hub\src\Workspace.cpp
 
 #include "Workspace.h"
+#include "GalleryHub.h"
 #include "StellaLookAndFeel.h"
 
 namespace
@@ -51,20 +52,11 @@ Workspace::PluginView::PluginView()
     autoButton.setTooltip ("Replace the GUI with a plain automatic one: a group per module, a control per parameter");
     autoButton.onClick = [this] { if (onAutoLayout != nullptr) onAutoLayout(); };
 
-    // The Gallery beside the panel: drag a knob, slider or switch onto it (onto a control: it
-    // wears that look, keeping its size and settings), or double-click one to add it.
-    galleryButton.setTooltip ("Knobs, sliders and switches from the Gallery: drag one onto the panel, or onto a control "
-                              "to give it that look (it keeps its size and settings). Double-click one to add it");
-    galleryButton.onClick = [this]
-    {
-        KnobStudio::showGallery ("Gallery: drag one onto your plugin",
-                                 [safeThis = juce::Component::SafePointer<PluginView> (this)] (const juce::File& file)
-                                 {
-                                     if (safeThis != nullptr)
-                                         safeThis->canvas.addGalleryItem (file);
-                                 },
-                                 false, true, this);
-    };
+    // The Gallery window: every gallery, a button each down its side (knobs, 3D models,
+    // selector sets, performance controls, matrices, preset managers, bodies, icons, shapes).
+    galleryButton.setTooltip ("Every gallery in one window: knobs, sliders and switches (drag one onto the panel or a control), 3D models, "
+                              "selector sets, performance controls, mod matrices, preset managers, 3D bodies, icons and shapes");
+    galleryButton.onClick = [this] { GalleryHub::show (canvas, GalleryHub::Page::knobs, this); };
 
     for (auto* c : std::initializer_list<juce::Component*> { &editTab, &playTab, &logButton, &exportButton, &pluginButton, &panicButton })
         addChildComponent (c);
@@ -455,8 +447,16 @@ Workspace::Workspace()
         studio.setLayout (pluginView.canvas.getLayout());
         studio.editControl (widgetIndex, includeSimilars);
 
+        // The studio its look is made in: layers (Knob Studio) or 3D (3D Studio).
         const juce::ScopedValueSetter<bool> forControl (openingStudioForControl, true);
-        showTab (studioTab);
+        showTab (studio.isMode3d() ? studio3dTab : studioTab);
+    };
+
+    // A look of the other sort opened in the studio (from the Gallery, a file): its tab.
+    studio.onModeChanged = [this] (bool is3d)
+    {
+        const juce::ScopedValueSetter<bool> forControl (openingStudioForControl, true);
+        showTab (is3d ? studio3dTab : studioTab);
     };
 
     pluginView.canvas.readLevel = [this] (const juce::String& source, bool rms) { return readLevel != nullptr ? readLevel (source, rms) : 0.0f; };
@@ -536,11 +536,15 @@ juce::Image Workspace::snapshotPanel (int longest)
 
 void Workspace::showTab (TabIndex index)
 {
-    // The Knob Studio opened from the top bar: empty, with the plugin's looks as they are now in
-    // its list. A control's look opens in it only from that control's menu.
-    if (index == studioTab && currentTab != studioTab && ! openingStudioForControl)
+    // The Knob Studio (or the 3D Studio, the same studio on the 3D looks) opened from the top
+    // bar: empty, with the plugin's looks as they are now. A control's look opens in it only from
+    // that control's menu.
+    const bool aStudio = index == studioTab || index == studio3dTab;
+
+    if (aStudio && currentTab != index && ! openingStudioForControl)
     {
         studio.setLayout (pluginView.canvas.getLayout());
+        studio.setMode3d (index == studio3dTab);
         studio.clear();
     }
 
@@ -553,14 +557,17 @@ void Workspace::showTab (TabIndex index)
 
 void Workspace::showPages()
 {
-    // Edit UI and the Knob Studio give way to the notice while it has something to say (a MIDI
-    // FX has no panel); Build with AI, Protection and the Store never do.
-    const bool noted = notice.hasText() && (currentTab == pluginTab || currentTab == studioTab);
-    juce::Component* pages[numPages] { aiPage, &pluginView, &studio, protectionPage, storePage };
+    // Edit UI and the studios give way to the notice while it has something to say (a MIDI FX
+    // has no panel); Build with AI, Protection and the Store never do. The Knob Studio and the
+    // 3D Studio are the one studio, in either sort.
+    const bool noted = notice.hasText() && (currentTab == pluginTab || currentTab == studioTab || currentTab == studio3dTab);
+    juce::Component* pages[numPages] { aiPage, &pluginView, &studio, &studio, protectionPage, storePage };
 
     for (int i = 0; i < numPages; ++i)
-        if (pages[i] != nullptr)
+        if (pages[i] != nullptr && pages[i] != &studio)
             pages[i]->setVisible (i == (int) currentTab && ! noted);
+
+    studio.setVisible ((currentTab == studioTab || currentTab == studio3dTab) && ! noted);
 
     notice.setVisible (noted);
 }

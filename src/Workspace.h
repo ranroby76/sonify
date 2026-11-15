@@ -13,7 +13,7 @@
 
 //==============================================================================
 /**
-    The window below the top bar, in five tabs (picked in the top bar):
+    The window below the top bar, in six tabs (picked in the top bar):
 
         Build with AI  the conversation with Sonify AI (the main window's chat panel)
         Edit UI        the plugin, playing live, on a grid you zoom and move around, in two
@@ -25,6 +25,11 @@
                        switches. It starts empty: a control's look opens in it from Edit UI
                        (its menu's "Design it in the Knob Studio"), with the controls like it
                        too when "Include similars" is ticked
+        3D Studio      the same studio on the 3D looks: knobs, buttons, sliders and toggle
+                       switches built as real objects (Workspace3D), rendered in materials and
+                       lit by the panel's light. A control wearing a 3D look opens here from
+                       its menu; a look of the other sort opened in one studio takes it to the
+                       other's tab
         Protection     the plugin or MIDI FX, free or with a price, posted to Sonify's store
                        (ProtectionPage: the studio owns it)
         Store          Sonify's store, open to every user: browse, buy, add to Sonify
@@ -37,12 +42,13 @@ public:
     {
         aiTab = 0,
         pluginTab,      // Edit UI
-        studioTab,
+        studioTab,      // Knob Studio
+        studio3dTab,    // 3D Studio: the same studio on the 3D looks
         protectionTab,  // free or a price, and the store
         storeTab        // Sonify's store: browse, buy, add
     };
 
-    static constexpr int numPages = 5;
+    static constexpr int numPages = 6;
 
     enum class BuildState { idle, building, playing, failed };
 
@@ -105,6 +111,9 @@ public:
     /** The panel as it plays now, about longest pixels on its longer side: the store's picture
         (invalid without a panel). */
     juce::Image snapshotPanel (int longest);
+
+    /** The panel as it plays now, page by page, at scale (SourceExport's pictures of it). */
+    std::vector<juce::Image> snapshotPages (float scale)   { return pluginView.canvas.snapshotPages (scale); }
 
     /** The Protection tab's page: the studio owns it. */
     void setProtectionPage (juce::Component& page);
@@ -226,7 +235,7 @@ private:
     Looks looks;   // before the canvas and the studio, which both use it
     PluginView pluginView;
     KnobStudio studio { looks };
-    HintView notice;   // in place of Edit UI and the Knob Studio, while it has something to say
+    HintView notice;   // in place of Edit UI and the studios, while it has something to say
     bool openingStudioForControl = false;
     juce::Component* aiPage = nullptr;
     juce::Component* protectionPage = nullptr;

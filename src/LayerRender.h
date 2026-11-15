@@ -54,11 +54,18 @@ public:
         outlines can reach, in canvas pixels at 1x (0: none of them is on). */
     static float overhangOf (const LayerDoc&);
 
-    /** Renders every frame into one strip. */
-    static juce::Image renderFilmstrip (const LayerDoc&, bool vertical, float scale = 1.0f);
+    /** Renders every frame into one strip. stop (any thread, asked between frames): true gives
+        up, and nothing (an invalid image) comes back. */
+    static juce::Image renderFilmstrip (const LayerDoc&, bool vertical, float scale = 1.0f,
+                                        const std::function<bool()>& stop = {});
 
     /** Renders a single layer in isolation. */
     static juce::Image renderLayer (const LayerDoc&, int layerIndex, float t, float scale = 1.0f);
+
+    /** Stella: a layer's shape alone (its primitive and what its masks keep of it, without its
+        look or the effects round its edge), at full strength: where it lands on the canvas
+        (placed: zoomed, moved and turned as it is at t), or in its own frame. */
+    static juce::Image silhouette (const LayerDoc&, int layerIndex, float t, float scale, bool placed);
 
     /** Stella: Photoshop's layer style on a picture of a shape (with room round it for what
         reaches past it, LayerStyle::reach): Color Overlay, Inner Shadow, Stroke and Bevel &
@@ -169,10 +176,13 @@ private:
 
     /** Places the layer, then stacks its edge effects around it. Takes the
         canvas image rather than a Graphics, because a blend mode other than
-        Normal has to reach the pixels directly. */
+        Normal has to reach the pixels directly. A bevel that paints past the
+        shape's edge (Outer Bevel, the Embosses) is worked out here too, on the
+        shape as it landed, lit from bevelAngle and bevelAltitude. */
     static void compositeWithEdgeEffects (juce::Image& canvas, const DocLayer&, juce::Image&,
                                           int canvasW, int canvasH, float t, float scale,
-                                          RenderNotes* notes, float pad = 0.0f);
+                                          RenderNotes* notes, float pad = 0.0f,
+                                          float bevelAngle = 120.0f, float bevelAltitude = 30.0f);
     static void applyColourAdjust  (juce::Image&, const EffectSpec&, float t);
     static void applyMasks         (juce::Image&, const EffectSpec&, float t);
     /** pad: where the canvas lies in the image drawn into (Stella's room around it).

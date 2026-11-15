@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "UiHelpers.h"   // FineSlider
+
 #include "ShapeEditor.h"
 
 #include <functional>
@@ -56,7 +58,7 @@ private:
     juce::TextButton folderButton { "Folder" };
 
     juce::Label      gridLabel { {}, "Grid" };
-    juce::Slider     gridSlider;
+    FineSlider     gridSlider;
     juce::ToggleButton snapButton { "Snap to grid" };
 
     juce::Label      exampleLabel { {}, "Start from" };

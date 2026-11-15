@@ -1,0 +1,27 @@
+{
+  "name": "Bender lever",
+  "category": "Performance",
+  "order": 43,
+  "icon": "xy",
+  "description": "A Roland-style bender: across bends the pitch and springs back, pushed away modulates. Its look in the Performance Studio.",
+  "widget": {
+    "type": "xy",
+    "w": 170,
+    "h": 130,
+    "params": {
+      "x": "pitchbend",
+      "y": "modwheel"
+    },
+    "settings": {
+      "mode": "bendmod",
+      "bendAxis": "x",
+      "perform": {
+        "kind": "lever",
+        "housingColour": "#FF1A1B1E",
+        "partColour": "#FF2C2D31",
+        "material": "Satin plastic",
+        "travel": 70
+      }
+    }
+  }
+}

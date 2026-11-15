@@ -6,7 +6,7 @@
 // on its track as it's built, and is kept in My Devices). The studio is Sonify's own window, laid
 // over this page's area while the studio is in front (creatorShow / creatorHide); it steps aside
 // while a dialog, a menu, the Start page or the plugin scan is open, as the Web Browser's views do.
-// Its tabs: Build with AI, Edit UI and Knob Studio.
+// Its tabs: Build with AI, Edit UI, Knob Studio, 3D Studio, Protection and Store.
 // Sonify sends: creator {tab} when its tab changes; runCommand {command} for Sonify's keys pressed in
 // the studio's window (Ctrl+1..8, Ctrl+Tab).
 
@@ -47,7 +47,7 @@
     place();
   }
 
-  /** One of its tabs (Build with AI 0, Edit UI 1, Knob Studio 2). */
+  /** One of its tabs (Build with AI 0, Edit UI 1, Knob Studio 2, 3D Studio 3, Protection 4, Store 5). */
   function showTab(index) {
     Hub.send("creatorTab", { index });
   }

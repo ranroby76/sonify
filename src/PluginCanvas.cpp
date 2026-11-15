@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <set>
 #include "PluginCanvasMenu.h"
 #include "LayerStyleWindow.h"
@@ -15,10 +16,38 @@
 #include "StellaLookAndFeel.h"
 #include "WasmElements.h"
 #include "KnobStudio.h"   // the Gallery
+#include "ShapeMerge.h"   // Ctrl+M
+#include "Body3D.h"       // the window's 3D body
+#include "Render3D.h"
+#include "BodyEditor.h"     // ...and its editor
+#include "SelectorSet.h"    // selectors as sets of keys
+#include "SelectorStudio.h" // ...and their studio
+#include "PerformControl.h" // wheels, levers, joysticks on an X-Y pad
+#include "PerformStudio.h"  // ...and their studio
+#include "ModMatrix.h"      // the modulation matrix
+#include "MatrixStudio.h"   // ...and its studio
+#include "PresetStudio.h"   // preset managers' designs (PresetPanel)
+#include "SegmentDisplay.h"  // LED digits
+#include "IconLibrary.h"     // icons from the Gallery
+#include "LayerRender.h"     // kept shapes as pictures
+#include "Showroom.h"       // the finished instrument, seen from round it
+#include "ColourSwatch.h"   // the pickers' dropper takes colours from the panel
 #include "stella_keys.h"
+#include "MaterialArchetypes.h"   // a material look's painted panel
 
 namespace
 {
+    const char* rulerTickName (int item)
+    {
+        return item == -2 ? "Allow X rulers" : (item == -3 ? "Allow Y rulers" : "Allow body distances");
+    }
+
+    /** Where the rulers' ticks are remembered (Edit's, above the window). */
+    juce::File rulersFile()
+    {
+        return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Fanan").getChildFile ("canvas_rulers.txt");
+    }
+
     constexpr int scopeSamples = 2048;
     const juce::Colour defaultAccent { 0xffe5484d };
     const juce::Colour captionColour = PanelParts::standardCaptionColour();
@@ -63,7 +92,7 @@ namespace
 bool PluginCanvas::isInteractive (const GuiWidget& w)
 {
     return w.isControl() || w.type == GuiWidget::Type::xy || w.type == GuiWidget::Type::preset || w.type == GuiWidget::Type::keyboard
-        || w.type == GuiWidget::Type::custom || w.type == GuiWidget::Type::tabs;
+        || w.type == GuiWidget::Type::custom || w.type == GuiWidget::Type::tabs || w.type == GuiWidget::Type::matrix;
 }
 
 juce::String PluginCanvas::typeDisplayName (GuiWidget::Type type)
@@ -89,6 +118,7 @@ juce::String PluginCanvas::typeDisplayName (GuiWidget::Type type)
         case GuiWidget::Type::custom:    return "Programmed element";
         case GuiWidget::Type::registration: return "Registration";
         case GuiWidget::Type::tabs:      return "Page tabs";
+        case GuiWidget::Type::matrix:    return "Mod matrix";
     }
 
     return "Element";
@@ -125,6 +155,7 @@ juce::Rectangle<int> PluginCanvas::defaultBounds (GuiWidget::Type type, int x, i
         case GuiWidget::Type::custom:    return { x, y, 160, 32 };
         case GuiWidget::Type::registration: return { x, y, 236, 26 };
         case GuiWidget::Type::tabs:      return { x, y, 300, 30 };
+        case GuiWidget::Type::matrix:    return { x, y, 420, 260 };
     }
 
     return { x, y, 60, 60 };
@@ -139,11 +170,12 @@ const char* PluginCanvas::defaultStarPath()
 PluginCanvas::PluginCanvas()
 {
     setWantsKeyboardFocus (true);
+    loadRulers();
     setOpaque (true);   // paint() always fills it: nothing behind needs painting first
+    ColourDropper::markAsSource (*this);   // a colour picker open: a click on the panel takes the colour there
     scopeBuffer.resize ((size_t) scopeSamples, 0.0f);
 
-    menu = std::make_unique<ElementMenu> (*this);
-    addChildComponent (*menu);
+    menu = std::make_unique<ElementMenu> (*this);   // in a window of its own, once opened
 
     banner = std::make_unique<AiBanner> (*this);
     addChildComponent (*banner);
@@ -186,6 +218,7 @@ PluginCanvas::PluginCanvas()
         addChildComponent (c);
 
     shapePainter = std::make_unique<juce::ThreadPool> (1);
+    bodyPainter = std::make_unique<juce::ThreadPool> (juce::ThreadPoolOptions{}.withThreadName ("3D body").withNumberOfThreads (1));
     startTimerHz (30);
 }
 
@@ -193,7 +226,10 @@ PluginCanvas::~PluginCanvas()
 {
     *alive = false;
     stopTimer();
+    bodyEditorWindow = nullptr;   // the Body editor goes with the panel it edits
+    menuWindow = nullptr;             // ...and the edit window (its studio with it)
     shapePainter = nullptr;   // a shape still being painted is let go (its picture finds no canvas)
+    bodyPainter = nullptr;    // ...and the body (it renders to its end first)
 
     if (elements != nullptr)
         elements->setHost (nullptr);
@@ -248,8 +284,10 @@ void PluginCanvas::setLayout (const GuiLayout& newLayout)
     lightKnown = true;
 
     releaseKey();   // its keyboard may be gone, or elsewhere now
+    presetPopup = -1;   // ...and a preset manager's open list
     menu->forgetTyped();   // words typed in the menu were for the layout before
     layout = newLayout;
+    nameUnboundControls();   // (no plugin behind it: each control its own parameter)
     PanelParts::setTextLight (layout.lightAngle, layout.lightAltitude);   // text effects are lit by it
     indexesChanged();
     manySelected.clear();   // the elements may be other ones now
@@ -268,7 +306,10 @@ void PluginCanvas::setLayout (const GuiLayout& newLayout)
     if (! juce::isPositiveAndBelow (selected, (int) layout.widgets.size()))
         selected = -1;
 
-    if (selected < 0 && ! panelSelected)
+    if (! Body3D::hasParts (layout.body))
+        bodySelected = false;
+
+    if (selected < 0 && ! panelSelected && ! bodySelected)
         closeMenu();
     else if (menuOpen)
         openMenu();   // shows the element's new state
@@ -371,6 +412,14 @@ void PluginCanvas::repaintParameters (const std::vector<int>& indices)
         if (std::find (indices.begin(), indices.end(), p.index) != indices.end())
             ids.insert (p.id);
 
+    // A route changed: its cables and rings lie anywhere.
+    for (const auto& id : ids)
+        if (ModMatrix::isMatrixParam (layout, id))
+        {
+            repaint();
+            return;
+        }
+
     juce::RectangleList<int> areas;
 
     for (const auto& w : layout.widgets)
@@ -439,6 +488,7 @@ void PluginCanvas::setSources (const juce::StringArray& signals, const juce::Str
 
 void PluginCanvas::edited()
 {
+    ++editStamp;
     syncElements();
     reportSources();
 
@@ -542,13 +592,8 @@ void PluginCanvas::addPrimitive (const Primitive& primitive, std::optional<juce:
         return;
     }
 
-    const auto index = addElement (primitive.makeWidget(), centre);
-
-    // A picture needs its file: ask for it at once.
-    const auto& w = layout.widgets[(size_t) index];
-
-    if (w.type == GuiWidget::Type::image && w.image.isEmpty())
-        choosePicture (index);
+    // Nothing opens by itself: a picture without its file says to double-click it.
+    addElement (primitive.makeWidget(), centre);
 }
 
 juce::Rectangle<int> PluginCanvas::placed (juce::Rectangle<int> bounds, juce::Point<float> centre) const
@@ -559,6 +604,66 @@ juce::Rectangle<int> PluginCanvas::placed (juce::Rectangle<int> bounds, juce::Po
     b.setX (juce::jlimit (0, juce::jmax (0, layout.width - b.getWidth()), b.getX()));
     b.setY (juce::jlimit (0, juce::jmax (0, layout.height - b.getHeight()), b.getY()));
     return b;
+}
+
+//==============================================================================
+juce::String PluginCanvas::freshParamId (const juce::String& base, const juce::StringArray& avoid) const
+{
+    auto taken = [&] (const juce::String& id)
+    {
+        if (avoid.contains (id))
+            return true;
+
+        for (const auto& w : layout.widgets)
+        {
+            if (w.param == id || id.startsWith (w.param + "_") || (w.param.isNotEmpty() && id.startsWith (w.param) && id.substring (w.param.length()).containsOnly ("0123456789")))
+                return true;
+
+            for (const auto& [role, other] : w.roles)
+                if (other == id)
+                    return true;
+        }
+
+        return false;
+    };
+
+    for (int n = 1;; ++n)
+        if (const auto id = base + juce::String (n); ! taken (id))
+            return id;
+}
+
+bool PluginCanvas::nameUnboundControls()
+{
+    if (! inventsParams)
+        return false;
+
+    bool named = false;
+
+    for (auto& w : layout.widgets)
+    {
+        const auto base = w.type == GuiWidget::Type::knob ? "knob" : w.type == GuiWidget::Type::slider ? "slider"
+                        : w.type == GuiWidget::Type::toggle ? "switch" : w.type == GuiWidget::Type::selector ? "selector" : "";
+
+        if (*base != 0 && w.param.isEmpty())
+        {
+            w.param = freshParamId (base, {});
+            named = true;
+        }
+
+        if (w.type == GuiWidget::Type::xy)
+        {
+            for (const auto* axis : { "x", "y" })
+            {
+                if (const auto found = w.roles.find (axis); found == w.roles.end() || found->second.isEmpty())
+                {
+                    w.roles[axis] = freshParamId (juce::String ("pad_") + axis, {});
+                    named = true;
+                }
+            }
+        }
+    }
+
+    return named;
 }
 
 int PluginCanvas::addElement (GuiWidget w, std::optional<juce::Point<float>> centre)
@@ -598,6 +703,11 @@ int PluginCanvas::addElement (GuiWidget w, std::optional<juce::Point<float>> cen
         case GuiWidget::Type::selector:
             if (w.param.isEmpty())
                 w.param = unusedParam ({});
+
+            // No plugin behind it: a parameter of its own (never one another control has).
+            if (w.param.isEmpty() && inventsParams)
+                w.param = freshParamId (w.type == GuiWidget::Type::knob ? "knob" : w.type == GuiWidget::Type::slider ? "slider"
+                                        : w.type == GuiWidget::Type::toggle ? "switch" : "selector", {});
 
             if (w.label.isEmpty())
                 for (const auto& p : params)
@@ -648,8 +758,12 @@ int PluginCanvas::addElement (GuiWidget w, std::optional<juce::Point<float>> cen
         case GuiWidget::Type::xy:
             if (w.roles.empty())
             {
-                const auto x = unusedParam ({});
-                const auto y = unusedParam ({ x });
+                auto x = unusedParam ({});
+                auto y = unusedParam ({ x });
+
+                if (inventsParams && x.isEmpty())    x = freshParamId ("pad_x", {});
+                if (inventsParams && y.isEmpty())    y = freshParamId ("pad_y", { x });
+
                 if (x.isNotEmpty()) w.roles["x"] = x;
                 if (y.isNotEmpty()) w.roles["y"] = y;
             }
@@ -729,6 +843,14 @@ int PluginCanvas::addElement (GuiWidget w, std::optional<juce::Point<float>> cen
                 w.label = registrationText();
             break;
 
+        case GuiWidget::Type::matrix:
+            if (w.settings.count ("matrix") == 0)
+                w.settings["matrix"] = ModMatrix::makeTemplate (0);
+
+            if (w.param.isEmpty())
+                w.param = "mod";
+            break;
+
         case GuiWidget::Type::tabs:
             // The tabs need pages to show: the first ones are made with them.
             if (layout.pages.size() < 2)
@@ -765,14 +887,28 @@ int PluginCanvas::addElement (GuiWidget w, std::optional<juce::Point<float>> cen
         index = (int) layout.widgets.size() - 1;
     }
 
+    // Selected, its edit window not opened (the E under it, a right-click or a double-click
+    // opens it; already open, it follows).
     select (index);
-    openMenu();
     edited();
     return index;
 }
 
 void PluginCanvas::removeSelected()
 {
+    // The 3D body, selected: taken off the window (an undo brings it back).
+    if (bodySelected && Body3D::hasParts (layout.body))
+    {
+        layout.body = juce::var();
+        bodySelected = false;
+        bodyImageMap.reset();
+        bodyHighlight.clear();
+        closeMenu();
+        edited();
+        repaint();
+        return;
+    }
+
     const auto all = selection();
 
     if (all.empty())
@@ -783,6 +919,36 @@ void PluginCanvas::removeSelected()
 
     indexesChanged();
     select (-1);
+    edited();
+}
+
+void PluginCanvas::mergeShapes (const std::vector<int>& indexes)
+{
+    const auto shapes = ShapeMerge::mergeable (layout, indexes);
+
+    if (shapes.size() < 2)
+        return;
+
+    std::vector<const GuiWidget*> parts;
+
+    for (const auto i : shapes)
+        parts.push_back (&layout.widgets[(size_t) i]);
+
+    auto merged = ShapeMerge::merge (parts);
+
+    if (! merged.has_value())
+        return;
+
+    // In the top one's place; the rest go (from the back, so the indexes before stay put).
+    const auto top = shapes.back();
+    layout.widgets[(size_t) top] = std::move (*merged);
+
+    for (auto it = std::next (shapes.rbegin()); it != shapes.rend(); ++it)
+        layout.widgets.erase (layout.widgets.begin() + *it);
+
+    const auto at = top - (int) (shapes.size() - 1);
+    indexesChanged();
+    select (at);
     edited();
 }
 
@@ -956,8 +1122,103 @@ void PluginCanvas::paintNewBackground()
             index = 0;
         }
 
+        c.setBehindBody (index, Body3D::hasParts (c.layout.body));   // a background picture: behind the 3D body
         c.select (index);
-        c.openMenu();
+        c.edited();
+    });
+}
+
+//==============================================================================
+void PluginCanvas::paintMaterialPanel (const juce::String& lookName)
+{
+    if (onPaintPicture == nullptr || ! hasPanel())
+        return;
+
+    if (paintingPicture)
+    {
+        showAiReply ("A picture is still being painted: apply the look again in a moment for its painted panel.");
+        return;
+    }
+
+    // The window's painted background, painted again in the look; none: a new one of its own
+    // (the user's own pictures are never painted over).
+    const auto painted = GuiLayout::paintedPictures (guiFolder);
+    juce::String file;
+
+    for (const auto& w : layout.widgets)
+        if (file.isEmpty() && w.type == GuiWidget::Type::image && w.bounds == juce::Rectangle<int> (0, 0, layout.width, layout.height)
+            && paintedRecipeOf (w).isObject())
+            file = w.image;
+
+    if (file.isEmpty())
+    {
+        file = "background.png";
+
+        for (int n = 2; imagesFolder().getChildFile (file).existsAsFile() && ! painted.contains (file); ++n)
+            file = "background-" + juce::String (n) + ".png";
+    }
+
+    auto recipe = MaterialArchetypes::painterRecipe (layout, lookName, file);
+
+    if (! recipe.isObject())
+        return;
+
+    recipe.getDynamicObject()->setProperty ("quiet", true);
+    paintingPicture = true;
+    showAiWorking ("Painting the panel");
+
+    onPaintPicture (recipe, [safeThis = juce::Component::SafePointer<PluginCanvas> (this), file, generation = paintGeneration] (const juce::String& problem)
+    {
+        if (safeThis == nullptr || safeThis->paintGeneration != generation)
+            return;   // (another project's: let go)
+
+        auto& c = *safeThis;
+        c.paintingPicture = false;
+
+        if (! c.pendingRecipes.empty())
+        {
+            const auto next = c.pendingRecipes.begin()->second;
+            c.pendingRecipes.erase (c.pendingRecipes.begin());
+            c.repaintPainted (next);
+        }
+
+        if (problem.isNotEmpty())
+        {
+            c.showAiReply (problem);
+            return;
+        }
+
+        c.showAiReply ("Painted. Its material, colours and pattern are in its menu.");
+        c.pictureRepainted (file);
+
+        // Behind everything, filling the window (unless it's there already).
+        int index = -1;
+
+        for (int i = 0; i < (int) c.layout.widgets.size() && index < 0; ++i)
+            if (c.layout.widgets[(size_t) i].type == GuiWidget::Type::image && c.layout.widgets[(size_t) i].image == file)
+                index = i;
+
+        if (index < 0 && c.backBackdrop() >= 0)
+        {
+            index = c.backBackdrop();
+            c.layout.widgets[(size_t) index].image = file;
+        }
+
+        if (index < 0)
+        {
+            c.releaseKey();
+
+            GuiWidget w;
+            w.type = GuiWidget::Type::image;
+            w.image = file;
+            w.mode = "stretch";
+            w.bounds = { 0, 0, c.layout.width, c.layout.height };
+            c.layout.widgets.insert (c.layout.widgets.begin(), w);
+            c.indexesChanged();
+            index = 0;
+        }
+
+        c.setBehindBody (index, Body3D::hasParts (c.layout.body));   // a background picture: behind the 3D body
         c.edited();
     });
 }
@@ -1245,10 +1506,10 @@ void PluginCanvas::usePicture (int widgetIndex, const juce::String& name)
         }
 
         layout.backgroundImage.clear();
+        setBehindBody (index, Body3D::hasParts (layout.body));   // a background picture: behind the 3D body
 
         select (index);
         edited();
-        openMenu();
         return;
     }
 
@@ -1562,6 +1823,255 @@ void PluginCanvas::addGalleryItem (const juce::File& file, std::optional<juce::P
     repaint();
 }
 
+bool PluginCanvas::wearsGalleryDesign (const GuiWidget& w, const juce::String& kind, const juce::var& design)
+{
+    if (kind == "set")      return w.type == GuiWidget::Type::selector;
+    if (kind == "perform")  return w.type == GuiWidget::Type::xy;
+    if (kind == "presets")  return w.type == GuiWidget::Type::preset;
+    return kind == "matrix" && w.type == GuiWidget::Type::matrix && ModMatrix::isPart (w) == ModMatrix::isPart (design);
+}
+
+void PluginCanvas::useGalleryDesign (const juce::String& kind, const juce::var& design, const juce::var& settings, int keys, bool asNew,
+                                     int target, std::optional<juce::Point<float>> at)
+{
+    if (! this->design || ! hasPanel() || ! design.isObject())
+        return;
+
+    const bool part = kind == "matrix" && ModMatrix::isPart (design);
+    auto matches = [&] (const GuiWidget& w) { return wearsGalleryDesign (w, kind, design); };
+
+    auto wear = [&] (GuiWidget& w)
+    {
+        w.settings[kind] = design.clone();
+
+        if (const auto* own = settings.getDynamicObject())
+            for (const auto& entry : own->getProperties())
+                w.settings[entry.name.toString()] = entry.value;
+    };
+
+    // Dropped on one of its kind: that one; else the selected one of its kind (unless a new one's asked for).
+    int index = juce::isPositiveAndBelow (target, (int) layout.widgets.size()) && matches (layout.widgets[(size_t) target]) ? target : -1;
+
+    if (index < 0 && ! asNew && ! at.has_value() && juce::isPositiveAndBelow (selected, (int) layout.widgets.size())
+        && matches (layout.widgets[(size_t) selected]))
+        index = selected;
+
+    if (index >= 0)
+    {
+        wear (layout.widgets[(size_t) index]);
+    }
+    else
+    {
+        // A new one: the toolbox's element of that kind, wearing it.
+        juce::String id = kind == "set" ? "selector_keys" : kind == "perform" ? "perform_ball" : kind == "presets" ? "presets" : "matrix_slots";
+
+        if (part)
+        {
+            const auto style = design.getProperty ("style", {}).toString().trim().toLowerCase();
+            id = style == "jack" ? (ModMatrix::roleOf (design) == "in" ? "matrix_jack_in" : "matrix_jack_out")
+                                 : style == "chip" ? "matrix_chip" : "matrix_assign";
+        }
+
+        const auto* primitive = PrimitiveLibrary::get().find (id);
+
+        if (primitive == nullptr)
+            return;
+
+        auto w = primitive->makeWidget();
+        wear (w);
+
+        // A set's keys: as many positions.
+        if (kind == "set" && keys > 0)
+        {
+            while (w.options.size() < keys)
+                w.options.add (juce::String (w.options.size() + 1));
+
+            while (w.options.size() > keys)
+                w.options.remove (w.options.size() - 1);
+        }
+
+        index = addElement (w, at);
+    }
+
+    syncSideModules();
+    select (index);
+    edited();
+
+    if (onWindowChanged != nullptr)
+        onWindowChanged();
+
+    repaint();
+}
+
+void PluginCanvas::useGalleryBody (const juce::var& body, int fromWidth, int fromHeight)
+{
+    if (! design || ! hasPanel() || ! body.isObject())
+        return;
+
+    auto apply = [safe = juce::Component::SafePointer<PluginCanvas> (this), body, fromWidth, fromHeight]
+    {
+        if (safe == nullptr)
+            return;
+
+        // Three quarters of the window, in its middle: room round it for a table, a backdrop,
+        // a stand (its handles, or a frame round it, make it bigger).
+        const auto W = (float) safe->layout.width, H = (float) safe->layout.height;
+        const auto fromW = fromWidth > 0 ? fromWidth : safe->layout.width, fromH = fromHeight > 0 ? fromHeight : safe->layout.height;
+        const auto from = juce::Rectangle<float> ((float) fromW, (float) fromH);
+        const auto to = juce::Rectangle<float> (W * 0.75f, H * 0.75f).withCentre ({ W * 0.5f, H * 0.5f });
+        safe->layout.body = bodyInto (body, fromW, fromH, from, to);
+        safe->bodyImageMap.reset();
+
+        // The background pictures go behind it (the room it stands in).
+        for (int i = 0; i < (int) safe->layout.widgets.size(); ++i)
+            if (safe->isBackdrop (safe->layout.widgets[(size_t) i]))
+                safe->setBehindBody (i, true);
+        safe->edited();
+        safe->repaint();
+    };
+
+    // Over a body: asked first.
+    if (Body3D::hasParts (layout.body))
+    {
+        juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "Use this body",
+                                            "It takes the place of the window's body. (Undo brings that one back.)", "Use it", "Cancel", nullptr,
+                                            juce::ModalCallbackFunction::create ([apply] (int result)
+                                            {
+                                                if (result == 1)
+                                                    apply();
+                                            }));
+        return;
+    }
+
+    apply();
+}
+
+void PluginCanvas::bodyFollowsWindow (int fromWidth, int fromHeight, juce::Point<int> shift)
+{
+    if (! Body3D::hasParts (layout.body))
+        return;
+
+    // Moved with a crop: every part by the crop's corner.
+    if (! shift.isOrigin())
+    {
+        layout.body = layout.body.clone();
+
+        if (auto* o = layout.body.getDynamicObject(); o != nullptr && o->hasProperty ("mirrorAt"))
+            o->setProperty ("mirrorAt", (double) o->getProperty ("mirrorAt") - shift.x);
+
+        if (auto* parts = layout.body.getProperty ("parts", {}).getArray())
+        {
+            for (auto& part : *parts)
+            {
+                if (auto* o = part.getDynamicObject())
+                {
+                    o->setProperty ("x", (double) part.getProperty ("x", 0.0) - shift.x);
+                    o->setProperty ("z", (double) part.getProperty ("z", 0.0) - shift.y);
+                }
+            }
+        }
+    }
+
+    if (fromWidth > 0 && fromHeight > 0 && (fromWidth != layout.width || fromHeight != layout.height))
+        layout.body = BodyEditor::scaledBody (layout.body, fromWidth, fromHeight, layout.width, layout.height);
+}
+
+void PluginCanvas::useGalleryIcon (const juce::String& name, int target, std::optional<juce::Point<float>> at, const juce::var& badge)
+{
+    if (! design || ! hasPanel() || IconLibrary::indexOf (name) < 0)
+        return;
+
+    // A Guitar FX icon comes on its badge, in its colours.
+    auto wear = [&badge] (GuiWidget& w)
+    {
+        if (! badge.hasProperty ("badge"))
+            return;
+
+        const auto shape = badge.getProperty ("badge", "none").toString();
+
+        if (shape == "none") w.settings.erase ("badge");
+        else                 w.settings["badge"] = shape;
+
+        if (badge.hasProperty ("badgeColour"))
+            w.settings["badgeColour"] = badge.getProperty ("badgeColour", {}).toString();
+
+        if (badge.hasProperty ("iconColour"))
+            w.colour = juce::Colour::fromString (badge.getProperty ("iconColour", {}).toString());
+    };
+
+    // Dropped on an Icon element (or, not dropped, the selected one): its icon.
+    const auto onto = target >= 0 ? target : (at.has_value() ? -1 : selected);
+
+    if (juce::isPositiveAndBelow (onto, (int) layout.widgets.size()))
+    {
+        auto& w = layout.widgets[(size_t) onto];
+
+        if (w.type == GuiWidget::Type::label && PanelParts::labelDisplayOf (w) == "icon")
+        {
+            w.label = IconLibrary::token (name);
+            wear (w);
+            edited();
+            repaint();
+            return;
+        }
+    }
+
+    if (const auto* primitive = PrimitiveLibrary::get().find ("icon"))
+    {
+        auto w = primitive->makeWidget();
+        w.label = IconLibrary::token (name);
+        wear (w);
+
+        if (badge.hasProperty ("badge") && badge.getProperty ("badge", "none").toString() != "none")
+            w.bounds.setSize (56, 56);   // a badge reads at a size of its own
+
+        select (addElement (w, at));
+        edited();
+        repaint();
+    }
+}
+
+void PluginCanvas::addGalleryShape (const juce::File& file, std::optional<juce::Point<float>> at)
+{
+    if (! design || ! hasPanel())
+        return;
+
+    Looks::Look look;
+
+    if (! Looks::readFile (file, look))
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Gallery", "Couldn't read " + file.getFileName() + ".");
+        return;
+    }
+
+    // Its picture, shadows and glows included, among the design's pictures.
+    const auto picture = LayerRender::renderFrame (look.doc, 0.0f, 1.0f, std::ceil (LayerRender::overhangOf (look.doc)));
+    const auto folder = imagesFolder();
+
+    if (! picture.isValid() || ! folder.createDirectory())
+        return;
+
+    const auto target = folder.getNonexistentChildFile (juce::File::createLegalFileName (file.getFileNameWithoutExtension()), ".png", false);
+
+    {
+        juce::FileOutputStream out (target);
+
+        if (! out.openedOk() || ! juce::PNGImageFormat().writeImageToStream (picture, out))
+            return;
+    }
+
+    GuiWidget w;
+    w.type = GuiWidget::Type::image;
+    w.image = target.getFileName();
+    w.mode = "fit";
+    const auto longest = juce::jmax (picture.getWidth(), picture.getHeight());
+    const auto scale = longest > 160 ? 160.0f / (float) longest : 1.0f;
+    w.bounds = { 0, 0, juce::jmax (8, juce::roundToInt ((float) picture.getWidth() * scale)), juce::jmax (8, juce::roundToInt ((float) picture.getHeight() * scale)) };
+    select (addElement (w, at));
+    edited();
+    repaint();
+}
+
 juce::String PluginCanvas::commonLook (const GuiWidget& widget) const
 {
     std::map<juce::String, int> counts;   // "" counts too: the default look
@@ -1589,8 +2099,36 @@ juce::String PluginCanvas::commonLook (const GuiWidget& widget) const
 //==============================================================================
 int PluginCanvas::widgetAt (juce::Point<float> plugin, bool interactiveOnly) const
 {
+    // Front to back: what's over the 3D body, the body (where it is: nothing picked, the body
+    // is), what's behind it.
+    std::vector<int> order;
+    const bool body = Body3D::hasParts (layout.body);
+
     for (int i = (int) layout.widgets.size(); --i >= 0;)
+        if (! isBehindBody (i))
+            order.push_back (i);
+
+    if (body)
     {
+        order.push_back (-2);
+
+        for (int i = (int) layout.widgets.size(); --i >= 0;)
+            if (isBehindBody (i))
+                order.push_back (i);
+    }
+
+    int insideFrame = -1;   // a frame the point is inside: picked when nothing else is there
+
+    for (const auto i : order)
+    {
+        if (i == -2)
+        {
+            if (bodyBounds().contains (plugin))
+                return insideFrame >= 0 ? insideFrame : -1;
+
+            continue;
+        }
+
         const auto& w = layout.widgets[(size_t) i];
 
         if ((interactiveOnly && ! isInteractive (w)) || ! isShown (w))
@@ -1601,11 +2139,15 @@ int PluginCanvas::widgetAt (juce::Point<float> plugin, bool interactiveOnly) con
 
         if (w.type == GuiWidget::Type::group && ! interactiveOnly)
         {
-            // A group is picked by its border and title, so what's inside stays reachable.
+            // A frame, as an unfilled shape: picked by its border and title, and inside it where
+            // nothing else is (what's inside stays reachable, the 3D body under it too).
             const auto outer = w.bounds.toFloat();
 
             if (outer.contains (at) && ! outer.reduced (8.0f).withTrimmedTop (16.0f).contains (at))
                 return i;
+
+            if (outer.contains (at) && insideFrame < 0)
+                insideFrame = i;
 
             continue;
         }
@@ -1635,7 +2177,7 @@ int PluginCanvas::widgetAt (juce::Point<float> plugin, bool interactiveOnly) con
         return i;
     }
 
-    return -1;
+    return insideFrame;
 }
 
 void PluginCanvas::indexesChanged()
@@ -1924,13 +2466,233 @@ std::vector<std::pair<int, juce::Rectangle<float>>> PluginCanvas::pageStrip() co
     }
 
     items.push_back ({ -1, { x, y, layout.pages.isEmpty() ? 64.0f : 22.0f, 20.0f } });
+    x += (layout.pages.isEmpty() ? 64.0f : 22.0f) + 16.0f;
+
+    // The rulers' ticks.
+    for (const int item : { -2, -3, -4 })
+    {
+        const auto width = (float) juce::GlyphArrangement::getStringWidthInt (font, rulerTickName (item)) + 26.0f;
+        items.push_back ({ item, { x, y, width, 20.0f } });
+        x += width + 8.0f;
+    }
+
     return items;
+}
+
+void PluginCanvas::loadRulers()
+{
+    const auto text = rulersFile().loadFileAsString();
+    xRulers = text.contains ("x");
+    yRulers = text.contains ("y");
+    distances = text.contains ("d");
+}
+
+void PluginCanvas::saveRulers() const
+{
+    rulersFile().getParentDirectory().createDirectory();
+    rulersFile().replaceWithText (juce::String (xRulers ? "x" : "") + (yRulers ? "y" : "") + (distances ? "d" : "") + "-");
+}
+
+void PluginCanvas::drawRulers (juce::Graphics& g)
+{
+    if (! design || cropping)
+        return;
+
+    const auto window = windowArea();
+
+    // The 3D body, moved: pink where its middle meets the window's (both: a cross).
+    if (drag == Drag::moveBody && dragMoved && (bodyCentredX || bodyCentredY))
+    {
+        const juce::Colour pink (0xffff3ea5);
+        const float cx = toView (juce::Rectangle<int> (0, 0, layout.width, layout.height)).getCentreX();
+        const float cy = toView (juce::Rectangle<int> (0, 0, layout.width, layout.height)).getCentreY();
+        g.setColour (pink);
+
+        if (bodyCentredX)
+            g.drawLine (cx, window.getY(), cx, window.getBottom(), 1.5f);
+
+        if (bodyCentredY)
+            g.drawLine (window.getX(), cy, window.getRight(), cy, 1.5f);
+
+        if (bodyCentredX && bodyCentredY)
+        {
+            g.drawEllipse (juce::Rectangle<float> (14.0f, 14.0f).withCentre ({ cx, cy }), 2.0f);
+            g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withCentre ({ cx, cy }));
+        }
+    }
+
+    if (! xRulers && ! yRulers && ! distances)
+        return;
+
+    // What they follow: the chosen element (several: all of them together).
+    juce::Rectangle<int> box;
+    std::vector<int> chosen (manySelected.begin(), manySelected.end());
+
+    if (chosen.empty() && juce::isPositiveAndBelow (selected, (int) layout.widgets.size()))
+        chosen.push_back (selected);
+
+    for (const auto index : chosen)
+        if (juce::isPositiveAndBelow (index, (int) layout.widgets.size()) && isShown (layout.widgets[(size_t) index]))
+            box = box.isEmpty() ? layout.widgets[(size_t) index].bounds : box.getUnion (layout.widgets[(size_t) index].bounds);
+
+    if (box.isEmpty())
+        return;
+
+    const auto view = toView (box);
+    const juce::Colour colour (0xff35c8ff);
+    const float dashes[] { 5.0f, 4.0f };
+
+    // Another element's edge on one of its lines: lit, and that element marked there.
+    auto edgeMatches = [&] (int value, bool horizontal)
+    {
+        for (int i = 0; i < (int) layout.widgets.size(); ++i)
+        {
+            if (std::find (chosen.begin(), chosen.end(), i) != chosen.end() || ! isShown (layout.widgets[(size_t) i]))
+                continue;
+
+            const auto& b = layout.widgets[(size_t) i].bounds;
+
+            if (horizontal ? (b.getY() == value || b.getBottom() == value) : (b.getX() == value || b.getRight() == value))
+                return true;
+        }
+
+        return false;
+    };
+
+    auto rule = [&] (juce::Line<float> line, bool lit, const juce::String& label, juce::Point<float> labelAt)
+    {
+        if (lit)   // another element lines up with it: solid
+        {
+            g.setColour (colour);
+            g.drawLine (line, 1.4f);
+        }
+        else
+        {
+            juce::Path path, dashed;
+            path.startNewSubPath (line.getStart());
+            path.lineTo (line.getEnd());
+            juce::PathStrokeType (1.0f).createDashedStroke (dashed, path, dashes, 2);
+            g.setColour (colour.withAlpha (0.75f));
+            g.fillPath (dashed);
+        }
+
+        g.setFont (Theme::font (10.5f, true));
+        const auto tag = juce::Rectangle<float> ((float) juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), label) + 8.0f, 14.0f)
+                             .withCentre (labelAt);
+        g.setColour (juce::Colours::black.withAlpha (0.7f));
+        g.fillRoundedRectangle (tag, 3.0f);
+        g.setColour (lit ? colour : colour.withAlpha (0.85f));
+        g.drawText (label, tag, juce::Justification::centred, false);
+    };
+
+    juce::Graphics::ScopedSaveState state (g);
+    g.reduceClipRegion (window.expanded (40.0f).toNearestInt());
+
+    // How far it is from the 3D body's nearest edges (no body: the window's): red arrows across
+    // the gap, left or right and above or below, whichever's nearer.
+    if (distances)
+    {
+        const auto body = Body3D::hasParts (layout.body) ? bodyBounds() : juce::Rectangle<float> (0.0f, 0.0f, (float) layout.width, (float) layout.height);
+        const auto edges = toView (body.getSmallestIntegerContainer());
+        const juce::Colour red (0xffff3b3b);
+        const auto b = box.toFloat();
+        const float toLeft = b.getX() - body.getX(), toRight = body.getRight() - b.getRight();
+        const float toTop = b.getY() - body.getY(), toBottom = body.getBottom() - b.getBottom();
+
+        auto arrow = [&] (juce::Point<float> from, juce::Point<float> to, float pixels)
+        {
+            if (from.getDistanceFrom (to) < 1.0f)
+                return;
+
+            g.setColour (juce::Colours::black.withAlpha (0.5f));
+            g.drawLine ({ from, to }, 3.0f);
+            juce::Path line;
+            line.addArrow ({ from, to }, 1.4f, 8.0f, 7.0f);
+            line.addArrow ({ to, from }, 1.4f, 8.0f, 7.0f);
+            g.setColour (red);
+            g.fillPath (line);
+
+            const auto label = juce::String (juce::roundToInt (pixels)) + " px";
+            g.setFont (Theme::font (10.5f, true));
+            const auto tag = juce::Rectangle<float> ((float) juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), label) + 8.0f, 14.0f)
+                                 .withCentre ((from + to) * 0.5f + (std::abs (from.x - to.x) > std::abs (from.y - to.y) ? juce::Point<float> (0.0f, -10.0f)
+                                                                                                                      : juce::Point<float> (24.0f, 0.0f)));
+            g.setColour (juce::Colours::black.withAlpha (0.75f));
+            g.fillRoundedRectangle (tag, 3.0f);
+            g.setColour (red);
+            g.drawText (label, tag, juce::Justification::centred, false);
+        };
+
+        // The edges it's measured from, faintly.
+        {
+            juce::Path outline, dotted;
+            outline.addRectangle (edges);
+            const float dots[] { 2.0f, 4.0f };
+            juce::PathStrokeType (1.0f).createDashedStroke (dotted, outline, dots, 2);
+            g.setColour (red.withAlpha (0.45f));
+            g.fillPath (dotted);
+        }
+
+        const float midY = view.getCentreY(), midX = view.getCentreX();
+
+        if (std::abs (toLeft) <= std::abs (toRight))
+            arrow ({ edges.getX(), midY }, { view.getX(), midY }, toLeft);
+        else
+            arrow ({ view.getRight(), midY }, { edges.getRight(), midY }, toRight);
+
+        if (std::abs (toTop) <= std::abs (toBottom))
+            arrow ({ midX, edges.getY() }, { midX, view.getY() }, toTop);
+        else
+            arrow ({ midX, view.getBottom() }, { midX, edges.getBottom() }, toBottom);
+    }
+
+    if (xRulers)
+    {
+        // Above it and under it, the window's width.
+        for (const auto [y, value] : { std::pair<float, int> { view.getY(), box.getY() }, { view.getBottom(), box.getBottom() } })
+            rule ({ window.getX() - 14.0f, y, window.getRight() + 14.0f, y }, edgeMatches (value, true), juce::String (value),
+                  { window.getX() - 26.0f, y });
+    }
+
+    if (yRulers)
+    {
+        // At its left and its right, the window's height.
+        for (const auto [x, value] : { std::pair<float, int> { view.getX(), box.getX() }, { view.getRight(), box.getRight() } })
+            rule ({ x, window.getY() - 6.0f, x, window.getBottom() + 14.0f }, edgeMatches (value, false), juce::String (value),
+                  { x, window.getBottom() + 24.0f });
+    }
 }
 
 void PluginCanvas::drawPageStrip (juce::Graphics& g)
 {
     for (const auto& [item, box] : pageStrip())
     {
+        if (item <= -2)
+        {
+            // A ruler's tick: a box and its words.
+            const bool on = item == -2 ? xRulers : (item == -3 ? yRulers : distances);
+            const auto tick = box.withWidth (14.0f).withSizeKeepingCentre (14.0f, 14.0f);
+            g.setColour (on ? Theme::accent : Theme::inset);
+            g.fillRoundedRectangle (tick, 3.0f);
+            g.setColour (on ? Theme::accent.brighter (0.3f) : Theme::outline.brighter (0.3f));
+            g.drawRoundedRectangle (tick.reduced (0.5f), 3.0f, 1.0f);
+
+            if (on)
+            {
+                juce::Path check;
+                check.startNewSubPath (tick.getX() + 3.0f, tick.getCentreY());
+                check.lineTo (tick.getX() + 6.0f, tick.getBottom() - 3.5f);
+                check.lineTo (tick.getRight() - 3.0f, tick.getY() + 3.5f);
+                g.setColour (juce::Colours::white);
+                g.strokePath (check, juce::PathStrokeType (1.8f));
+            }
+
+            g.setColour (on ? Theme::text : Theme::muted);
+            g.setFont (Theme::font (12.0f, true));
+            g.drawText (rulerTickName (item), box.withTrimmedLeft (20.0f), juce::Justification::centredLeft, false);
+            continue;
+        }
+
         const bool shown = item == juce::jlimit (0, juce::jmax (0, layout.pages.size() - 1), shownPage) && item >= 0;
         g.setColour (shown ? Theme::accent : Theme::raised);
         g.fillRoundedRectangle (box, 4.0f);
@@ -1945,6 +2707,18 @@ void PluginCanvas::drawPageStrip (juce::Graphics& g)
 
 void PluginCanvas::pageStripClicked (int item, const juce::MouseEvent& e)
 {
+    if (item <= -2)
+    {
+        // A ruler's tick: on or off (remembered for next time).
+        if (item == -2)      xRulers = ! xRulers;
+        else if (item == -3) yRulers = ! yRulers;
+        else                 distances = ! distances;
+
+        saveRulers();
+        repaint();
+        return;
+    }
+
     if (item < 0)
     {
         addPage (true);
@@ -2036,6 +2810,28 @@ void PluginCanvas::setXy (const GuiWidget& w, juce::Point<float> plugin)
 {
     const auto pad = w.bounds.toFloat().withTrimmedBottom ((float) GuiLayout::captionHeight).reduced (2.0f);
 
+    // A performance control moves what it moves: a wheel or a ribbon one way, the pair of
+    // wheels the one grabbed (up and down), a lever, a stick or a pad both.
+    if (PerformControl::has (w))
+    {
+        const auto axes = PerformControl::axesOf (PerformControl::designOf (w));
+        const auto across = (plugin.x - pad.getX()) / pad.getWidth(), up = (pad.getBottom() - plugin.y) / pad.getHeight();
+
+        auto move = [&] (const char* role, float proportion)
+        {
+            if (const auto found = w.roles.find (role); found != w.roles.end())
+                if (const auto* p = paramById (found->second))
+                    setValue (*p, valueAt (*p, proportion));
+        };
+
+        if (axes == "pair")      move (performPart == 1 ? "y" : "x", up);
+        else if (axes == "y")    move ("y", up);
+        else if (axes == "x")    move ("x", across);
+        else                   { move ("x", across); move ("y", up); }
+
+        return;
+    }
+
     if (const auto found = w.roles.find ("x"); found != w.roles.end())
         if (const auto* p = paramById (found->second))
             setValue (*p, valueAt (*p, (plugin.x - pad.getX()) / pad.getWidth()));
@@ -2060,7 +2856,11 @@ void PluginCanvas::drawLook (juce::Graphics& g, const GuiWidget& w, juce::Rectan
 
     // Its shadows and glows fall on the panel around its box, never cut at the box's edge.
     const auto room = Looks::overhang (look, area.getWidth(), area.getHeight());
-    g.drawImage (looks->frame (look, kind, area.getWidth(), area.getHeight(), value, resolution), area.expanded (room).toFloat());
+    // A 3D look: as the panel camera sees it where it is on the panel.
+    // ...standing on the 3D body's face there (a sloped one turns it).
+    g.drawImage (looks->frame (look, kind, area.getWidth(), area.getHeight(), value, resolution, layout.cameraLean (area),
+                               look.doc.model3d != nullptr ? faceSlope (area) : juce::Point<float>()),
+                 area.expanded (room).toFloat());
 }
 
 juce::Rectangle<int> PluginCanvas::knobSquare (const GuiWidget& w) const
@@ -2080,6 +2880,25 @@ void PluginCanvas::timerCallback()
 
     // Programmed elements that look different now are drawn again.
     refreshElements (false);
+
+    // A preset search being typed: its caret blinks (only the field is painted again).
+    for (const auto& [index, state] : presetStates)
+        if (state.searching && ! design && juce::isPositiveAndBelow (index, (int) layout.widgets.size()))
+        {
+            const auto area = presetPopup == index ? presetPopupArea (index) : layout.widgets[(size_t) index].bounds.toFloat();
+            const auto field = PresetPanel::searchArea (PresetPanel::designOf (layout.widgets[(size_t) index]), area, presetView (index));
+            repaint (toView (field.getSmallestIntegerContainer()).expanded (2.0f).getSmallestIntegerContainer());
+        }
+
+    // Assigning: the controls it may route to pulse.
+    if (assigning.widget >= 0 && ! design)
+    {
+        const auto ids = matrixDestinationIds();
+
+        for (const auto& w : layout.widgets)
+            if (isShown (w) && w.type != GuiWidget::Type::matrix && w.param.isNotEmpty() && ids.contains (w.param))
+                repaint (viewAreaOf (w).expanded (6));
+    }
 
     // Keyboards light up for the notes that sound: the mouse's, a MIDI keyboard's, the host's.
     if (isNoteDown != nullptr)
@@ -2656,11 +3475,19 @@ void PluginCanvas::drawUpright (juce::Graphics& g, int index, Part part, float o
                 break;
 
             auto text = w.label;
+            int cells = 0;
 
-            if (p != nullptr && PanelParts::labelDisplayOf (w) == "readout")
+            if (p != nullptr && PanelParts::labelShowsValue (w))
+            {
                 text = valueText (value, *p);
 
-            PanelParts::paintLabel (g, w, text, w.colour.isTransparent() ? captionColour : w.colour, w.fontSize);
+                // LED digits keep their cells as the value changes: as many as its longest.
+                if (PanelParts::labelDisplayOf (w) == "led")
+                    for (int step = 0; step <= 8; ++step)
+                        cells = juce::jmax (cells, SegmentDisplay::cellsOf (valueText (valueAt (*p, (float) step / 8.0f), *p)));
+            }
+
+            PanelParts::paintLabel (g, w, text, w.colour.isTransparent() ? captionColour : w.colour, w.fontSize, cells);
             break;
         }
 
@@ -2694,12 +3521,22 @@ void PluginCanvas::drawUpright (juce::Graphics& g, int index, Part part, float o
 
         case GuiWidget::Type::preset:
         {
+            // A design of its own (PresetPanel): a drop list, a table, a side panel.
+            if (PresetPanel::has (w))
+            {
+                if (moving)
+                    drawPresetWidget (g, index);
+
+                break;
+            }
+
             // "<  Preset name  >": the whole widget moves (one frame per preset).
             if (! moving)
                 break;
 
             const auto chosen = override >= 0.0f ? juce::roundToInt (override) : -1;
-            const auto name = juce::isPositiveAndBelow (chosen, presetMenu.names.size()) ? presetMenu.names[chosen] : presetMenu.currentText();
+            const auto name = bareBars ? juce::String()
+                            : juce::isPositiveAndBelow (chosen, presetMenu.names.size()) ? presetMenu.names[chosen] : presetMenu.currentText();
 
             // Its corners: as standard, or rounded from square (0) to round ends (1).
             const auto corner = w.rounding >= 0.0f ? juce::jlimit (0.0f, 1.0f, w.rounding) * juce::jmin (b.getWidth(), b.getHeight()) * 0.5f : 4.0f;
@@ -2733,6 +3570,21 @@ void PluginCanvas::drawUpright (juce::Graphics& g, int index, Part part, float o
         {
             const auto pad = b.withTrimmedBottom ((float) GuiLayout::captionHeight);
             const auto x = roleProportion (w, "x", 0.5f), y = roleProportion (w, "y", 0.5f);
+
+            // A performance control (PerformControl): its picture for where it is.
+            if (PerformControl::has (w))
+            {
+                if (moving)
+                {
+                    const auto resolution = baking ? 1.0f : (g.getInternalContext().getPhysicalPixelScaleFactor() > 1.3f ? 2.0f : 1.0f);
+                    PerformControl::paint (g, PerformControl::designOf (w), pad, x, y, layout.lightAngle, layout.lightAltitude, resolution);
+                }
+
+                if (still)
+                    drawCaption (g, w, w.label, b.withTop (pad.getBottom()), 0.85f);
+
+                break;
+            }
             const auto dot = juce::Point<float> (pad.getX() + 2.0f + (pad.getWidth() - 4.0f) * x, pad.getBottom() - 2.0f - (pad.getHeight() - 4.0f) * y);
 
             if (still)
@@ -2833,6 +3685,40 @@ void PluginCanvas::drawUpright (juce::Graphics& g, int index, Part part, float o
             for (int i = 0; i < count; ++i)
                 names.add (i < w.options.size() ? w.options[i] : juce::String (i + 1));
 
+            // A set of keys (SelectorSet): one lit, each by itself, or several at once.
+            if (SelectorSet::has (w))
+            {
+                const auto keys = selectorKeys (w);
+                const auto mode = SelectorSet::modeOf (w);
+                std::vector<bool> lit ((size_t) keys, false);
+
+                while (names.size() < keys)
+                    names.add (juce::String (names.size() + 1));
+
+                for (int i = 0; i < keys; ++i)
+                {
+                    if (mode == "toggles")
+                    {
+                        if (const auto* key = paramById (SelectorSet::keyParam (w, i)))
+                            lit[(size_t) i] = proportionOf (*key, currentValue (*key)) >= 0.5f;
+                    }
+                    else if (mode == "multi")
+                    {
+                        const auto bits = override >= 0.0f ? juce::roundToInt (override) : (p != nullptr ? juce::roundToInt (value - p->min) : 0);
+                        lit[(size_t) i] = ((bits >> i) & 1) != 0;
+                    }
+                    else
+                    {
+                        lit[(size_t) i] = i == chosen;
+                    }
+                }
+
+                const auto resolution = baking ? 1.0f : (g.getInternalContext().getPhysicalPixelScaleFactor() > 1.3f ? 2.0f : 1.0f);
+                SelectorSet::paint (g, SelectorSet::designOf (w), area, names, lit, layout.lightAngle, layout.lightAltitude, resolution);
+                caption (b.withTop (b.getBottom() - (float) GuiLayout::captionHeight));
+                break;
+            }
+
             PanelParts::paintSelector (g, area, w, names, chosen, accent, w.textColour.isTransparent() ? captionColour : w.textColour);
             caption (b.withTop (b.getBottom() - (float) GuiLayout::captionHeight));
             break;
@@ -2875,6 +3761,37 @@ void PluginCanvas::drawUpright (juce::Graphics& g, int index, Part part, float o
         case GuiWidget::Type::custom:
         case GuiWidget::Type::registration:
             break;   // drawn above
+
+        case GuiWidget::Type::matrix:
+        {
+            // A part lying on its own: a jack, a source chip, an assign button.
+            if (ModMatrix::isPart (w))
+            {
+                if (moving)
+                    drawMatrixPart (g, index);
+
+                break;
+            }
+
+            // Its routes, as its parameters have them (a cable being plugged, while it is: one
+            // taken past its edge is drawn over the whole window).
+            if (moving)
+            {
+                auto view = matrixView (w);
+
+                if (matrixDrag.widget == index && matrixDrag.from >= 0 && b.contains (matrixDrag.to))
+                {
+                    view.draggingFrom = matrixDrag.from;
+                    view.draggingTo = matrixDrag.to - b.getPosition();
+                }
+
+                juce::Graphics::ScopedSaveState state (g);
+                g.addTransform (juce::AffineTransform::translation (b.getX(), b.getY()));
+                ModMatrix::paint (g, ModMatrix::designOf (w), b.withZeroOrigin(), view);
+            }
+
+            break;
+        }
     }
 }
 
@@ -2907,8 +3824,8 @@ void PluginCanvas::playKey (int widgetIndex, juce::Point<float> plugin)
         return;
 
     const auto& w = layout.widgets[(size_t) widgetIndex];
-    const auto b = w.bounds.toFloat();
-    const auto note = stella::keys::noteAt (plugin.x, plugin.y, w.lowNote, w.highNote, b.getX(), b.getY(), b.getWidth(), b.getHeight());
+    float velocity = 0.0f;
+    const auto note = PanelParts::keyboardNoteAt (w, plugin, velocity);   // flat or in 3D
 
     if (note == heldNote && widgetIndex == heldKeyboard)
         return;
@@ -2922,7 +3839,7 @@ void PluginCanvas::playKey (int widgetIndex, juce::Point<float> plugin)
     heldKeyboard = widgetIndex;
 
     if (onNote != nullptr)
-        onNote (note, stella::keys::velocityAt (plugin.y, stella::keys::keyOf (note, w.lowNote, w.highNote, b.getX(), b.getY(), b.getWidth(), b.getHeight())));
+        onNote (note, velocity);
 
     repaint (viewAreaOf (w));
 }
@@ -2966,6 +3883,7 @@ juce::Rectangle<int> PluginCanvas::movingAreaOf (const GuiWidget& w) const
         case GuiWidget::Type::image:
         case GuiWidget::Type::registration:
         case GuiWidget::Type::tabs:      break;   // the plugin draws it itself
+        case GuiWidget::Type::matrix:    return w.bounds;
     }
 
     return {};
@@ -3002,7 +3920,7 @@ void PluginCanvas::drawRegistration (juce::Graphics& g, const GuiWidget& w)
                       juce::Justification::centred, 1, 0.8f);
 }
 
-void PluginCanvas::drawPanel (juce::Graphics& g)
+void PluginCanvas::drawPanel (juce::Graphics& g, const std::function<void (int)>& behind)
 {
     const auto plugin = juce::Rectangle<float> (0.0f, 0.0f, (float) layout.width, (float) layout.height);
     g.setGradientFill (juce::ColourGradient (layout.backgroundTop, 0.0f, 0.0f, layout.backgroundBottom, 0.0f, plugin.getBottom(), false));
@@ -3010,6 +3928,1678 @@ void PluginCanvas::drawPanel (juce::Graphics& g)
 
     if (layout.backgroundImage.isNotEmpty())
         drawPicture (g, layout.backgroundImage, plugin, layout.backgroundMode);
+
+    // What's been sent behind the 3D body (a table, a backdrop), then the body.
+    if (behind != nullptr)
+        for (int i = 0; i < (int) layout.widgets.size(); ++i)
+            if (isBehindBody (i))
+                behind (i);
+
+    drawBody (g);
+}
+
+bool PluginCanvas::isBehindBody (int index) const
+{
+    if (! juce::isPositiveAndBelow (index, (int) layout.widgets.size()) || ! Body3D::hasParts (layout.body))
+        return false;
+
+    const auto& settings = layout.widgets[(size_t) index].settings;
+    const auto found = settings.find ("behindBody");
+    return found != settings.end() && (bool) found->second;
+}
+
+//==============================================================================
+juce::String PluginCanvas::bodyShapeKeyNow() const
+{
+    if (! Body3D::hasParts (layout.body))
+        return {};
+
+    // The editor's own settings (its units and grid) don't change how it looks.
+    auto shown = layout.body.clone();
+
+    if (auto* object = shown.getDynamicObject())
+        object->removeProperty ("editor");
+
+    return juce::JSON::toString (shown, true) + "|" + juce::String (layout.width) + "x" + juce::String (layout.height);
+}
+
+juce::String PluginCanvas::bodyKeyNow() const
+{
+    const auto shape = bodyShapeKeyNow();
+
+    if (shape.isEmpty())
+        return {};
+
+    return shape + "|" + juce::String (layout.lightAngle, 1) + "/" + juce::String (layout.lightAltitude, 1) + "|" + juce::String (layout.cameraDistance(), 1);
+}
+
+juce::Point<float> PluginCanvas::faceSlope (juce::Rectangle<int> area)
+{
+    if (! Body3D::hasParts (layout.body) || ! (bool) layout.body.getProperty ("follow", true))
+        return {};
+
+    // Export and pictures of the panel: the body as it is now. Otherwise the shape its
+    // picture was last rendered from stands in until the new one's ready.
+    if (const auto key = bodyShapeKeyNow(); key != bodyShapeKey && (baking || bodyShape == nullptr))
+    {
+        if (! baking && bodyPending.isNotEmpty())
+            return {};
+
+        bodyShape = Body3D::fromVar (layout.body, layout.width, layout.height, imagesFolder());
+        bodyShapeKey = key;
+        faceSlopes.clear();
+    }
+
+    if (bodyShape == nullptr)
+        return {};
+
+    const auto middle = area.getCentre();
+    const auto where = ((juce::int64) middle.x << 32) | (juce::int64) (juce::uint32) middle.y;
+
+    if (const auto found = faceSlopes.find (where); found != faceSlopes.end())
+        return found->second;
+
+    Render3D::Face face;
+    juce::Point<float> slope;
+
+    if (Render3D::bodyFace (*bodyShape, layout.cameraDistance(), (float) middle.x + 0.5f, (float) middle.y + 0.5f, face))
+        slope = { face.slopeX, face.slopeZ };
+
+    if (faceSlopes.size() > 4000)
+        faceSlopes.clear();
+
+    faceSlopes[where] = slope;
+    return slope;
+}
+
+int PluginCanvas::selectorKeys (const GuiWidget& w) const
+{
+    if (w.options.size() > 0)
+        return w.options.size();
+
+    const auto* p = paramFor (w);
+
+    if (p == nullptr)
+        return 3;
+
+    // Several at once: a key a bit of its value.
+    if (SelectorSet::has (w) && SelectorSet::modeOf (w) == "multi")
+        return juce::jlimit (1, 24, (int) std::ceil (std::log2 (juce::jmax (1.0f, p->max - p->min) + 1.0f)));
+
+    return juce::jmax (1, (int) (p->max - p->min) + 1);
+}
+
+void PluginCanvas::editAdvanced (int widgetIndex)
+{
+    if (! design || ! hasPanel() || ! juce::isPositiveAndBelow (widgetIndex, (int) layout.widgets.size()))
+        return;
+
+    // The edit window, on its Advanced edit tab, for this one.
+    menu->preferTab (ElementMenu::advancedTab);
+
+    if (selected != widgetIndex || ! manySelected.empty() || panelSelected)
+        select (widgetIndex);
+
+    if (! menuOpen || menu->getWidgetIndex() != widgetIndex || ! menu->isAdvanced())
+        openMenu();
+
+    if (menuWindow != nullptr)
+        menuWindow->toFront (true);
+}
+
+void PluginCanvas::releasePerform (int widgetIndex)
+{
+    if (! juce::isPositiveAndBelow (widgetIndex, (int) layout.widgets.size()))
+        return;
+
+    const auto& w = layout.widgets[(size_t) widgetIndex];
+
+    // Pitch bend and modulation: the bend goes back to its middle, the modulation stays (a
+    // lever: both go back, as a bender does).
+    if (! PerformControl::has (w) || PerformControl::modeOf (w) != "bendmod")
+        return;
+
+    const bool both = PerformControl::springsBoth (PerformControl::designOf (w));
+
+    for (const auto* axis : { "x", "y" })
+        if (both || PerformControl::bendAxisOf (w) == axis)
+            if (const auto found = w.roles.find (axis); found != w.roles.end())
+                if (const auto* p = paramById (found->second))
+                    setValue (*p, valueAt (*p, 0.5f));
+
+    repaint();
+}
+
+ModMatrix::View PluginCanvas::matrixView (const GuiWidget& w) const
+{
+    ModMatrix::View view;
+    const auto d = ModMatrix::designOf (w);
+    view.sources = ModMatrix::sourcesOf (d);
+
+    // Its destinations: the plugin's own parameters (the matrices' own aside).
+    juce::StringArray ids;
+
+    for (const auto& p : params)
+        if (! ModMatrix::isMatrixParam (layout, p.id))
+        {
+            ids.add (p.id);
+            view.destinations.add (p.name.isNotEmpty() ? p.name : p.id);
+        }
+
+    for (int i = 0; i < ModMatrix::routesOf (d); ++i)
+    {
+        ModMatrix::Route route;
+        auto valueOf = [this, &w, i] (const char* part, float fallback)
+        {
+            const auto* p = paramById (ModMatrix::paramId (w, i, part));
+            return p != nullptr ? currentValue (*p) : fallback;
+        };
+
+        route.source = juce::roundToInt (valueOf ("src", 0.0f));
+        route.destination = juce::roundToInt (valueOf ("dst", 0.0f));
+        route.amount = juce::jlimit (-1.0f, 1.0f, valueOf ("amt", 0.0f));
+        view.routes.push_back (route);
+    }
+
+    // A grid's columns, a patch bay's inputs: the ones it names, else the first eight.
+    if (const auto* targets = d.getProperty ("targets", {}).getArray(); targets != nullptr && ! targets->isEmpty())
+    {
+        for (const auto& t : *targets)
+            if (const auto at = ids.indexOf (t.toString().trim()); at >= 0)
+                view.columns.push_back (at + 1);
+    }
+    else
+    {
+        for (int i = 0; i < juce::jmin (8, ids.size()); ++i)
+            view.columns.push_back (i + 1);
+    }
+
+    // A patch bay with matching inputs: one for every output, the parameters' first, then
+    // inputs of their own (In 1, In 2...) for what's still to be wired.
+    if (ModMatrix::styleOf (d) == "patch" && (bool) d.getProperty ("matchInputs", false))
+    {
+        const auto wanted = juce::jmax (1, view.sources.size());
+
+        if ((int) view.columns.size() > wanted)
+            view.columns.resize ((size_t) wanted);
+
+        for (int n = 1; (int) view.columns.size() < wanted; ++n)
+        {
+            view.destinations.add ("In " + juce::String (n));
+            view.columns.push_back (view.destinations.size());
+        }
+    }
+
+    return view;
+}
+
+void PluginCanvas::setMatrixRoute (const GuiWidget& w, int route, int source, int destination, float amount)
+{
+    auto put = [this, &w, route] (const char* part, float value)
+    {
+        if (const auto* p = paramById (ModMatrix::paramId (w, route, part)))
+            setValue (*p, juce::jlimit (p->min, p->max, value));
+    };
+
+    if (source >= 0)       put ("src", (float) source);
+    if (destination >= 0)  put ("dst", (float) destination);
+    if (amount > -2.0f)    put ("amt", amount);
+    repaint();
+}
+
+void PluginCanvas::matrixPress (int index, juce::Point<float> plugin, bool popupMenu)
+{
+    const auto& w = layout.widgets[(size_t) index];
+    const auto d = ModMatrix::designOf (w);
+    const auto view = matrixView (w);
+    const auto box = w.bounds.toFloat();
+    const auto hit = ModMatrix::hitTest (d, box.withZeroOrigin(), view, plugin - box.getPosition());
+    const auto style = ModMatrix::styleOf (d);
+    const float newAmount = juce::jlimit (-1.0f, 1.0f, (float) (double) d.getProperty ("amount", style == "patch" ? 1.0 : 0.5));
+
+    matrixDrag = {};
+    matrixDrag.widget = index;
+    matrixDrag.hit = hit;
+    matrixDrag.start = plugin;
+    matrixDrag.to = plugin;
+
+    if (ModMatrix::isPart (d))
+    {
+        partPress (index, plugin, popupMenu);
+        return;
+    }
+
+    auto freeRoute = [&view]
+    {
+        for (size_t i = 0; i < view.routes.size(); ++i)
+            if (! view.routes[i].active())
+                return (int) i;
+
+        return -1;
+    };
+
+    using Kind = ModMatrix::Hit::Kind;
+
+    switch (hit.kind)
+    {
+        case Kind::clear:
+            setMatrixRoute (w, hit.route, 0, 0, -3.0f);
+            break;
+
+        case Kind::source:
+        case Kind::destination:
+        {
+            // Picked from a list: the sources, or the plugin's parameters.
+            const bool source = hit.kind == Kind::source;
+            const auto& names = source ? view.sources : view.destinations;
+            const auto current = source ? view.routes[(size_t) hit.route].source : view.routes[(size_t) hit.route].destination;
+            juce::PopupMenu choices;
+            choices.addItem (1, "None", true, current == 0);
+            choices.addSeparator();
+
+            for (int i = 0; i < names.size(); ++i)
+                choices.addItem (i + 2, names[i], true, current == i + 1);
+
+            choices.showMenuAsync (juce::PopupMenu::Options().withMousePosition(),
+                                [safeThis = juce::Component::SafePointer<PluginCanvas> (this), index, route = hit.route, source] (int result)
+                                {
+                                    if (safeThis == nullptr || result == 0 || ! juce::isPositiveAndBelow (index, (int) safeThis->layout.widgets.size()))
+                                        return;
+
+                                    const auto& matrix = safeThis->layout.widgets[(size_t) index];
+                                    safeThis->setMatrixRoute (matrix, route, source ? result - 1 : -1, source ? -1 : result - 1, -3.0f);
+                                });
+            matrixDrag.widget = -1;
+            break;
+        }
+
+        case Kind::amount:
+            matrixDrag.startAmount = view.routes[(size_t) hit.route].amount;
+            break;
+
+        case Kind::cell:
+        {
+            if (hit.route >= 0)
+            {
+                matrixDrag.startAmount = view.routes[(size_t) hit.route].amount;
+                matrixDrag.remove = ! popupMenu;
+            }
+            else if (const int route = freeRoute(); route >= 0)
+            {
+                setMatrixRoute (w, route, hit.row + 1, view.columns[(size_t) hit.column], newAmount);
+                matrixDrag.hit.route = route;
+                matrixDrag.startAmount = newAmount;
+            }
+            break;
+        }
+
+        case Kind::output:
+            matrixDrag.from = hit.row;
+            matrixDrag.source = hit.row + 1;
+            matrixDrag.anchor = ModMatrix::outputPoint (d, box.withZeroOrigin(), view, hit.row) + box.getPosition();
+            matrixDrag.amount = newAmount;
+            break;
+
+        case Kind::input:
+            // A cable pulled out of its input: plugged again elsewhere, or let go.
+            if (hit.route >= 0)
+            {
+                matrixDrag.from = view.routes[(size_t) hit.route].source - 1;
+                matrixDrag.startAmount = view.routes[(size_t) hit.route].amount;
+                matrixDrag.source = matrixDrag.from + 1;
+                matrixDrag.amount = matrixDrag.startAmount;
+
+                if (juce::isPositiveAndBelow (matrixDrag.from, view.sources.size()))
+                    matrixDrag.anchor = ModMatrix::outputPoint (d, box.withZeroOrigin(), view, matrixDrag.from) + box.getPosition();
+
+                setMatrixRoute (w, hit.route, 0, 0, -3.0f);
+            }
+            break;
+
+        case Kind::none:
+        default:
+            matrixDrag.widget = -1;
+            break;
+    }
+}
+
+void PluginCanvas::matrixDragTo (juce::Point<float> plugin)
+{
+    if (! juce::isPositiveAndBelow (matrixDrag.widget, (int) layout.widgets.size()))
+        return;
+
+    const auto& w = layout.widgets[(size_t) matrixDrag.widget];
+    matrixDrag.to = plugin;
+    matrixDrag.moved = matrixDrag.moved || plugin.getDistanceFrom (matrixDrag.start) > 3.0f;
+
+    using Kind = ModMatrix::Hit::Kind;
+    const auto& hit = matrixDrag.hit;
+
+    // An amount: dragged across a slot's bar, up and down a grid's cell.
+    if ((hit.kind == Kind::amount || hit.kind == Kind::cell) && hit.route >= 0 && matrixDrag.moved)
+    {
+        const float delta = hit.kind == Kind::amount ? (plugin.x - matrixDrag.start.x) / juce::jmax (40.0f, (float) w.bounds.getWidth() * 0.15f)
+                                                     : (matrixDrag.start.y - plugin.y) / 80.0f;
+        setMatrixRoute (w, hit.route, -1, -1, juce::jlimit (-1.0f, 1.0f, matrixDrag.startAmount + delta));
+        matrixDrag.remove = false;
+    }
+
+    repaint();
+}
+
+void PluginCanvas::matrixRelease()
+{
+    if (! juce::isPositiveAndBelow (matrixDrag.widget, (int) layout.widgets.size()))
+    {
+        matrixDrag = {};
+        return;
+    }
+
+    const auto& w = layout.widgets[(size_t) matrixDrag.widget];
+    using Kind = ModMatrix::Hit::Kind;
+
+    if (ModMatrix::isPart (w))
+    {
+        partRelease();
+        return;
+    }
+
+    // A pin clicked (not dragged): taken out.
+    if (matrixDrag.hit.kind == Kind::cell && matrixDrag.remove && ! matrixDrag.moved && matrixDrag.hit.route >= 0)
+        setMatrixRoute (w, matrixDrag.hit.route, 0, 0, -3.0f);
+
+    // A cable let go over an input: plugged in, on a free route.
+    if (matrixDrag.from >= 0)
+    {
+        const auto d = ModMatrix::designOf (w);
+        const auto view = matrixView (w);
+        const auto box = w.bounds.toFloat();
+        const auto column = ModMatrix::inputNear (d, box.withZeroOrigin(), view, matrixDrag.to - box.getPosition());
+
+        if (column >= 0)
+        {
+            int route = -1;
+
+            for (size_t i = 0; i < view.routes.size() && route < 0; ++i)
+                if (! view.routes[i].active())
+                    route = (int) i;
+
+            if (route >= 0)
+            {
+                const float amount = matrixDrag.hit.kind == Kind::input ? matrixDrag.startAmount
+                                                                        : juce::jlimit (-1.0f, 1.0f, (float) (double) d.getProperty ("amount", 1.0));
+                setMatrixRoute (w, route, matrixDrag.from + 1, view.columns[(size_t) column], amount);
+            }
+        }
+        else if (! box.contains (matrixDrag.to))
+        {
+            // Past its edge: into a jack lying on its own, another patch bay, any control.
+            if (const auto destination = modTargetAt (matrixDrag.to, matrixBase (w)); destination > 0)
+                routeSource (matrixDrag.widget, matrixDrag.from + 1, destination, matrixDrag.amount);
+        }
+    }
+
+    matrixDrag = {};
+    repaint();
+}
+
+void PluginCanvas::matrixWheel (int index, juce::Point<float> plugin, float delta)
+{
+    const auto& w = layout.widgets[(size_t) index];
+    const auto view = matrixView (w);
+    const auto box = w.bounds.toFloat();
+    const auto hit = ModMatrix::hitTest (ModMatrix::designOf (w), box.withZeroOrigin(), view, plugin - box.getPosition());
+
+    if (juce::isPositiveAndBelow (hit.route, (int) view.routes.size()) && view.routes[(size_t) hit.route].active())
+        setMatrixRoute (w, hit.route, -1, -1, juce::jlimit (-1.0f, 1.0f, view.routes[(size_t) hit.route].amount + delta * 0.25f));
+}
+
+//==============================================================================
+juce::String PluginCanvas::matrixBase (const GuiWidget& w)
+{
+    return w.param.isNotEmpty() ? w.param : juce::String ("mod");
+}
+
+std::vector<int> PluginCanvas::matrixHomes() const
+{
+    std::vector<int> homes;
+    juce::StringArray bases;
+
+    for (int i = 0; i < (int) layout.widgets.size(); ++i)
+        if (const auto& w = layout.widgets[(size_t) i]; w.type == GuiWidget::Type::matrix && ! bases.contains (matrixBase (w)))
+        {
+            bases.add (matrixBase (w));
+            homes.push_back (matrixHomeOf (w));
+        }
+
+    return homes;
+}
+
+int PluginCanvas::matrixHomeOf (const GuiWidget& matrix) const
+{
+    // The whole matrix of its <param>, else the first of its parts.
+    const auto base = matrixBase (matrix);
+    int first = -1;
+
+    for (int i = 0; i < (int) layout.widgets.size(); ++i)
+    {
+        const auto& w = layout.widgets[(size_t) i];
+
+        if (w.type != GuiWidget::Type::matrix || matrixBase (w) != base)
+            continue;
+
+        if (! ModMatrix::isPart (w))
+            return i;
+
+        if (first < 0)
+            first = i;
+    }
+
+    return first;
+}
+
+juce::StringArray PluginCanvas::matrixDestinationIds() const
+{
+    juce::StringArray ids;
+
+    for (const auto& p : params)
+        if (! ModMatrix::isMatrixParam (layout, p.id))
+            ids.add (p.id);
+
+    return ids;
+}
+
+int PluginCanvas::destinationOf (const GuiWidget& w) const
+{
+    if (w.type == GuiWidget::Type::matrix || w.param.isEmpty() || paramFor (w) == nullptr)
+        return 0;
+
+    return matrixDestinationIds().indexOf (w.param) + 1;
+}
+
+std::map<int, std::vector<PluginCanvas::Modulation>> PluginCanvas::allModulations() const
+{
+    std::map<int, std::vector<Modulation>> found;
+
+    for (const int home : matrixHomes())
+    {
+        const auto& w = layout.widgets[(size_t) home];
+        const auto d = ModMatrix::designOf (w);
+        const auto view = matrixView (w);
+
+        for (size_t r = 0; r < view.routes.size(); ++r)
+            if (view.routes[r].active())
+                found[view.routes[r].destination].push_back ({ home, (int) r, view.routes[r].source, view.routes[r].amount, ModMatrix::cableColour (d, (int) r) });
+    }
+
+    return found;
+}
+
+std::vector<PluginCanvas::Modulation> PluginCanvas::modulationsOf (int destination) const
+{
+    if (destination <= 0)
+        return {};
+
+    auto all = allModulations();
+    return all.count (destination) > 0 ? all[destination] : std::vector<Modulation>();
+}
+
+float PluginCanvas::newAmountOf (const GuiWidget& w) const
+{
+    const auto d = ModMatrix::designOf (w);
+    return juce::jlimit (-1.0f, 1.0f, (float) (double) d.getProperty ("amount", ModMatrix::styleOf (d) == "patch" ? 1.0 : 0.5));
+}
+
+bool PluginCanvas::routeSource (int home, int source, int destination, float amount)
+{
+    if (! juce::isPositiveAndBelow (home, (int) layout.widgets.size()) || source <= 0 || destination <= 0)
+        return false;
+
+    const auto& w = layout.widgets[(size_t) home];
+    const auto view = matrixView (w);
+    int route = -1;
+
+    // The same source and destination again: that route (its amount now this).
+    for (size_t i = 0; i < view.routes.size() && route < 0; ++i)
+        if (view.routes[i].source == source && view.routes[i].destination == destination)
+            route = (int) i;
+
+    for (size_t i = 0; i < view.routes.size() && route < 0; ++i)
+        if (! view.routes[i].active())
+            route = (int) i;
+
+    if (route < 0)
+        return false;   // every route taken
+
+    setMatrixRoute (w, route, source, destination, amount);
+    return true;
+}
+
+int PluginCanvas::modTargetAt (juce::Point<float> plugin, const juce::String& base, int* control) const
+{
+    if (control != nullptr)
+        *control = -1;
+
+    const auto ids = matrixDestinationIds();
+
+    // An input jack of this matrix's (lying on its own), a patch bay's input...
+    for (int i = (int) layout.widgets.size(); --i >= 0;)
+    {
+        const auto& w = layout.widgets[(size_t) i];
+
+        if (w.type != GuiWidget::Type::matrix || matrixBase (w) != base || ! isShown (w))
+            continue;
+
+        const auto d = ModMatrix::designOf (w);
+        const auto box = w.bounds.toFloat();
+
+        if (ModMatrix::isPart (d))
+        {
+            if (d.getProperty ("style", {}).toString().trim().equalsIgnoreCase ("jack") && ModMatrix::roleOf (d) == "in"
+                && box.expanded (6.0f).contains (plugin))
+                return ids.indexOf (ModMatrix::targetOf (d)) + 1;
+
+            continue;
+        }
+
+        if (ModMatrix::styleOf (d) == "patch" && box.expanded (12.0f).contains (plugin))
+        {
+            const auto view = matrixView (w);
+
+            if (const auto column = ModMatrix::inputNear (d, box.withZeroOrigin(), view, plugin - box.getPosition()); column >= 0)
+                return view.columns[(size_t) column];
+        }
+    }
+
+    // ...else any control of the plugin's own parameters.
+    const auto index = widgetAt (plugin, true);
+
+    if (index < 0)
+        return 0;
+
+    const auto destination = destinationOf (layout.widgets[(size_t) index]);
+
+    if (destination > 0 && control != nullptr)
+        *control = index;
+
+    return destination;
+}
+
+//==============================================================================
+void PluginCanvas::drawMatrixPart (juce::Graphics& g, int index)
+{
+    const auto& w = layout.widgets[(size_t) index];
+    const auto d = ModMatrix::designOf (w);
+    const auto home = matrixHomeOf (w);
+    const auto view = matrixView (layout.widgets[(size_t) juce::jmax (0, home)]);
+    const auto style = d.getProperty ("style", {}).toString().trim().toLowerCase();
+    const auto source = ModMatrix::sourceOf (d);
+    juce::String label;
+    bool lit = false;
+
+    if (style == "jack" && ModMatrix::roleOf (d) == "in")
+    {
+        const auto target = ModMatrix::targetOf (d);
+        const auto* p = paramById (target);
+        label = w.label.isNotEmpty() ? w.label : p != nullptr ? (p->name.isNotEmpty() ? p->name : p->id) : juce::String ("In");
+        const auto destination = matrixDestinationIds().indexOf (target) + 1;
+
+        for (const auto& r : view.routes)
+            lit = lit || (r.active() && r.destination == destination);
+    }
+    else
+    {
+        label = w.label.isNotEmpty() ? w.label : juce::isPositiveAndBelow (source - 1, view.sources.size()) ? view.sources[source - 1] : "Source " + juce::String (source);
+
+        if (style == "assign")
+            lit = assigning.widget == index;
+        else if (style == "chip")
+            lit = (matrixDrag.widget == index && matrixDrag.moved) || (assigning.widget == index);
+        else
+            for (const auto& r : view.routes)
+                lit = lit || (r.active() && r.source == source);
+    }
+
+    ModMatrix::paintPart (g, d, w.bounds.toFloat(), label, lit);
+}
+
+void PluginCanvas::drawMatrixOverlay (juce::Graphics& g)
+{
+    const auto homes = matrixHomes();
+
+    if (homes.empty())
+        return;
+
+    const auto ids = matrixDestinationIds();
+
+    for (const int home : homes)
+    {
+        const auto& hw = layout.widgets[(size_t) home];
+        const auto base = matrixBase (hw);
+        const auto d = ModMatrix::designOf (hw);
+        const auto view = matrixView (hw);
+        const float sag = juce::jlimit (0.0f, 100.0f, (float) (double) d.getProperty ("sag", 40.0)) * 0.01f;
+        float thickness = 4.0f;
+
+        // Where each source's cable starts and each destination's ends: a jack lying on its
+        // own first, else a patch bay's.
+        struct End { int bay = -1; juce::Point<float> at; };
+        std::map<int, End> outs, ins;
+        std::set<std::pair<int, int>> bayOuts, bayIns;   // (bay, source), (bay, destination)
+
+        for (int i = 0; i < (int) layout.widgets.size(); ++i)
+        {
+            const auto& w = layout.widgets[(size_t) i];
+
+            if (w.type != GuiWidget::Type::matrix || matrixBase (w) != base || ! isShown (w))
+                continue;
+
+            const auto wd = ModMatrix::designOf (w);
+            const auto box = w.bounds.toFloat();
+
+            if (ModMatrix::isPart (wd))
+            {
+                if (! wd.getProperty ("style", {}).toString().trim().equalsIgnoreCase ("jack"))
+                    continue;
+
+                const auto at = ModMatrix::partPoint (wd, box);
+                thickness = juce::jmax (thickness, juce::jmin (box.getWidth(), box.getHeight() * 0.62f) * 0.27f);
+
+                if (ModMatrix::roleOf (wd) == "out")
+                    outs[ModMatrix::sourceOf (wd)] = { -1, at };
+                else if (const auto destination = ids.indexOf (ModMatrix::targetOf (wd)) + 1; destination > 0)
+                    ins[destination] = { -1, at };
+            }
+            else if (ModMatrix::styleOf (wd) == "patch")
+            {
+                const auto v = matrixView (w);
+                const auto zero = box.withZeroOrigin();
+
+                for (int s = 0; s < v.sources.size(); ++s)
+                {
+                    bayOuts.insert ({ i, s + 1 });
+
+                    if (outs.count (s + 1) == 0)
+                        outs[s + 1] = { i, ModMatrix::outputPoint (wd, zero, v, s) + box.getPosition() };
+                }
+
+                for (size_t c = 0; c < v.columns.size(); ++c)
+                {
+                    bayIns.insert ({ i, v.columns[c] });
+
+                    if (ins.count (v.columns[c]) == 0)
+                        ins[v.columns[c]] = { i, ModMatrix::inputPoint (wd, zero, v, (int) c) + box.getPosition() };
+                }
+            }
+        }
+
+        // The cables across the window (one a patch bay shows both ends of is its own).
+        for (size_t r = 0; r < view.routes.size(); ++r)
+        {
+            const auto& route = view.routes[r];
+
+            if (! route.active() || outs.count (route.source) == 0 || ins.count (route.destination) == 0)
+                continue;
+
+            bool bays = false;
+
+            for (const auto& [bay, source] : bayOuts)
+                bays = bays || (source == route.source && bayIns.count ({ bay, route.destination }) > 0);
+
+            if (bays)
+                continue;
+
+            const auto& from = outs[route.source];
+            const auto& to = ins[route.destination];
+
+            ModMatrix::paintCable (g, from.at, to.at, thickness, sag, ModMatrix::cableColour (d, (int) r));
+        }
+
+        // A cable being plugged from a part (or out of a patch bay, past its edge).
+        if (juce::isPositiveAndBelow (matrixDrag.widget, (int) layout.widgets.size()) && matrixDrag.moved
+            && matrixBase (layout.widgets[(size_t) matrixDrag.widget]) == base && matrixDrag.source > 0)
+        {
+            int free = 0;
+
+            while (free < (int) view.routes.size() - 1 && view.routes[(size_t) free].active())
+                ++free;
+
+            const auto colour = ModMatrix::cableColour (d, free);
+            int control = -1;
+
+            if (modTargetAt (matrixDrag.to, base, &control) > 0 && control >= 0)
+            {
+                const auto area = layout.widgets[(size_t) control].bounds.toFloat().expanded (3.0f);
+                g.setColour (colour.withAlpha (0.25f));
+                g.fillRoundedRectangle (area, 6.0f);
+                g.setColour (colour);
+                g.drawRoundedRectangle (area, 6.0f, 2.0f);
+            }
+
+            if (ModMatrix::styleOf (ModMatrix::designOf (layout.widgets[(size_t) matrixDrag.widget])) != "patch"
+                || ! layout.widgets[(size_t) matrixDrag.widget].bounds.toFloat().contains (matrixDrag.to))
+                ModMatrix::paintCable (g, matrixDrag.anchor, matrixDrag.to, thickness, sag, colour.withAlpha (0.85f));
+        }
+    }
+
+    // Each control modulated: a ring a route, its amount from its value.
+    const auto modulations = allModulations();
+
+    for (const auto& w : layout.widgets)
+    {
+        if ((w.type != GuiWidget::Type::knob && w.type != GuiWidget::Type::slider) || ! isShown (w))
+            continue;
+
+        const auto* p = paramFor (w);
+        const auto destination = p != nullptr ? ids.indexOf (w.param) + 1 : 0;
+
+        if (destination <= 0)
+            continue;
+
+        const auto found = modulations.find (destination);
+
+        if (found == modulations.end())
+            continue;
+
+        const auto& mods = found->second;
+        const auto value = proportionOf (*p, currentValue (*p));
+        const bool knob = w.type == GuiWidget::Type::knob;
+        const auto box = knob ? knobSquare (w).toFloat() : movingAreaOf (w).toFloat().reduced (4.0f);
+
+        for (size_t i = 0; i < mods.size(); ++i)
+            ModMatrix::paintRing (g, box, knob, w.vertical, value, mods[i].amount, mods[i].colour, (int) i);
+    }
+
+    // Assigning: the controls it may route to, pulsing.
+    if (! design && juce::isPositiveAndBelow (assigning.widget, (int) layout.widgets.size()))
+    {
+        const auto colour = ModMatrix::cableColour (ModMatrix::designOf (layout.widgets[(size_t) assigning.widget]), 0);
+        const auto accent = ModMatrix::designOf (layout.widgets[(size_t) assigning.widget]).getProperty ("colour", {}).toString();
+        const auto glow = accent.isNotEmpty() ? juce::Colour::fromString (accent) : colour;
+        const auto pulse = 0.5f + 0.5f * std::sin ((float) juce::Time::getMillisecondCounterHiRes() * 0.006f);
+
+        for (const auto& w : layout.widgets)
+            if (isShown (w) && w.type != GuiWidget::Type::matrix && w.param.isNotEmpty() && ids.contains (w.param))
+            {
+                const auto area = w.bounds.toFloat().expanded (3.0f);
+                g.setColour (glow.withAlpha (0.08f + 0.12f * pulse));
+                g.fillRoundedRectangle (area, 6.0f);
+                g.setColour (glow.withAlpha (0.45f + 0.5f * pulse));
+                g.drawRoundedRectangle (area, 6.0f, 1.5f);
+            }
+    }
+}
+
+//==============================================================================
+juce::Point<float> PluginCanvas::sourceEnd (const juce::String& base, int source, juce::Point<float> fallback) const
+{
+    // A source's output jack lying on its own, else a patch bay's.
+    std::optional<juce::Point<float>> bay;
+
+    for (const auto& w : layout.widgets)
+    {
+        if (w.type != GuiWidget::Type::matrix || matrixBase (w) != base || ! isShown (w))
+            continue;
+
+        const auto d = ModMatrix::designOf (w);
+
+        if (ModMatrix::isPart (d))
+        {
+            if (d.getProperty ("style", {}).toString().trim().equalsIgnoreCase ("jack") && ModMatrix::roleOf (d) == "out" && ModMatrix::sourceOf (d) == source)
+                return ModMatrix::partPoint (d, w.bounds.toFloat());
+        }
+        else if (! bay.has_value() && ModMatrix::styleOf (d) == "patch")
+        {
+            const auto view = matrixView (w);
+
+            if (juce::isPositiveAndBelow (source - 1, view.sources.size()))
+                bay = ModMatrix::outputPoint (d, w.bounds.toFloat().withZeroOrigin(), view, source - 1) + w.bounds.toFloat().getPosition();
+        }
+    }
+
+    return bay.value_or (fallback);
+}
+
+void PluginCanvas::partPress (int index, juce::Point<float> plugin, bool popupMenu)
+{
+    const auto& w = layout.widgets[(size_t) index];
+    const auto d = ModMatrix::designOf (w);
+    const auto style = d.getProperty ("style", {}).toString().trim().toLowerCase();
+    const auto homeIndex = matrixHomeOf (w);
+    const auto& home = layout.widgets[(size_t) juce::jmax (0, homeIndex)];
+    const auto view = matrixView (home);
+    const auto source = ModMatrix::sourceOf (d);
+    juce::ignoreUnused (plugin);
+
+    // Taken out at once (a right-click): every cable from this source, or into this input.
+    auto removeWhere = [this, &home, &view] (auto&& matches)
+    {
+        for (size_t r = 0; r < view.routes.size(); ++r)
+            if (view.routes[r].active() && matches (view.routes[r]))
+                setMatrixRoute (home, (int) r, 0, 0, 0.0f);
+    };
+
+    // An assign button: on and off.
+    if (style == "assign")
+    {
+        matrixDrag = {};
+
+        if (popupMenu)
+            removeWhere ([source] (const ModMatrix::Route& r) { return r.source == source; });
+        else if (assigning.widget == index)
+            endAssigning();
+        else
+        {
+            assigning = { index, source };
+            repaint();
+        }
+
+        return;
+    }
+
+    // An input jack: its last cable pulled out (still hanging from its source).
+    if (style == "jack" && ModMatrix::roleOf (d) == "in")
+    {
+        const auto destination = matrixDestinationIds().indexOf (ModMatrix::targetOf (d)) + 1;
+
+        if (popupMenu)
+        {
+            removeWhere ([destination] (const ModMatrix::Route& r) { return r.destination == destination; });
+            matrixDrag = {};
+            return;
+        }
+
+        int last = -1;
+
+        for (size_t r = 0; r < view.routes.size(); ++r)
+            if (view.routes[r].active() && view.routes[r].destination == destination)
+                last = (int) r;
+
+        if (destination <= 0 || last < 0)
+        {
+            matrixDrag = {};
+            return;
+        }
+
+        const auto& route = view.routes[(size_t) last];
+        matrixDrag.source = route.source;
+        matrixDrag.amount = route.amount;
+        matrixDrag.hit.column = destination;    // a click (no drag) plugs it back
+        matrixDrag.anchor = sourceEnd (matrixBase (w), route.source, ModMatrix::partPoint (d, w.bounds.toFloat()));
+        setMatrixRoute (home, last, 0, 0, -3.0f);
+        return;
+    }
+
+    // An output jack, a source chip: a cable from its source.
+    if (popupMenu)
+    {
+        removeWhere ([source] (const ModMatrix::Route& r) { return r.source == source; });
+        matrixDrag = {};
+        return;
+    }
+
+    matrixDrag.source = source;
+    matrixDrag.amount = d.hasProperty ("amount") ? newAmountOf (w) : newAmountOf (home);
+    matrixDrag.anchor = ModMatrix::partPoint (d, w.bounds.toFloat());
+}
+
+void PluginCanvas::partRelease()
+{
+    const auto index = matrixDrag.widget;
+    const auto& w = layout.widgets[(size_t) index];
+    const auto d = ModMatrix::designOf (w);
+    const auto style = d.getProperty ("style", {}).toString().trim().toLowerCase();
+    const auto home = matrixHomeOf (w);
+
+    if (matrixDrag.source > 0)
+    {
+        if (! matrixDrag.moved)
+        {
+            // A chip clicked: assigning from its source (again: no more); an input jack
+            // clicked: its cable back in.
+            if (style == "chip")
+            {
+                if (assigning.widget == index)
+                    endAssigning();
+                else
+                    assigning = { index, matrixDrag.source };
+            }
+            else if (matrixDrag.hit.column > 0)
+                routeSource (home, matrixDrag.source, matrixDrag.hit.column, matrixDrag.amount);
+        }
+        else if (const auto destination = modTargetAt (matrixDrag.to, matrixBase (w)); destination > 0)
+        {
+            routeSource (home, matrixDrag.source, destination, matrixDrag.amount);
+        }
+    }
+
+    matrixDrag = {};
+    repaint();
+}
+
+bool PluginCanvas::modulationPress (int index, juce::Point<float> plugin, const juce::ModifierKeys& mods)
+{
+    juce::ignoreUnused (plugin);
+    amountDrag = {};
+
+    if (! juce::isPositiveAndBelow (index, (int) layout.widgets.size()))
+        return false;
+
+    const auto& w = layout.widgets[(size_t) index];
+    const auto destination = destinationOf (w);
+
+    if (destination <= 0)
+        return false;
+
+    // Assigning: the control clicked routed from its source (a drag sets how much).
+    if (juce::isPositiveAndBelow (assigning.widget, (int) layout.widgets.size()))
+    {
+        const auto& part = layout.widgets[(size_t) assigning.widget];
+        const auto home = matrixHomeOf (part);
+
+        if (home >= 0 && routeSource (home, assigning.source, destination, newAmountOf (part)))
+            for (const auto& m : modulationsOf (destination))
+                if (m.home == home && m.source == assigning.source)
+                    amountDrag = { home, m.route, m.amount, plugin.y };
+
+        repaint();
+        return true;
+    }
+
+    const auto found = modulationsOf (destination);
+
+    if (found.empty())
+        return false;
+
+    // Its modulation's menu: each route's amount and a way out.
+    if (mods.isPopupMenu())
+    {
+        juce::PopupMenu choices;
+        choices.addSectionHeader ("Modulation");
+
+        for (size_t i = 0; i < found.size(); ++i)
+        {
+            const auto view = matrixView (layout.widgets[(size_t) found[i].home]);
+            const auto name = juce::isPositiveAndBelow (found[i].source - 1, view.sources.size()) ? view.sources[found[i].source - 1] : "Source " + juce::String (found[i].source);
+            choices.addColouredItem ((int) i + 1, "Remove " + name + " (" + (found[i].amount >= 0 ? "+" : "") + juce::String (juce::roundToInt (found[i].amount * 100.0f)) + "%)",
+                                  found[i].colour, true, false);
+        }
+
+        if (found.size() > 1)
+        {
+            choices.addSeparator();
+            choices.addItem (1000, "Remove all its modulation");
+        }
+
+        choices.showMenuAsync (juce::PopupMenu::Options().withMousePosition(),
+                            [safeThis = juce::Component::SafePointer<PluginCanvas> (this), found] (int result)
+                            {
+                                if (safeThis == nullptr || result <= 0)
+                                    return;
+
+                                for (size_t i = 0; i < found.size(); ++i)
+                                    if ((result == 1000 || result == (int) i + 1) && juce::isPositiveAndBelow (found[i].home, (int) safeThis->layout.widgets.size()))
+                                        safeThis->setMatrixRoute (safeThis->layout.widgets[(size_t) found[i].home], found[i].route, 0, 0, 0.0f);
+                            });
+        return true;
+    }
+
+    // Alt + drag: its (last) modulation's amount.
+    if (mods.isAltDown())
+    {
+        amountDrag = { found.back().home, found.back().route, found.back().amount, plugin.y };
+        return true;
+    }
+
+    return false;
+}
+
+bool PluginCanvas::modulationWheel (int index, float delta)
+{
+    if (! juce::isPositiveAndBelow (index, (int) layout.widgets.size()))
+        return false;
+
+    const auto found = modulationsOf (destinationOf (layout.widgets[(size_t) index]));
+
+    if (found.empty())
+        return false;
+
+    setMatrixRoute (layout.widgets[(size_t) found.back().home], found.back().route, -1, -1, juce::jlimit (-1.0f, 1.0f, found.back().amount + delta * 0.1f));
+    return true;
+}
+
+void PluginCanvas::endAssigning()
+{
+    if (assigning.widget >= 0)
+    {
+        assigning = {};
+        repaint();
+    }
+}
+
+//==============================================================================
+PluginCanvas::PresetState& PluginCanvas::presetState (int index)
+{
+    if (const auto found = presetStates.find (index); found != presetStates.end())
+        return found->second;
+
+    auto& state = presetStates[index];
+
+    if (juce::isPositiveAndBelow (index, (int) layout.widgets.size()))
+        state.sideOpen = PresetPanel::startsOpen (PresetPanel::designOf (layout.widgets[(size_t) index]));
+
+    return state;
+}
+
+PresetPanel::View PluginCanvas::presetView (int index) const
+{
+    // The plugin's presets; a panel with none yet (KnobMaster, a plugin not built yet): made-up ones.
+    auto view = presetMenu.names.isEmpty() ? PresetPanel::sampleView() : PresetPanel::View();
+
+    if (presetMenu.names.isEmpty())
+    {
+        view.current = juce::jlimit (0, view.names.size() - 1, demoPreset);
+    }
+    else
+    {
+        view.names = presetMenu.names;
+        view.groups = presetMenu.groups;
+
+        while (view.groups.size() < view.names.size())
+            view.groups.add ({});
+
+        view.current = presetMenu.current;
+        view.modified = presetMenu.modified;
+    }
+
+    if (const auto found = presetStates.find (index); found != presetStates.end())
+    {
+        view.page = found->second.page;
+        view.tab = found->second.tab;
+        view.search = found->second.search;
+        view.searching = found->second.searching && ! design;
+    }
+
+    return view;
+}
+
+bool PluginCanvas::sideOpen (int index) const
+{
+    if (! juce::isPositiveAndBelow (index, (int) layout.widgets.size()))
+        return false;
+
+    const auto d = PresetPanel::designOf (layout.widgets[(size_t) index]);
+
+    if (design || ! PresetPanel::toggles (d))
+        return true;
+
+    const auto found = presetStates.find (index);
+    return found != presetStates.end() ? found->second.sideOpen : PresetPanel::startsOpen (d);
+}
+
+void PluginCanvas::syncSideModules()
+{
+    for (auto& w : layout.widgets)
+        if (PresetPanel::has (w))
+            if (const auto d = PresetPanel::designOf (w); PresetPanel::isSide (d))
+                w.bounds = PresetPanel::moduleArea (d, layout.width, layout.height);
+}
+
+juce::Rectangle<int> PluginCanvas::windowBounds() const
+{
+    juce::Rectangle<int> window (0, 0, layout.width, layout.height);
+
+    for (int i = 0; i < (int) layout.widgets.size(); ++i)
+    {
+        const auto& w = layout.widgets[(size_t) i];
+
+        if (PresetPanel::has (w) && PresetPanel::isSide (PresetPanel::designOf (w)) && isShown (w) && sideOpen (i))
+            window = window.getUnion (PresetPanel::moduleArea (PresetPanel::designOf (w), layout.width, layout.height));
+    }
+
+    return window;
+}
+
+juce::Rectangle<float> PluginCanvas::windowArea() const
+{
+    return toView (windowBounds());
+}
+
+juce::Rectangle<float> PluginCanvas::presetPopupArea (int index) const
+{
+    const auto& w = layout.widgets[(size_t) index];
+    return PresetPanel::popupArea (PresetPanel::designOf (w), w.bounds.toFloat(), windowBounds().toFloat(), presetView (index));
+}
+
+void PluginCanvas::drawPresetWidget (juce::Graphics& g, int index)
+{
+    const auto& w = layout.widgets[(size_t) index];
+    const auto d = PresetPanel::designOf (w);
+    const auto style = PresetPanel::styleOf (d);
+    const auto view = presetView (index);
+    const float resolution = juce::jlimit (1.0f, 3.0f, zoom);
+
+    if (style == "side")
+    {
+        if (sideOpen (index))
+            PresetPanel::paintBody (g, d, w.bounds.toFloat(), view, layout.lightAngle, layout.lightAltitude, resolution);
+    }
+    else if (style == "table" && ! PresetPanel::opensPopup (d))
+    {
+        PresetPanel::paintBody (g, d, w.bounds.toFloat(), view, layout.lightAngle, layout.lightAltitude, resolution);
+    }
+    else
+    {
+        PresetPanel::paintBar (g, d, w.bounds.toFloat(), view, layout.lightAngle, layout.lightAltitude, resolution);
+    }
+}
+
+void PluginCanvas::drawPresetOverlay (juce::Graphics& g)
+{
+    // The handles that open and close side panels, on the window's edges.
+    for (int i = 0; i < (int) layout.widgets.size(); ++i)
+    {
+        const auto& w = layout.widgets[(size_t) i];
+
+        if (! PresetPanel::has (w) || ! isShown (w))
+            continue;
+
+        if (const auto d = PresetPanel::designOf (w); PresetPanel::isSide (d) && PresetPanel::toggles (d))
+            PresetPanel::paintHandle (g, d, PresetPanel::handleArea (d, layout.width, layout.height), sideOpen (i));
+    }
+
+    // The list or the table that's open, over everything.
+    if (! design && juce::isPositiveAndBelow (presetPopup, (int) layout.widgets.size()) && PresetPanel::has (layout.widgets[(size_t) presetPopup]))
+        PresetPanel::paintBody (g, PresetPanel::designOf (layout.widgets[(size_t) presetPopup]), presetPopupArea (presetPopup), presetView (presetPopup),
+                                layout.lightAngle, layout.lightAltitude, juce::jlimit (1.0f, 3.0f, zoom));
+}
+
+bool PluginCanvas::presetPress (juce::Point<float> plugin, bool popupMenu)
+{
+    juce::ignoreUnused (popupMenu);
+
+    // The list or the table that's open: what's clicked in it; a click elsewhere closes it.
+    if (juce::isPositiveAndBelow (presetPopup, (int) layout.widgets.size()))
+    {
+        const auto index = presetPopup;
+        const auto area = presetPopupArea (index);
+
+        if (area.contains (plugin))
+        {
+            presetBodyHit (index, PresetPanel::hitBody (PresetPanel::designOf (layout.widgets[(size_t) index]), area, presetView (index), plugin), area);
+            return true;
+        }
+
+        presetPopup = -1;
+        endPresetSearch();
+        repaint();
+        return true;
+    }
+
+    presetPopup = -1;
+
+    // A side panel's handle: it opens or closes, the window wider or narrower.
+    for (int i = 0; i < (int) layout.widgets.size(); ++i)
+    {
+        const auto& w = layout.widgets[(size_t) i];
+
+        if (! PresetPanel::has (w) || ! isShown (w))
+            continue;
+
+        if (const auto d = PresetPanel::designOf (w); PresetPanel::isSide (d) && PresetPanel::toggles (d)
+                                                      && PresetPanel::handleArea (d, layout.width, layout.height).contains (plugin))
+        {
+            auto& state = presetState (i);
+            state.sideOpen = ! state.sideOpen;
+            endPresetSearch();
+
+            if (onWindowChanged != nullptr)
+                onWindowChanged();
+
+            if (autoFit)
+                fitToView();
+
+            repaint();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void PluginCanvas::presetWidgetPress (int index, juce::Point<float> plugin, bool popupMenu)
+{
+    const auto& w = layout.widgets[(size_t) index];
+    const auto d = PresetPanel::designOf (w);
+    const auto style = PresetPanel::styleOf (d);
+    const auto box = w.bounds.toFloat();
+
+    // A table on the panel, a side panel: what's clicked in it.
+    if (style == "side" || (style == "table" && ! PresetPanel::opensPopup (d)))
+    {
+        presetBodyHit (index, PresetPanel::hitBody (d, box, presetView (index), plugin), box);
+        return;
+    }
+
+    // The bar: the arrows step; the name opens the list, the table (the classic: its menu).
+    endPresetSearch();
+    const auto hit = PresetPanel::hitBar (d, box, plugin);
+
+    if (hit.kind == PresetPanel::Hit::Kind::prev || hit.kind == PresetPanel::Hit::Kind::next)
+    {
+        if (! popupMenu)
+        {
+            stepPreset (hit.kind == PresetPanel::Hit::Kind::prev ? -1 : 1);
+            return;
+        }
+    }
+
+    if (style == "bar" || popupMenu)
+    {
+        showPresetMenu (box);
+        return;
+    }
+
+    presetPopup = index;
+    repaint();
+}
+
+void PluginCanvas::presetBodyHit (int index, const PresetPanel::Hit& hit, juce::Rectangle<float> area)
+{
+    using Kind = PresetPanel::Hit::Kind;
+    auto& state = presetState (index);
+    const auto d = PresetPanel::designOf (layout.widgets[(size_t) index]);
+    const bool inPopup = presetPopup == index;
+
+    if (hit.kind != Kind::search)
+        endPresetSearch();
+
+    switch (hit.kind)
+    {
+        case Kind::preset:
+            choosePreset (hit.index);
+
+            if (inPopup)
+                presetPopup = -1;
+            break;
+
+        case Kind::tab:
+            state.tab = hit.index;
+            state.page = 0;
+            break;
+
+        case Kind::search:
+            state.searching = true;
+            grabKeyboardFocus();
+            break;
+
+        case Kind::pagePrev:
+        case Kind::pageNext:
+        {
+            const int pages = PresetPanel::pagesOf (d, area, presetView (index));
+            state.page = juce::jlimit (0, pages - 1, state.page + (hit.kind == Kind::pageNext ? 1 : -1));
+            break;
+        }
+
+        case Kind::action:
+            if (inPopup)
+                presetPopup = -1;
+
+            presetAction (hit.index);
+            break;
+
+        case Kind::more:
+            if (inPopup)
+                presetPopup = -1;
+
+            presetAction (3);
+            break;
+
+        case Kind::none:
+        case Kind::body:
+        case Kind::prev:
+        case Kind::next:
+        case Kind::open:
+        default:
+            break;
+    }
+
+    repaint();
+}
+
+bool PluginCanvas::presetWheel (juce::Point<float> plugin, float delta)
+{
+    auto turnPage = [this, delta] (int index, juce::Rectangle<float> area)
+    {
+        auto& state = presetState (index);
+        const int pages = PresetPanel::pagesOf (PresetPanel::designOf (layout.widgets[(size_t) index]), area, presetView (index));
+        state.page = juce::jlimit (0, pages - 1, state.page + (delta < 0.0f ? 1 : -1));
+        repaint();
+    };
+
+    if (juce::isPositiveAndBelow (presetPopup, (int) layout.widgets.size()))
+    {
+        if (const auto area = presetPopupArea (presetPopup); area.contains (plugin))
+        {
+            turnPage (presetPopup, area);
+            return true;
+        }
+    }
+
+    const auto index = widgetAt (plugin, true);
+
+    if (index < 0 || ! PresetPanel::has (layout.widgets[(size_t) index]))
+        return false;
+
+    const auto& w = layout.widgets[(size_t) index];
+    const auto d = PresetPanel::designOf (w);
+
+    if (PresetPanel::isSide (d) || (PresetPanel::styleOf (d) == "table" && ! PresetPanel::opensPopup (d)))
+        turnPage (index, w.bounds.toFloat());
+    else
+        stepPreset (delta < 0.0f ? 1 : -1);
+
+    return true;
+}
+
+bool PluginCanvas::presetKey (const juce::KeyPress& key)
+{
+    for (auto& [index, state] : presetStates)
+    {
+        if (! state.searching)
+            continue;
+
+        if (key == juce::KeyPress::escapeKey || key == juce::KeyPress::returnKey)
+        {
+            if (key == juce::KeyPress::escapeKey)
+                state.search.clear();
+
+            state.searching = false;
+        }
+        else if (key == juce::KeyPress::backspaceKey)
+        {
+            state.search = state.search.dropLastCharacters (1);
+        }
+        else if (const auto c = key.getTextCharacter(); c >= ' ' && ! key.getModifiers().isCommandDown() && ! key.getModifiers().isCtrlDown())
+        {
+            state.search << juce::String::charToString (c);
+        }
+        else
+        {
+            return false;
+        }
+
+        state.page = 0;
+        repaint();
+        return true;
+    }
+
+    return false;
+}
+
+void PluginCanvas::endPresetSearch()
+{
+    for (auto& [index, state] : presetStates)
+        state.searching = false;
+}
+
+void PluginCanvas::stepPreset (int delta)
+{
+    if (presetMenu.names.isEmpty())
+    {
+        const int count = PresetPanel::sampleView().names.size();
+        demoPreset = ((demoPreset + delta) % count + count) % count;
+        repaint();
+        return;
+    }
+
+    if (const auto next = presetMenu.step (delta); next >= 0 && onPresetChosen != nullptr)
+        onPresetChosen (next);
+}
+
+void PluginCanvas::choosePreset (int index)
+{
+    if (presetMenu.names.isEmpty())
+        demoPreset = index;
+    else if (onPresetChosen != nullptr)
+        onPresetChosen (index);
+
+    repaint();
+}
+
+void PluginCanvas::presetAction (int action)
+{
+    if (onPresetAction == nullptr || presetMenu.names.isEmpty())
+    {
+        if (action == 3 && onPresetAction != nullptr)
+            showPresetMenu ({});
+
+        return;
+    }
+
+    if (action == 0)        onPresetAction (presetMenu.canSave ? PresetAction::save : PresetAction::saveAs);
+    else if (action == 1)   onPresetAction (PresetAction::saveAs);
+    else if (action == 2)   onPresetAction (PresetAction::loadFile);
+    else                    showPresetMenu ({});
+}
+
+void PluginCanvas::showPresetMenu (juce::Rectangle<float> pluginArea)
+{
+    if (presetMenu.names.isEmpty() && onPresetAction == nullptr)
+        return;
+
+    static constexpr int presetIds = 1, actionIds = 100000;
+    juce::PopupMenu choices;
+
+    // From a bar: the presets, then what to do; from a More key: what to do.
+    if (! pluginArea.isEmpty())
+        PresetMenus::addPresets (choices, presetMenu, presetIds);
+
+    if (onPresetAction != nullptr)
+    {
+        if (! pluginArea.isEmpty())
+            choices.addSeparator();
+
+        PresetMenus::addActions (choices, presetMenu, actionIds);
+    }
+
+    auto options = juce::PopupMenu::Options();
+    options = pluginArea.isEmpty() ? options.withMousePosition()
+                                   : options.withTargetScreenArea (localAreaToGlobal (toView (pluginArea.toNearestInt()).toNearestInt()))
+                                            .withMinimumWidth (juce::jmax (180, (int) toView (pluginArea.toNearestInt()).getWidth()));
+
+    choices.showMenuAsync (options, [safeThis = juce::Component::SafePointer<PluginCanvas> (this)] (int choice)
+                           {
+                               if (safeThis == nullptr || choice <= 0)
+                                   return;
+
+                               if (choice >= actionIds)
+                               {
+                                   if (safeThis->onPresetAction != nullptr)
+                                       safeThis->onPresetAction ((PresetAction) (choice - actionIds));
+                               }
+                               else if (safeThis->onPresetChosen != nullptr)
+                               {
+                                   safeThis->onPresetChosen (choice - presetIds);
+                               }
+                           });
+}
+
+void PluginCanvas::editBody()
+{
+    if (! hasPanel())
+        return;
+
+    if (bodyEditorWindow == nullptr)
+        bodyEditorWindow = BodyEditor::makeWindow (*this);
+
+    bodyEditorWindow->setVisible (true);
+    bodyEditorWindow->toFront (true);
+}
+
+void PluginCanvas::showShowroom()
+{
+    editBody();   // the Showroom is where the body's seen and edited
+}
+
+juce::Image PluginCanvas::controlsPicture (float scale, bool withBackground)
+{
+    if (! hasPanel() || layout.width <= 0 || layout.height <= 0)
+        return {};
+
+    const juce::ScopedValueSetter<int> noHover (hovered, -1), noActive (active, -1);
+    const juce::ScopedValueSetter<bool> asPlayed (design, false), sharp (baking, true);
+
+    scale = juce::jlimit (0.25f, 4.0f, scale);
+    juce::Image image (juce::Image::ARGB, juce::jmax (1, juce::roundToInt ((float) layout.width * scale)),
+                       juce::jmax (1, juce::roundToInt ((float) layout.height * scale)), true);
+
+    {
+        juce::Graphics g (image);
+        g.addTransform (juce::AffineTransform::scale (scale));
+
+        // The panel's own picture (not its body): its colours and its background image.
+        if (withBackground)
+        {
+            const auto plugin = juce::Rectangle<float> (0.0f, 0.0f, (float) layout.width, (float) layout.height);
+            g.setGradientFill (juce::ColourGradient (layout.backgroundTop, 0.0f, 0.0f, layout.backgroundBottom, 0.0f, plugin.getBottom(), false));
+            g.fillRect (plugin);
+
+            if (layout.backgroundImage.isNotEmpty())
+                drawPicture (g, layout.backgroundImage, plugin, layout.backgroundMode);
+        }
+
+        for (int i = 0; i < (int) layout.widgets.size(); ++i)
+            if (isShown (layout.widgets[(size_t) i]))
+                drawWidget (g, i);
+    }
+
+    return image;
+}
+
+void PluginCanvas::drawBody (juce::Graphics& g)
+{
+    const auto key = bodyKeyNow();
+
+    if (key.isEmpty())
+        return;
+
+    const auto lightAngle = layout.lightAngle, lightAltitude = layout.lightAltitude, distance = layout.cameraDistance();
+    const auto images = imagesFolder();
+
+    // Export, and a picture of the panel: the sharp one, now.
+    if (baking && (key != bodyKey || ! bodySharp))
+    {
+        if (std::shared_ptr<const Body3D> body = Body3D::fromVar (layout.body, layout.width, layout.height, images))
+        {
+            bodyImage = Render3D::renderBody (*body, 1.0f, lightAngle, lightAltitude, distance);
+            bodyKey = key;
+            bodySharp = true;
+
+            if (const auto shapeKey = bodyShapeKeyNow(); shapeKey != bodyShapeKey)
+            {
+                bodyShape = body;
+                bodyShapeKey = shapeKey;
+                faceSlopes.clear();
+            }
+        }
+    }
+
+    // Changed: rendered on its thread, quickly first and then sharp; the last one stands in meanwhile.
+    if (! baking && key != bodyKey && key != bodyPending && bodyPainter != nullptr)
+    {
+        bodyPending = key;
+        bodyPainter->removeAllJobs (false, 0);
+        const auto generation = ++*bodyGeneration;
+
+        bodyPainter->addJob ([safeThis = juce::Component::SafePointer<PluginCanvas> (this), json = layout.body.clone(), key,
+                              shapeKey = bodyShapeKeyNow(), w = layout.width, h = layout.height, lightAngle, lightAltitude, distance, images,
+                              latest = bodyGeneration, generation]
+        {
+            // A newer body asked for since (an edit being dragged): this one's not wanted.
+            if (latest->load() != generation)
+                return;
+
+            const std::shared_ptr<const Body3D> body = Body3D::fromVar (json, w, h, images);
+
+            // Its shape, at once: what stands on its faces leans with them.
+            juce::MessageManager::callAsync ([safeThis, body, shapeKey]
+            {
+                if (safeThis == nullptr || safeThis->bodyShapeKey == shapeKey)
+                    return;
+
+                safeThis->bodyShape = body;
+                safeThis->bodyShapeKey = shapeKey;
+                safeThis->faceSlopes.clear();
+                safeThis->repaint();
+            });
+
+            for (int pass = 0; pass < 2; ++pass)
+            {
+                juce::Image image;
+
+                // The sharp one only for the newest: a newer one's quick picture first.
+                if (latest->load() != generation)
+                    return;
+
+                if (body != nullptr)
+                {
+                    if (pass == 0)
+                    {
+                        const Render3D::ScopedDraft quick;
+                        image = Render3D::renderBody (*body, 0.35f, lightAngle, lightAltitude, distance);
+                    }
+                    else
+                    {
+                        image = Render3D::renderBody (*body, 1.0f, lightAngle, lightAltitude, distance);
+                    }
+                }
+
+                const bool sharp = pass == 1;
+                juce::MessageManager::callAsync ([safeThis, image, key, sharp]
+                {
+                    if (safeThis == nullptr || safeThis->bodyPending != key)
+                        return;
+
+                    safeThis->bodyImage = image;
+                    safeThis->bodyImageMap.reset();   // its own picture now: nothing stretched
+                    safeThis->bodyKey = sharp ? key : juce::String();   // (the quick one: the sharp one's still to come)
+                    safeThis->bodySharp = sharp;
+
+                    if (sharp)
+                        safeThis->bodyPending.clear();
+
+                    safeThis->repaint();
+                });
+
+                if (safeThis == nullptr)
+                    return;
+            }
+        });
+    }
+
+    if (bodyImage.isValid())
+    {
+        juce::Graphics::ScopedSaveState state (g);
+        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+        g.setOpacity (1.0f);
+
+        // Being moved or resized (or just let go, its new picture still coming): the last
+        // picture stretched from where it was to where it is.
+        std::optional<std::pair<juce::Rectangle<float>, juce::Rectangle<float>>> map;
+
+        if (! baking && (drag == Drag::moveBody || drag == Drag::resizeBody || bodyInFrame))
+            map = std::make_pair (bodyImageMap.has_value() ? bodyImageMap->first : bodyStartRect, bodyDragRect);
+        else if (! baking && bodyImageMap.has_value())
+            map = bodyImageMap;
+
+        if (map.has_value() && ! map->first.isEmpty() && ! map->second.isEmpty())
+            g.addTransform (juce::AffineTransform::translation (-map->first.getX(), -map->first.getY())
+                                .scaled (map->second.getWidth() / map->first.getWidth(), map->second.getHeight() / map->first.getHeight())
+                                .translated (map->second.getX(), map->second.getY()));
+
+        g.drawImage (bodyImage, juce::Rectangle<float> (0.0f, 0.0f, (float) layout.width, (float) layout.height));
+    }
 }
 
 void PluginCanvas::drawPicture (juce::Graphics& g, const juce::String& name, juce::Rectangle<float> area, const juce::String& mode)
@@ -3045,7 +5635,7 @@ juce::Image PluginCanvas::snapshot (float scale)
         return {};
 
     const juce::ScopedValueSetter<int> noHover (hovered, -1), noActive (active, -1);
-    const juce::ScopedValueSetter<bool> asPlayed (design, false);
+    const juce::ScopedValueSetter<bool> asPlayed (design, false), sharpBody (baking, true);   // (the 3D body: the sharp one, now)
 
     scale = juce::jlimit (0.25f, 3.0f, scale);
     juce::Image image (juce::Image::ARGB, juce::jmax (1, juce::roundToInt ((float) layout.width * scale)),
@@ -3054,13 +5644,28 @@ juce::Image PluginCanvas::snapshot (float scale)
     {
         juce::Graphics g (image);
         g.addTransform (juce::AffineTransform::scale (scale));
-        drawPanel (g);
+        drawPanel (g, [&] (int i) { drawWidget (g, i); });
 
         for (int i = 0; i < (int) layout.widgets.size(); ++i)
-            drawWidget (g, i);
+            if (! isBehindBody (i))
+                drawWidget (g, i);
     }
 
     return image;
+}
+
+std::vector<juce::Image> PluginCanvas::snapshotPages (float scale)
+{
+    std::vector<juce::Image> pictures;
+    const juce::ScopedValueSetter<int> pageNow (shownPage, shownPage);
+
+    for (int page = 0; page < juce::jmax (1, layout.pages.size()); ++page)
+    {
+        shownPage = page;
+        pictures.push_back (snapshot (scale));
+    }
+
+    return pictures;
 }
 
 PluginCanvas::Bake PluginCanvas::bake()
@@ -3082,17 +5687,17 @@ PluginCanvas::Bake PluginCanvas::bake()
         const bool still = w.type == GuiWidget::Type::label || w.type == GuiWidget::Type::group || w.type == GuiWidget::Type::shape
                         || (w.type == GuiWidget::Type::image && w.image.isNotEmpty());
 
-        for (size_t below = 0; still && below < i && ! layered[i]; ++below)
+        for (size_t below = 0; still && ! isBehindBody ((int) i) && below < i && ! layered[i]; ++below)
             layered[i] = movingAreaOf (layout.widgets[below]).intersects (w.bounds)
                       || (layered[below] && layout.widgets[below].bounds.intersects (w.bounds));
     }
 
     {
         juce::Graphics g (result.background);
-        drawPanel (g);
+        drawPanel (g, [&] (int i) { drawWidget (g, i); });   // (behind the body: all of it, there)
 
         for (int i = 0; i < (int) layout.widgets.size(); ++i)
-            if (! layered[(size_t) i])
+            if (! layered[(size_t) i] && ! isBehindBody (i))
                 drawWidget (g, i, Part::still);
     }
 
@@ -3121,9 +5726,13 @@ PluginCanvas::Bake PluginCanvas::bake()
     for (int i = 0; i < (int) layout.widgets.size(); ++i)
     {
         const auto& w = layout.widgets[(size_t) i];
-        const auto area = layered[(size_t) i] ? w.bounds.getIntersection ({ 0, 0, layout.width, layout.height }) : movingAreaOf (w);
+        const auto area = isBehindBody (i) ? juce::Rectangle<int>()   // behind the 3D body: in the background, under it
+                        : layered[(size_t) i] ? w.bounds.getIntersection ({ 0, 0, layout.width, layout.height }) : movingAreaOf (w);
         result.stripOf.push_back (-1);
         result.movingArea.push_back (area);
+
+        if (isBehindBody (i))
+            continue;
 
         if (area.isEmpty())
             continue;
@@ -3154,8 +5763,10 @@ PluginCanvas::Bake PluginCanvas::bake()
             looks->setLight (layout.lightAngle, layout.lightAltitude);   // lit by the panel's global light
             const auto kind = Looks::kindOf (w);
             const auto& look = looks->lookFor (w);
+            const auto lean = Looks::leanFor (look, layout.cameraLean (area));   // a 3D look: where the panel camera sees it from
+            const auto slope = Looks::slopeFor (look, look.doc.model3d != nullptr ? faceSlope (area) : juce::Point<float>());   // ...on the body's face
             const auto key = juce::String (look.revision) + "|" + Looks::kindName (kind) + "|"
-                           + juce::String (area.getWidth()) + "x" + juce::String (area.getHeight());
+                           + juce::String (area.getWidth()) + "x" + juce::String (area.getHeight()) + Looks::leanKey (lean) + Looks::slopeKey (slope);
 
             // Its frames reach past its box by the look's shadows: drawn over the box expanded.
             const auto room = Looks::overhang (look, area.getWidth(), area.getHeight());
@@ -3168,7 +5779,7 @@ PluginCanvas::Bake PluginCanvas::bake()
             }
 
             Bake::Strip strip;
-            strip.image = looks->strip (look, kind, area.getWidth(), area.getHeight());
+            strip.image = looks->strip (look, kind, area.getWidth(), area.getHeight(), lean, slope);
             strip.frameWidth = area.getWidth() + 2 * room;
             strip.frameHeight = area.getHeight() + 2 * room;
             strip.frames = Looks::framesFor (look, kind);
@@ -3206,7 +5817,8 @@ PluginCanvas::Bake PluginCanvas::bake()
             case GuiWidget::Type::keyboard:           // its keys are in the background; the plugin draws the ones that are down
             case GuiWidget::Type::custom:             // the plugin draws it itself
             case GuiWidget::Type::registration:
-            case GuiWidget::Type::tabs: break;
+            case GuiWidget::Type::tabs:
+            case GuiWidget::Type::matrix: break;
         }
 
         if (frames == 0)
@@ -3236,6 +5848,20 @@ PluginCanvas::Bake PluginCanvas::bake()
 
 void PluginCanvas::paint (juce::Graphics& g)
 {
+    // An element being resized: its 3D pictures stretched as they are (made again, sharp, once
+    // it's let go), so the drag keeps up.
+    std::optional<Render3D::ScopedStretch> stretch;
+
+    if (drag == Drag::resizeElement)
+        stretch.emplace();
+
+    // 3D pictures not made yet: made in the background (the last ones standing in), so a
+    // change never holds the window up; painted again once they're made.
+    std::optional<Render3D::ScopedLater> later;
+
+    if (! baking)
+        later.emplace (*this);
+
     // A made plugin's window in Sonify: the panel and what's on it, nothing around it.
     if (panelOnly)
     {
@@ -3244,20 +5870,22 @@ void PluginCanvas::paint (juce::Graphics& g)
         if (! hasPanel())
             return;
 
+        syncSideModules();
         const auto area = panelArea();
         juce::Graphics::ScopedSaveState state (g);
-        g.reduceClipRegion (area.toNearestInt());
+        g.reduceClipRegion (windowArea().toNearestInt());
         g.addTransform (juce::AffineTransform::scale (zoom).translated (area.getX(), area.getY()));
 
-        drawPanel (g);
+        const auto painted = g.getClipBounds().toFloat();
+        drawPanel (g, [&] (int i) { if (! liesOutside (layout.widgets[(size_t) i], painted)) drawWidget (g, i); });
 
         // Only what lies in the area being painted (a knob turning paints its own square).
-        const auto painted = g.getClipBounds().toFloat();
-
         for (int i = 0; i < (int) layout.widgets.size(); ++i)
-            if (! liesOutside (layout.widgets[(size_t) i], painted))
+            if (! liesOutside (layout.widgets[(size_t) i], painted) && ! isBehindBody (i))
                 drawWidget (g, i);
 
+        drawMatrixOverlay (g);
+        drawPresetOverlay (g);
         drawElementPopups (g);
         return;
     }
@@ -3269,16 +5897,18 @@ void PluginCanvas::paint (juce::Graphics& g)
     if (! hasPanel())
         return;
 
+    syncSideModules();
     const auto area = panelArea();
 
-    juce::DropShadow (juce::Colours::black.withAlpha (0.45f), 18, { 0, 6 }).drawForRectangle (g, area.toNearestInt());
+    juce::DropShadow (juce::Colours::black.withAlpha (0.45f), 18, { 0, 6 }).drawForRectangle (g, windowArea().toNearestInt());
 
     {
         juce::Graphics::ScopedSaveState state (g);
-        g.reduceClipRegion (area.toNearestInt());
+        g.reduceClipRegion (windowArea().toNearestInt());
         g.addTransform (juce::AffineTransform::scale (zoom).translated (area.getX(), area.getY()));
 
-        drawPanel (g);
+        const auto painted = g.getClipBounds().toFloat();
+        drawPanel (g, [&] (int i) { if (! liesOutside (layout.widgets[(size_t) i], painted)) drawWidget (g, i); });
 
         // The alignment grid shows only while something is being moved or resized: the rest of
         // the time the window shows exactly as the plugin will (a grid over it looked like part
@@ -3295,15 +5925,45 @@ void PluginCanvas::paint (juce::Graphics& g)
                 g.drawHorizontalLine (y, 0.0f, plugin.getRight());
         }
 
-        const auto painted = g.getClipBounds().toFloat();
-
         for (int i = 0; i < (int) layout.widgets.size(); ++i)
-            if (! liesOutside (layout.widgets[(size_t) i], painted))
+            if (! liesOutside (layout.widgets[(size_t) i], painted) && ! isBehindBody (i))
                 drawWidget (g, i);
+
+        // The cables between a matrix's jacks across the window, the modulated controls' rings.
+        drawMatrixOverlay (g);
+
+        // The side panels' handles; a preset manager's open list or table, over everything.
+        drawPresetOverlay (g);
 
         // Programmed elements' popups lie over everything.
         if (! design)
             drawElementPopups (g);
+
+        // The Body editor's part, outlined where it lies.
+        if (design && ! bodyHighlight.isEmpty() && bodyEditorWindow != nullptr && bodyEditorWindow->isVisible())
+        {
+            // Corner marks just outside it, so the part itself stays in plain sight (a small
+            // or narrow one too).
+            const float px = 1.0f / juce::jmax (0.1f, zoom);
+            const auto box = bodyHighlight.getBounds().expanded (5.0f * px);
+            const auto arm = juce::jmin (12.0f * px, juce::jmax (4.0f * px, juce::jmin (box.getWidth(), box.getHeight()) * 0.35f));
+            juce::Path marks;
+
+            for (const auto& [corner, dx, dy] : { std::tuple<juce::Point<float>, float, float> { box.getTopLeft(), 1.0f, 1.0f },
+                                                  { box.getTopRight(), -1.0f, 1.0f },
+                                                  { box.getBottomRight(), -1.0f, -1.0f },
+                                                  { box.getBottomLeft(), 1.0f, -1.0f } })
+            {
+                marks.startNewSubPath (corner.translated (dx * arm, 0.0f));
+                marks.lineTo (corner);
+                marks.lineTo (corner.translated (0.0f, dy * arm));
+            }
+
+            g.setColour (juce::Colours::black.withAlpha (0.6f));
+            g.strokePath (marks, juce::PathStrokeType (3.5f * px, juce::PathStrokeType::mitered, juce::PathStrokeType::square));
+            g.setColour (Theme::accent);
+            g.strokePath (marks, juce::PathStrokeType (1.6f * px, juce::PathStrokeType::mitered, juce::PathStrokeType::square));
+        }
     }
 
     g.setColour (design ? (panelSelected ? Theme::accent : Theme::accent.withAlpha (0.55f)) : Theme::outline);
@@ -3327,6 +5987,7 @@ void PluginCanvas::paint (juce::Graphics& g)
     }
 
     drawPageStrip (g);
+    drawRulers (g);
 
     if (design && ! cropping)
     {
@@ -3336,6 +5997,33 @@ void PluginCanvas::paint (juce::Graphics& g)
         juce::Path corner;
         corner.addTriangle (grip.getTopRight(), grip.getBottomRight(), grip.getBottomLeft());
         g.fillPath (corner);
+
+        // The 3D body, selected: its box and its eight handles.
+        if (bodySelected && Body3D::hasParts (layout.body))
+        {
+            const auto box = toView (bodyBounds().getSmallestIntegerContainer());
+            g.setColour (juce::Colours::black.withAlpha (0.5f));
+            g.drawRect (box.expanded (1.0f), 3.0f);
+            g.setColour (Theme::accent);
+            g.drawRect (box, 1.5f);
+
+            for (int handle = 0; handle < 8; ++handle)
+            {
+                if (const auto area = bodyHandleArea (handle); ! area.isEmpty())
+                {
+                    g.setColour (juce::Colours::white);
+                    g.fillRect (area);
+                    g.setColour (Theme::accent.darker (0.3f));
+                    g.drawRect (area, 1.5f);
+                }
+            }
+
+            g.setColour (Theme::accent);
+            g.setFont (Theme::font (12.0f, true));
+            g.drawText ("3D BODY  " + juce::String (juce::roundToInt (bodyBounds().getWidth())) + juce::String::fromUTF8 (" \xc3\x97 ")
+                            + juce::String (juce::roundToInt (bodyBounds().getHeight())),
+                        juce::Rectangle<float> (box.getX() + 8.0f, box.getY() + 6.0f, 260.0f, 16.0f), juce::Justification::centredLeft, false);
+        }
 
         // Several selected: a frame round each (handles only for one alone).
         for (const auto index : manySelected)
@@ -3388,6 +6076,20 @@ void PluginCanvas::paint (juce::Graphics& g)
                 }
             }
 
+            // The "E" under it: its studio.
+            if (const auto tab = editTabArea(); ! tab.isEmpty())
+            {
+                g.setColour (Theme::accent.withAlpha (0.8f));
+                g.drawLine (tab.getCentreX(), handleCentre (5).y + handleSize * 0.5f, tab.getCentreX(), tab.getY(), 1.2f);
+                g.setColour (Theme::accent);
+                g.fillRoundedRectangle (tab, 4.0f);
+                g.setColour (juce::Colours::white.withAlpha (0.9f));
+                g.drawRoundedRectangle (tab.reduced (0.5f), 4.0f, 1.0f);
+                g.setColour (juce::Colour (0xff0b1a12));
+                g.setFont (Theme::font (12.0f, true));
+                g.drawText ("E", tab, juce::Justification::centred, false);
+            }
+
             // Its handles: corners and sides.
             for (int handle = 0; handle < 8; ++handle)
             {
@@ -3419,25 +6121,9 @@ void PluginCanvas::paint (juce::Graphics& g)
                 }
             }
 
-            // Per corner: its corners, round handles, joined by a faint outline of the figure.
+            // Per corner: its corners, round handles (nothing drawn over the shape itself).
             if (const auto first = handleArea (cornerHandle); ! first.isEmpty())
             {
-                juce::Path figure;
-
-                for (int k = 0; k < 4; ++k)
-                {
-                    const auto c = handleCentre (cornerHandle + k);
-
-                    if (k == 0) figure.startNewSubPath (c);
-                    else        figure.lineTo (c);
-                }
-
-                figure.closeSubPath();
-                const float dashes[] { 4.0f, 4.0f };
-                juce::Path dashed;
-                juce::PathStrokeType (1.0f).createDashedStroke (dashed, figure, dashes, 2);
-                g.setColour (Theme::accent.withAlpha (0.55f));
-                g.fillPath (dashed);
 
                 for (int k = 0; k < 4; ++k)
                 {
@@ -3494,4 +6180,4 @@ void PluginCanvas::paint (juce::Graphics& g)
     drawDropGhost (g);
     drawScrollbars (g);
     drawMinimap (g);
-}
+}

@@ -1,6 +1,6 @@
 {
   "name": "Vertical slider",
-  "category": "Controls",
+  "category": "Knobs & sliders",
   "order": 20,
   "icon": "slider_vertical",
   "description": "A fader that moves up and down.",

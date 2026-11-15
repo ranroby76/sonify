@@ -1,0 +1,26 @@
+{
+  "name": "Patch bay",
+  "category": "Modulation",
+  "order": 46,
+  "icon": "xy",
+  "description": "Output jacks, input jacks and cables between them: drag a cable from a source to a destination. Its look in the Matrix Studio.",
+  "widget": {
+    "type": "matrix",
+    "w": 460,
+    "h": 200,
+    "param": "mod",
+    "settings": {
+      "matrix": {
+        "style": "patch",
+        "matchInputs": true,
+        "routes": 8,
+        "jack": "eurorack",
+        "colour": "#FF4FC35A",
+        "panelColour": "#FF1C1D20",
+        "textColour": "#FFE6E6E6",
+        "lineColour": "#FF2E3035",
+        "sag": 45
+      }
+    }
+  }
+}

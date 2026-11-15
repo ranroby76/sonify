@@ -1,6 +1,6 @@
 {
   "name": "Switch",
-  "category": "Controls",
+  "category": "Knobs & sliders",
   "order": 30,
   "icon": "switch",
   "description": "An on/off switch or button: its look decides which.",

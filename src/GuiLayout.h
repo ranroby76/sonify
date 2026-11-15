@@ -17,7 +17,8 @@ struct GuiWidget
     enum class Type { knob, slider, toggle, selector, label, group,
                       meter, scope, lamp, envelope, filter, xy, shape, preset, image, keyboard, custom,
                       registration,   // Fanan's copy protection: the "Unregistered" badge (see Protection)
-                      tabs };         // the page tabs: a click shows another page of the window (see GuiLayout::pages)
+                      tabs,           // the page tabs: a click shows another page of the window (see GuiLayout::pages)
+                      matrix };       // the modulation matrix: sources routed to parameters (see ModMatrix)
 
     Type type = Type::knob;
     juce::Rectangle<int> bounds;   // in the plugin window's pixels; controls include their caption
@@ -50,8 +51,8 @@ struct GuiWidget
                                                   // filter: cutoff, resonance; xy: x, y (parameter ids)
     float threshold = 0.5f;        // lamps: on from this value
     juce::String path;             // drawn shapes: SVG path data, stretched to the box
-    juce::Colour stroke;           // shapes: outline colour
-    float strokeWidth = 0.0f;
+    juce::Colour stroke;           // shapes: outline colour (a filled shape's)
+    float strokeWidth = 0.0f;      // ...and its width: 0..12 filled, 1..12 not filled ("filled": false, ObjectPaint::isFilled)
     int lowNote = 48, highNote = 84;   // keyboards: the lowest and highest key (MIDI notes; C3 to C6),
                                        // white keys both (see stella::keys::normalise)
     juce::String element;          // custom: the programmed element's name (STELLA_ELEMENT)
@@ -145,7 +146,7 @@ struct GuiWidget
     /** The settings a shape keeps beside "type" in the layout. */
     static const juce::StringArray& shapeKeys()
     {
-        static const juce::StringArray keys { "shape", "radius", "rounding", "points", "inner", "centerX", "centerY", "leanX", "leanY", "corners",
+        static const juce::StringArray keys { "shape", "filled", "radius", "rounding", "points", "inner", "centerX", "centerY", "leanX", "leanY", "corners",
                                               "line", "bendKinds", "lineWidth", "arrow", "cap",
                                               "material", "finish", "color2", "scale", "grain", "shine", "flow", "seed",
                                               "pattern", "patterns", "patternColor", "patternOpacity", "patternBlend", "patternSize",
@@ -156,10 +157,11 @@ struct GuiWidget
 
     /** Lamps', selectors', keyboards' and labels' settings (under "settings", or beside "type"):
         "display" (how it looks: PanelParts), a lamp's "follow" and "bezel", a selector's or a
-        label's window "background", a label's "arrows". */
+        label's window "background", a label's "arrows", a keyboard's key colours and its 3D view
+        ("tilt", "yaw", "perspective": PanelParts::isKeyboard3d). */
     static const juce::StringArray& partKeys()
     {
-        static const juce::StringArray keys { "display", "follow", "bezel", "background", "arrows", "whiteKeys", "blackKeys" };
+        static const juce::StringArray keys { "display", "follow", "bezel", "background", "arrows", "whiteKeys", "blackKeys", "tilt", "yaw", "perspective" };
         return keys;
     }
 
@@ -242,6 +244,41 @@ public:
         left) and how high (degrees above the panel). The knobs' looks, the shapes, their layer
         styles and the painted backgrounds are all lit from here. */
     float lightAngle = 120.0f, lightAltitude = 30.0f;
+
+    /** The panel camera (0..100): the 3D looks seen as one camera over the whole panel sees
+        them, so a 3D knob on the left shows a little of its right side, one low on the panel a
+        little more of its top, as in a photograph of real hardware. 0: each straight on, as
+        every look was before; 100: a wide lens, close to the panel. Layered looks aren't 3D:
+        they're the same anywhere. */
+    float camera = 50.0f;
+
+    /** How far the panel camera is from the panel, in window pixels (0: the camera is off,
+        everything seen straight on). */
+    float cameraDistance() const
+    {
+        if (camera <= 0.0f || width <= 0 || height <= 0)
+            return 0.0f;
+
+        return std::hypot ((float) width, (float) height) * (2.6f - 2.2f * juce::jlimit (0.0f, 100.0f, camera) * 0.01f);
+    }
+
+    /** A control's lean for the panel camera (Render3D::ScopedView): its box's offset from the
+        window's middle over the camera's distance (nothing while the camera is 0). */
+    juce::Point<float> cameraLean (juce::Rectangle<int> box) const
+    {
+        const auto distance = cameraDistance();
+
+        if (distance <= 0.0f)
+            return {};
+
+        const auto centre = box.toFloat().getCentre();
+        return { (centre.x - (float) width * 0.5f) / distance, (centre.y - (float) height * 0.5f) / distance };
+    }
+
+    /** The window's 3D body (Body3D): an instrument's whole case built from parts, drawn behind
+        everything (over the background colours and picture), seen by the panel camera and lit
+        by the global light. Void (or no "parts"): none. Kept as its JSON, as layout.json has it. */
+    juce::var body;
 
     /** The window's pages, by name, in order (none: one page). Each element lies on one of them
         or on every page (its page empty: the background, the name, the preset manager, the tabs),

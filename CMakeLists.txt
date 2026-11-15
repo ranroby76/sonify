@@ -204,6 +204,8 @@ target_sources(FananWebHub PRIVATE
     src/BuiltinPlugins.cpp
     src/BuiltinEffects.h
     src/BuiltinEffects.cpp
+    src/SonifySpace.h
+    src/SonifyGreyhole.h
     src/BuiltinScreen.h
     src/BuiltinScreen.cpp
     src/GrexFx.h
@@ -403,6 +405,8 @@ target_sources(FananWebHub PRIVATE
     src/PluginCanvas_Export.cpp
     src/PluginExporter.h
     src/PluginExporter.cpp
+    src/SourceExport.h
+    src/SourceExport.cpp
     src/PluginLibrary.h
     src/PluginLibrary.cpp
     src/stella_blob.h
@@ -414,6 +418,14 @@ target_sources(FananWebHub PRIVATE
     src/MeterPaint.cpp
     src/PanelParts.h
     src/PanelParts.cpp
+    src/SegmentDisplay.h
+    src/SegmentDisplay.cpp
+    src/IconLibrary.h
+    src/IconLibrary.cpp
+    src/IconBrowser.h
+    src/IconBrowser.cpp
+    src/GalleryHub.h
+    src/GalleryHub.cpp
     src/Ed25519.h
     src/Ed25519.cpp
     src/Licences.h
@@ -462,6 +474,49 @@ target_sources(FananWebHub PRIVATE
     src/ShapeEditor.cpp
     src/ShapeWorkspace.h
     src/ShapeWorkspace.cpp
+    src/LayerMerge.h
+    src/LayerMerge.cpp
+    src/ShapeMerge.h
+    src/ShapeMerge.cpp
+    src/clipper.h
+    src/clipper.core.h
+    src/clipper.engine.h
+    src/clipper.engine.cpp
+    src/clipper.minkowski.h
+    src/clipper.offset.h
+    src/clipper.rectclip.h
+    src/clipper.triangulation.h
+    src/clipper.version.h
+    src/Model3D.h
+    src/Model3D.cpp
+    src/Render3D.h
+    src/Render3D.cpp
+    src/Body3D.h
+    src/Body3D.cpp
+    src/BodyEditor.h
+    src/BodyEditor.cpp
+    src/SelectorSet.h
+    src/SelectorSet.cpp
+    src/SelectorStudio.h
+    src/SelectorStudio.cpp
+    src/PerformControl.h
+    src/PerformControl.cpp
+    src/PerformStudio.h
+    src/PerformStudio.cpp
+    src/ModMatrix.h
+    src/ModMatrix.cpp
+    src/MatrixStudio.h
+    src/MatrixStudio.cpp
+    src/PresetPanel.h
+    src/PresetPanel.cpp
+    src/PresetStudio.h
+    src/PresetStudio.cpp
+    src/MeshField.h
+    src/MeshField.cpp
+    src/Showroom.h
+    src/Showroom.cpp
+    src/Workspace3D.h
+    src/Workspace3D.cpp
     src/KnobStudio.h
     src/KnobStudio.cpp
     src/Workspace.h
@@ -584,6 +639,139 @@ juce_add_binary_data(StellaRuntimeData
         src/stella_gui_mac.mm
         src/stella_gui_x11.cpp)
 
+# The source of a plugin made in the Plugins Creator Studio (SourceExport: <project>\source, written
+# on every Save): Sonify's own window code as the plugin's window draws with it (the Edit UI's
+# canvas, the looks, the 3D renderer...), and the plugin's own side (src/kit: its JUCE processor and
+# editor, its folders, its programmed elements run natively). Built in as they are; the export
+# writes them out with the plugin's graph, modules, window and presets.
+juce_add_binary_data(SonifySourceKit
+    HEADER_NAME SonifySourceKit.h
+    NAMESPACE   SonifySourceKit
+    SOURCES
+        src/PresetBank.h
+        src/PresetBank.cpp
+        src/PresetLibrary.h
+        src/PresetLibrary.cpp
+        src/StellaLookAndFeel.h
+        src/StellaLookAndFeel.cpp
+        src/PluginCanvas.h
+        src/PluginCanvas.cpp
+        src/PluginCanvas_Menu.cpp
+        src/PluginCanvas_Mouse.cpp
+        src/PluginCanvas_Elements.cpp
+        src/PluginCanvas_Export.cpp
+        src/GuiLayout.h
+        src/GuiLayout.cpp
+        src/Primitives.h
+        src/Primitives.cpp
+        src/ObjectPaint.h
+        src/ObjectPaint.cpp
+        src/PanelParts.h
+        src/PanelParts.cpp
+        src/SegmentDisplay.h
+        src/SegmentDisplay.cpp
+        src/IconLibrary.h
+        src/IconLibrary.cpp
+        src/IconBrowser.h
+        src/IconBrowser.cpp
+        src/GalleryHub.h
+        src/GalleryHub.cpp
+        src/MeterPaint.h
+        src/MeterPaint.cpp
+        src/FontLibrary.h
+        src/FontLibrary.cpp
+        src/ColourSwatch.h
+        src/ColourSwatch.cpp
+        src/LayerStyleWindow.h
+        src/LayerStyleWindow.cpp
+        src/KnobStudio.h
+        src/KnobStudio.cpp
+        src/Looks.h
+        src/Looks.cpp
+        src/LayerDoc.h
+        src/LayerDoc.cpp
+        src/LayerRender.h
+        src/LayerRender.cpp
+        src/LayerPanels.h
+        src/LayerPanels.cpp
+        src/LayerWorkspace.h
+        src/LayerWorkspace.cpp
+        src/LayerMerge.h
+        src/LayerMerge.cpp
+        src/Model3D.h
+        src/Model3D.cpp
+        src/Render3D.h
+        src/Render3D.cpp
+        src/Body3D.h
+        src/Body3D.cpp
+        src/BodyEditor.h
+        src/BodyEditor.cpp
+        src/SelectorSet.h
+        src/SelectorSet.cpp
+        src/SelectorStudio.h
+        src/SelectorStudio.cpp
+        src/PerformControl.h
+        src/PerformControl.cpp
+        src/PerformStudio.h
+        src/PerformStudio.cpp
+        src/ModMatrix.h
+        src/ModMatrix.cpp
+        src/MatrixStudio.h
+        src/MatrixStudio.cpp
+        src/PresetPanel.h
+        src/PresetPanel.cpp
+        src/PresetStudio.h
+        src/PresetStudio.cpp
+        src/MeshField.h
+        src/MeshField.cpp
+        src/Showroom.h
+        src/Showroom.cpp
+        src/Workspace3D.h
+        src/Workspace3D.cpp
+        src/BevelDialog.h
+        src/BevelDialog.cpp
+        src/KnobFile.h
+        src/KnobFile.cpp
+        src/KnobManEngine.h
+        src/KnobManEngine.cpp
+        src/ShapeDoc.h
+        src/ShapeDoc.cpp
+        src/ShapeEditor.h
+        src/ShapeEditor.cpp
+        src/ShapeWorkspace.h
+        src/ShapeWorkspace.cpp
+        src/TextureLibrary.h
+        src/TextureLibrary.cpp
+        src/BmpImage.h
+        src/BmpImage.cpp
+        src/ShapeMerge.h
+        src/ShapeMerge.cpp
+        src/PluginCanvasMenu.h
+        src/UiHelpers.h
+        src/MaterialChoices.h
+        src/clipper.h
+        src/clipper.core.h
+        src/clipper.engine.h
+        src/clipper.engine.cpp
+        src/clipper.version.h
+        src/clipper.offset.h
+        src/clipper.rectclip.h
+        src/clipper.minkowski.h
+        src/clipper.triangulation.h
+        src/clipper2_license.txt
+        src/inter_license.txt
+        src/kit/kit_PluginProcessor.h
+        src/kit/kit_PluginProcessor.cpp
+        src/kit/kit_PluginEditor.h
+        src/kit/kit_PluginEditor.cpp
+        src/kit/kit_PluginDesign.h
+        src/kit/kit_PluginAssets.h
+        src/kit/kit_Settings.h
+        src/kit/kit_Settings.cpp
+        src/kit/kit_Preferences.h
+        src/kit/kit_WasmElements.h
+        src/kit/kit_WasmElements.cpp)
+
 # Its Edit UI toolbox's primitives (src/primitive_*.json) and its Knob Studio's built-in looks
 # (src/look_*.fklayers): a new file there shows after the next build.
 file(GLOB FANAN_CREATOR_PRIMITIVES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/primitive_*.json")
@@ -609,6 +797,13 @@ if(NOT FANAN_PANEL_FONTS OR NOT EXISTS "${FANAN_FONTS_LICENSE}")
     message(FATAL_ERROR "The panel fonts are missing: put the fonts folder from the zip (30 .ttf files and "
                         "fonts_license.txt) at ${CMAKE_CURRENT_SOURCE_DIR}/fonts")
 endif()
+
+# The icon library (IconLibrary): Fanan's audio icons, Tabler's and the Material Design Icons,
+# packed (src/icon_library.txt.gz), with their licences.
+juce_add_binary_data(SonifyIcons
+    HEADER_NAME SonifyIcons.h
+    NAMESPACE   SonifyIcons
+    SOURCES     src/icon_library.txt.gz src/icons_license.txt)
 
 juce_add_binary_data(SonifyFonts
     HEADER_NAME SonifyFonts.h
@@ -714,15 +909,50 @@ target_link_libraries(FananWebHub PRIVATE TomahawkImages juce::juce_dsp)
 # the Hub), only made in Sonify instead of loaded from a file: no plugin file exists and nothing
 # is installed. The Browser lists them with the other built-ins, under Sonify.exe.
 #
-# Each one's folder under src is its own (src/natura, src/zax, src/axis), and Sonify reaches it
+# Each one's folder under src is its own (src/natura, src/zax, src/axis, src/timberwolf), and Sonify reaches it
 # only through the entries at the bottom of InternalPlugin.cpp.
 # ------------------------------------------------------------------------------
 file(GLOB NATURA_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/natura/*.h")
 file(GLOB ZAX_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/zax/*.h")
 file(GLOB AXIS_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/axis/*.h"
                                          "${CMAKE_CURRENT_SOURCE_DIR}/src/axis/dsp/*.h")
+# The guitar plugins, AXIS and Timber Wolf, are set aside for now (neither sounds as it should
+# yet): AXIS stays compiled (its panel, its pack and the Sampling Studio's pack tab are part of
+# Sonify) but neither is listed among Sonify's plugins, and Timber Wolf isn't built at all.
+# -DSONIFY_GUITAR_PLUGINS=ON brings both back.
+option(SONIFY_GUITAR_PLUGINS "List AXIS and Timber Wolf among Sonify's plugins (and build Timber Wolf)" OFF)
 
-foreach(_internal natura zax axis)
+set(TIMBERWOLF_SOURCES)
+set(TIMBERWOLF_HEADERS)
+set(SONIFY_INTERNALS natura zax axis)
+
+if(SONIFY_GUITAR_PLUGINS)
+set(TIMBERWOLF_SOURCES
+    src/timberwolf/PluginProcessor.cpp
+    src/timberwolf/PluginEditor.cpp
+    src/timberwolf/TwChainView.cpp
+    src/timberwolf/TwControls.cpp
+    src/timberwolf/TwEngine.cpp
+    src/timberwolf/TwFactory.cpp
+    src/timberwolf/TwFactoryPresets.cpp
+    src/timberwolf/TwGraph.cpp
+    src/timberwolf/TwRegistry.cpp
+    src/timberwolf/blocks/BlocksAxis.cpp
+    src/timberwolf/blocks/BlocksChokehold.cpp
+    src/timberwolf/blocks/BlocksFaust.cpp
+    src/timberwolf/blocks/BlocksOwn.cpp
+    src/timberwolf/blocks/BlocksSaike.cpp)
+file(GLOB TIMBERWOLF_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/timberwolf/*.h"
+                                               "${CMAKE_CURRENT_SOURCE_DIR}/src/timberwolf/axdsp/*.h"
+                                               "${CMAKE_CURRENT_SOURCE_DIR}/src/timberwolf/blocks/*.h"
+                                               "${CMAKE_CURRENT_SOURCE_DIR}/src/timberwolf/faust/*.h")
+list(APPEND SONIFY_INTERNALS timberwolf)
+target_compile_definitions(FananWebHub PRIVATE SONIFY_GUITAR_PLUGINS=1)
+else()
+target_compile_definitions(FananWebHub PRIVATE SONIFY_GUITAR_PLUGINS=0)
+endif()
+
+foreach(_internal ${SONIFY_INTERNALS})
     if(NOT IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/${_internal}")
         message(FATAL_ERROR "Sonify: src/${_internal} is missing: put that plugin's source there "
                             "(${CMAKE_CURRENT_SOURCE_DIR}/src/${_internal})")
@@ -754,7 +984,14 @@ target_sources(FananWebHub PRIVATE
     # compiled in below), shown in the one WebView2 profile every web view in Sonify uses.
     src/axis/PluginProcessor.cpp
     src/axis/PluginEditor.cpp
-    ${AXIS_HEADERS})
+    ${AXIS_HEADERS}
+
+    # Timber Wolf: Sonify's guitar multi-effect (built with SONIFY_GUITAR_PLUGINS only). A
+    # free-order chain of up to 16 blocks with splits; its window drawn in 3D by Sonify's own
+    # Render3D. Its effects come from AXIS's dsp (copied into timberwolf/axdsp), Faust's libraries
+    # (compiled to timberwolf/faust), chokehold's and Saike's JSFX (MIT, ported) and its own.
+    ${TIMBERWOLF_SOURCES}
+    ${TIMBERWOLF_HEADERS})
 
 # AXIS's panel: its page compiled into Sonify, which its editor serves from memory (AxisWebUI.h),
 # the way Sonify's own page is served. A file added there shows after the next build.
@@ -823,7 +1060,8 @@ set(FANAN_INTERNAL_COMPILED
     src/natura/PluginProcessor.cpp src/natura/PluginEditor.cpp
     src/natura/NaturaEngine.cpp src/natura/FananLookAndFeel.cpp
     src/zax/PluginProcessor.cpp src/zax/PluginEditor.cpp
-    src/axis/PluginProcessor.cpp src/axis/PluginEditor.cpp)
+    src/axis/PluginProcessor.cpp src/axis/PluginEditor.cpp
+    ${TIMBERWOLF_SOURCES})
 
 if(MSVC)
     set_source_files_properties(${FANAN_INTERNAL_COMPILED} PROPERTIES COMPILE_OPTIONS "/utf-8;/bigobj;/wd4996")
@@ -937,10 +1175,12 @@ target_link_libraries(FananWebHub
         FananWebHubWeb
         SonifyAiData
         StellaRuntimeData
+        SonifySourceKit
         StellaPrimitives
         StellaLooks
         FananSkills
         SonifyFonts
+        SonifyIcons
         SonifyPanels
         FananWclapBridge
         juce::juce_audio_utils
@@ -1135,6 +1375,27 @@ if(IS_DIRECTORY "${FANAN_KNOB_GALLERY}")
     fanan_copy_beside_exe(SonifyKnobGallery "${FANAN_KNOB_GALLERY}" knob_gallery)
 else()
     message(STATUS "Sonify: no knob gallery in ${FANAN_KNOB_GALLERY}: built without it")
+endif()
+
+# The 3D Gallery (assets/knob_gallery_3d, 3D models: .fk3d) and the Shapes Gallery
+# (assets/shapes_gallery, the Knob Studio's kept shapes: .fkshapes), the same way: next to
+# Sonify.exe, and copied once into Sonify's own (AppData\Fanan\Sonify\Knob Gallery 3D, Shapes
+# Gallery) where they're used. Built without either when its folder isn't there (or is empty).
+set(FANAN_MODEL_GALLERY "${CMAKE_CURRENT_SOURCE_DIR}/assets/knob_gallery_3d")
+
+if(IS_DIRECTORY "${FANAN_MODEL_GALLERY}")
+    fanan_copy_beside_exe(SonifyModelGallery "${FANAN_MODEL_GALLERY}" knob_gallery_3d)
+else()
+    message(STATUS "Sonify: no 3D gallery in ${FANAN_MODEL_GALLERY}: built without it")
+endif()
+
+set(FANAN_SHAPES_GALLERY "${CMAKE_CURRENT_SOURCE_DIR}/assets/shapes_gallery")
+file(GLOB_RECURSE FANAN_SHAPES_FILES LIST_DIRECTORIES false "${FANAN_SHAPES_GALLERY}/*")
+
+if(FANAN_SHAPES_FILES)
+    fanan_copy_beside_exe(SonifyShapesGallery "${FANAN_SHAPES_GALLERY}" shapes_gallery)
+else()
+    message(STATUS "Sonify: no shapes in ${FANAN_SHAPES_GALLERY}: built without the shapes gallery")
 endif()
 
 # AXIS's pack (assets/AXIS.blob: cabinets' impulse responses in one file), beside Sonify.exe where

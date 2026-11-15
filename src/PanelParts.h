@@ -31,7 +31,8 @@
                    filter shapes in place of their names: Sine, Saw, Square, Pulse, Triangle,
                    Noise, Random, Classic, Low Pass, High Pass, Band Pass, Notch, Off)
         lamps      the names, each with a small lamp: the chosen one lights
-        vfd        a glowing display window showing the chosen name, arrows to step
+        vfd        a glowing display window showing the chosen name, arrows to step (< >)
+        dropdown   the same window with a chevron: a click opens the list of names to pick from
         tiles      coloured tiles along a colour ramp, the chosen one raised
       Its colour is the chosen position's (the light, the pill, the window's glow);
       "background" the track's or window's.
@@ -41,13 +42,17 @@
         reverse    black naturals and ivory sharps, as on old harpsichords and some synths
         modern     flat rounded slate keys with gaps; the keys that are down glow
         graphite   dark naturals under light grey sharps (the sharps carry the contrast)
-      Its colour: the keys that are down.
+      Its colour: the keys that are down. Seen flat from above, or in 3D (isKeyboard3d): "tilt",
+      "yaw" and "perspective".
 
     Labels (labelDisplays):
         plain      words on the panel (the standard)
         readout    a framed window showing its parameter's value and unit ("param")
         vfd        a dark window with glowing words (vacuum fluorescent)
         lcd        a backlit window with segment characters
+        icon       an icon from the library (IconLibrary: its text "{name}"), as big as its box
+        led        LED segment digits, as 80s synths had them (SegmentDisplay): its words, or
+                   with a "param" its value, glowing in its colour, filling its box
       "arrows" (left, right, both, up, down) puts small arrowheads beside its words;
       "background" the window's colour; its colour the words'.
 */
@@ -73,7 +78,8 @@ namespace PanelParts
     void paintSelector (juce::Graphics&, juce::Rectangle<float> area, const GuiWidget& selector, const juce::StringArray& names,
                         int chosen, juce::Colour accent, juce::Colour ink);
 
-    /** The position a click at `at` picks (a vfd's arrows step from the chosen one); -1: none. */
+    /** The position a click at `at` picks (a vfd's arrows step from the chosen one); -1: none (a
+        drop-down list: the canvas opens its list instead). */
     int selectorPick (const GuiWidget& selector, juce::Rectangle<float> area, int count, int chosen, juce::Point<float> at);
 
     //==========================================================================
@@ -87,16 +93,41 @@ namespace PanelParts
     /** The keys that are down, over the keys at rest (the black keys stay on top). */
     void paintKeysDown (juce::Graphics&, const GuiWidget& keyboard, const std::function<bool (int)>& isDown, juce::Colour accent);
 
+    /** Seen in 3D: from an angle ("tilt": 0 straight above .. 75 from the player's seat), from
+        a side ("yaw": -45 the left .. 45 the right), with "perspective" (0 none .. 100 close up,
+        40 standard): the keys as boxes, the naturals' fronts and the sharps standing on them,
+        the whole stretched to its box. Flat (tilt and yaw 0): from straight above, as always. */
+    bool isKeyboard3d (const GuiWidget& keyboard);
+
+    /** The note under a point (the window's pixels, in the keyboard's own unturned frame) and
+        how hard it's struck there (velocity, 0..1); -1: none. */
+    int keyboardNoteAt (const GuiWidget& keyboard, juce::Point<float> at, float& velocity);
+
     //==========================================================================
     const juce::StringArray& labelDisplays();
     const juce::StringArray& labelDisplayNames();
     juce::String labelDisplayOf (const GuiWidget& label);
 
+    /** An icon's badge (an Icon element's "badge"): "none", "rect", "circle", "rhombus", "hexagon",
+        "pentagon", "octagon", "triangle", "wide" (a wide rectangle) or "small" (a small square), in its
+        "badgeColour", the icon on it in the element's colour (its fore). */
+    juce::String badgeOf (const GuiWidget& label);
+    juce::Colour badgeColourOf (const GuiWidget& label);
+    constexpr juce::uint32 standardBadgeColour = 0xff2f7bff;
+
+    /** A badge in a box (a square's worth, centred; a rectangle: the whole box), lit from above;
+        where its icon goes on it out. */
+    juce::Rectangle<float> paintBadge (juce::Graphics& g, juce::Rectangle<float> box, const juce::String& shape, juce::Colour colour);
+
+    /** Whether its display shows its parameter's value (a readout, LED digits). */
+    bool labelShowsValue (const GuiWidget& label);
+
     /** Whether it shows a live value (a readout of its parameter): it moves. */
     bool labelMoves (const GuiWidget& label);
 
-    /** Its words (a readout's: its value) in its box. ink: the words' colour; size 0: the standard. */
-    void paintLabel (juce::Graphics&, const GuiWidget& label, const juce::String& text, juce::Colour ink, float size);
+    /** Its words (a readout's: its value) in its box. ink: the words' colour; size 0: the standard.
+        cells: LED digits' cells (0: as many as the text needs; a value's: its longest). */
+    void paintLabel (juce::Graphics&, const GuiWidget& label, const juce::String& text, juce::Colour ink, float size, int cells = 0);
 
     /** Words on one line, as the element has its text: italic (leaning, drawn so even where the
         font has no italic of its own) and underlined when it says, with its text effects

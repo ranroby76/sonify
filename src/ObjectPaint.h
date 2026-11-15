@@ -32,8 +32,26 @@ namespace ObjectPaint
 {
     /** Its outline in its own box (0, 0 to width, height), upright, inset by half its
         outline's width so the outline stays inside the box. A line's is the outline of the
-        whole stroke: its width, its caps or arrowheads, along its curve. */
+        whole stroke: its width, its caps or arrowheads, along its curve. A shape that isn't
+        filled is its outline alone: the ring its outline's width makes along its geometry. */
     juce::Path outline (const GuiWidget& shape, float width, float height);
+
+    /** Its form as outline() has it, filled: the same for a filled shape; for one that isn't,
+        the line its ring runs along. */
+    juce::Path geometry (const GuiWidget& shape, float width, float height);
+
+    //==========================================================================
+    /** Filled, or not filled: its outline alone ("filled": false; a line is always its stroke).
+        Filled, its outline (0 to 12 pixels, "strokeWidth", in its outline colour, "stroke")
+        lies over its edge; not filled, its outline (1 to 12 pixels) is all there is of it, in
+        its colour or material, with its layer style. */
+    static constexpr float maxOutlineWidth = 12.0f;
+
+    bool isFilled (const GuiWidget& shape);
+    void setFilled (GuiWidget& shape, bool filled);
+
+    /** Its outline's width in pixels (not filled: one at least). */
+    float outlineWidthOf (const GuiWidget& shape);
 
     //==========================================================================
     /** Per corner, Photoshop's Distort (every shape but a line): its box's four corners moved
@@ -140,11 +158,12 @@ namespace ObjectPaint
 
     /** Its layer style (Photoshop's: bevel and emboss, stroke, inner shadow, colour overlay,
         drop shadow), from its "effects" setting; a shape from before layer styles: its relief
-        ("depth"), its shadow and its outline, as the style that looks the same. */
+        ("depth") and its shadow, as the style that looks the same. Its outline is its own
+        (outlineWidthOf), not the style's. */
     LayerStyle styleOf (const GuiWidget& shape);
 
-    /** Gives it the style, which takes the place of its older relief, shadow and outline (and
-        of a light of its own: it's lit by the global light). */
+    /** Gives it the style, which takes the place of its older relief and shadow (and of a
+        light of its own: it's lit by the global light). Its outline stays. */
     void setStyle (GuiWidget& shape, const LayerStyle&);
 
     /** A shape that isn't painted: filled and outlined as a vector, turned as it is (the
@@ -167,6 +186,7 @@ namespace ObjectPaint
         float light = 120.0f, altitude = 30.0f;  // the panel's global light (or the shape's own "light")
         juce::Colour stroke;
         float strokeWidth = 0.0f;
+        float ring = 0.0f;                // not filled: its outline alone, this wide, along `outline` (its surface paints it)
         LayerStyle style;                         // Photoshop's layer style over it
         float globalAngle = 120.0f, globalAltitude = 30.0f;
     };

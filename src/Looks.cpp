@@ -2,10 +2,14 @@
 
 #include "Looks.h"
 #include "LayerRender.h"
+#include "MaterialArchetypes.h"   // the material looks' matching 3D controls
+#include "Model3D.h"
+#include "Render3D.h"   // the panel camera (ScopedView)
 #include "Settings.h"
 
 #include "StellaLooks.h"
 
+#include <atomic>
 #include <algorithm>
 
 namespace
@@ -14,7 +18,7 @@ namespace
         another look's. */
     int nextRevision()
     {
-        static int revision = 0;
+        static std::atomic<int> revision { 0 };   // (looks are read on the gallery's threads too)
         return ++revision;
     }
 
@@ -136,7 +140,7 @@ namespace
         height = juce::jmax (1, height);
         room = juce::jmax (0, room);
 
-        juce::Image out (juce::Image::ARGB, width + 2 * room, height + 2 * room, true);
+        juce::Image out (juce::Image::ARGB, width + 2 * room, height + 2 * room, true, juce::SoftwareImageType());
 
         const auto docW = (float) juce::jmax (8, doc.canvasWidth), docH = (float) juce::jmax (8, doc.canvasHeight);
         const auto fit = juce::jmin ((float) width / docW, (float) height / docH);
@@ -253,6 +257,42 @@ Looks::Looks()
                 look.origin = Origin::builtIn;
                 builtIn[look.name] = look;
             }
+        }
+    }
+
+    // The material looks' matching controls (MaterialArchetypes): 3D Studio models, after the
+    // looks above in the lists (a file of the same name stays the one that counts).
+    int controlOrder = 5000;
+
+    for (const auto& set : MaterialArchetypes::controlSets())
+    {
+        const auto models = juce::JSON::parse (juce::String (set.json));
+
+        for (const auto& part : MaterialArchetypes::controlParts())
+        {
+            const auto settings = models.getProperty (part.key, {});
+            const auto name = MaterialArchetypes::controlLookName (set.name, part.suffix);
+
+            if (! settings.isObject() || builtIn.count (name) > 0)
+                continue;
+
+            Model3D model;
+            model.kind = Model3D::kindFromKey (part.key);
+
+            for (const auto& setting : settings.getDynamicObject()->getProperties())
+                model.setByName (setting.name.toString(), setting.value);
+
+            Look look;
+            look.name = name;
+            look.kind = model.kind == Model3D::Kind::knob ? Kind::knob
+                      : model.kind == Model3D::Kind::slider ? (part.across ? Kind::sliderAcross : Kind::slider)
+                      : Kind::button;
+            look.doc = Model3D::newDocument (model, part.across);
+            look.order = controlOrder++;
+            look.description = juce::String ("3D ") + part.suffix + " to match the " + set.name + " material look";
+            look.origin = Origin::builtIn;
+            look.revision = nextRevision();
+            builtIn[look.name] = look;
         }
     }
 
@@ -679,17 +719,48 @@ LayerDoc Looks::litBy (const LayerDoc& doc) const
     return lit;
 }
 
-juce::Image Looks::frame (const Look& look, Kind kind, int width, int height, float value, float resolution)
+juce::Point<float> Looks::leanFor (const Look& look, juce::Point<float> lean)
+{
+    if (look.doc.model3d == nullptr)
+        return {};
+
+    // In steps of 0.02: a few pixels apart, neighbours look the same.
+    return { std::round (lean.x * 50.0f) / 50.0f, std::round (lean.y * 50.0f) / 50.0f };
+}
+
+juce::String Looks::leanKey (juce::Point<float> lean)
+{
+    return lean.isOrigin() ? juce::String() : "~" + juce::String (lean.x, 2) + "," + juce::String (lean.y, 2);
+}
+
+juce::Point<float> Looks::slopeFor (const Look& look, juce::Point<float> slope)
+{
+    if (look.doc.model3d == nullptr)
+        return {};
+
+    return { std::round (juce::jlimit (-70.0f, 70.0f, slope.x)), std::round (juce::jlimit (-70.0f, 70.0f, slope.y)) };
+}
+
+juce::String Looks::slopeKey (juce::Point<float> slope)
+{
+    return slope.isOrigin() ? juce::String() : "^" + juce::String ((int) slope.x) + "," + juce::String ((int) slope.y);
+}
+
+juce::Image Looks::frame (const Look& look, Kind kind, int width, int height, float value, float resolution, juce::Point<float> lean,
+                          juce::Point<float> slope)
 {
     width = juce::jmax (1, width);
     height = juce::jmax (1, height);
+    lean = leanFor (look, lean);
+    slope = slopeFor (look, slope);
 
     const auto count = framesFor (look, kind);
     const auto index = count > 1 ? juce::jlimit (0, count - 1, juce::roundToInt (juce::jlimit (0.0f, 1.0f, value) * (float) (count - 1))) : 0;
     const auto res = juce::jlimit (1.0f, 3.0f, resolution);
 
     const auto key = juce::String (width) + "x" + juce::String (height) + "|" + juce::String (index) + "/" + juce::String (count)
-                   + "@" + juce::String (juce::roundToInt (res * 4.0f)) + "|" + juce::String (lightAngle, 1) + "/" + juce::String (lightAltitude, 1);
+                   + "@" + juce::String (juce::roundToInt (res * 4.0f)) + "|" + juce::String (lightAngle, 1) + "/" + juce::String (lightAltitude, 1)
+                   + leanKey (lean) + slopeKey (slope);
 
     auto& drawn = frames[look.revision];
 
@@ -707,6 +778,7 @@ juce::Image Looks::frame (const Look& look, Kind kind, int width, int height, fl
 
     const auto t = count > 1 ? (float) index / (float) (count - 1) : 0.0f;
     const auto room = juce::roundToInt ((float) overhang (look, width, height) * res);
+    const Render3D::ScopedView seen (lean.x, lean.y, slope.x, slope.y);   // (a 3D look: where the panel camera sees it from, on the body's face)
     auto image = renderFitted (litBy (look.doc), t, juce::roundToInt ((float) width * res), juce::roundToInt ((float) height * res), room);
     drawn[key] = image;
     return image;
@@ -724,16 +796,16 @@ int Looks::overhang (const Look& look, int width, int height)
     return (int) std::ceil (reach * fit);
 }
 
-juce::Image Looks::strip (const Look& look, Kind kind, int width, int height)
+juce::Image Looks::strip (const Look& look, Kind kind, int width, int height, juce::Point<float> lean, juce::Point<float> slope)
 {
     const auto count = framesFor (look, kind);
     const auto room = overhang (look, width, height);
     const auto frameW = juce::jmax (1, width) + 2 * room, frameH = juce::jmax (1, height) + 2 * room;
-    juce::Image image (juce::Image::ARGB, frameW, frameH * count, true);
+    juce::Image image (juce::Image::ARGB, frameW, frameH * count, true, juce::SoftwareImageType());
     juce::Graphics g (image);
 
     for (int i = 0; i < count; ++i)
-        g.drawImageAt (frame (look, kind, width, height, count > 1 ? (float) i / (float) (count - 1) : 0.0f), 0, i * frameH);
+        g.drawImageAt (frame (look, kind, width, height, count > 1 ? (float) i / (float) (count - 1) : 0.0f, 1.0f, lean, slope), 0, i * frameH);
 
     return image;
 }

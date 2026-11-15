@@ -111,6 +111,7 @@ private:
     void makeLook (const juce::var& input, Done done);   // make_look: a look in a material
     void findGalleryLooks (const juce::var& input, Done done);   // find_gallery_looks: the gallery's commercial-safe items
     void useGalleryLook (const juce::var& input, Done done);     // use_gallery_look: one of them as the plugin's own look
+    void make3dLook (const juce::var& input, Done done);         // make_3d_look: a 3D look (Model3D) from one of the project's or a ready-made one
 
     Project& project;
     LivePreview& preview;

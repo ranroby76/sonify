@@ -16,6 +16,7 @@
 #if defined (__linux__)
 
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <dlfcn.h>
@@ -208,8 +209,9 @@ namespace stella::gui
             XWindow (*getSelectionOwner) (Display*, Atom) = nullptr;
             int (*changeProperty) (Display*, XWindow, Atom, Atom, int, int, const unsigned char*, int) = nullptr;
             int (*sendEvent) (Display*, XWindow, Bool, long, XEvent*) = nullptr;
+            int (*resizeWindow) (Display*, XWindow, unsigned int, unsigned int) = nullptr;
 
-            bool loaded = false, hasKeys = false, hasClipboard = false;
+            bool loaded = false, hasKeys = false, hasClipboard = false, hasResize = false;
 
             static X11& get()
             {
@@ -262,11 +264,105 @@ namespace stella::gui
                             && find (library, "XGetWindowProperty", getWindowProperty) && find (library, "XFree", free)
                             && find (library, "XSetSelectionOwner", setSelectionOwner) && find (library, "XGetSelectionOwner", getSelectionOwner)
                             && find (library, "XChangeProperty", changeProperty) && find (library, "XSendEvent", sendEvent);
+
+                hasResize = find (library, "XResizeWindow", resizeWindow);
             }
         };
 
         /** While the focus moves: an error (a window gone meanwhile) is ignored, not fatal. */
         int ignoreErrors (Display*, XErrorEvent*)    { return 0; }
+
+        //======================================================================
+        /** The preset commands' folder and dialogs: ~/Documents (as xdg-user-dirs says), zenity's
+            (or kdialog's) file dialogs and questions, the folder opened with xdg-open. */
+        class X11Desktop final : public Desktop
+        {
+        public:
+            std::string documentsFolder() override
+            {
+                const char* home = std::getenv ("HOME");
+                const std::string from = run ("xdg-user-dir DOCUMENTS 2>/dev/null");
+
+                if (! from.empty() && from != (home != nullptr ? std::string (home) : std::string()))
+                    return from;
+
+                return home != nullptr ? std::string (home) + "/Documents" : std::string();
+            }
+
+            bool chooseFile (bool saving, const std::string& title, const std::string& folder, const std::string& name,
+                             const std::string& extension, std::string& chosen) override
+            {
+                const auto start = folder + "/" + name;
+                std::string command;
+
+                if (has ("zenity"))
+                    command = "zenity --file-selection" + std::string (saving ? " --save --confirm-overwrite" : "")
+                            + " --title=" + quoted (title) + " --filename=" + quoted (saving ? start : folder + "/")
+                            + " --file-filter=" + quoted ("*." + extension) + " 2>/dev/null";
+                else if (has ("kdialog"))
+                    command = std::string ("kdialog ") + (saving ? "--getsavefilename " : "--getopenfilename ") + quoted (saving ? start : folder)
+                            + " " + quoted ("*." + extension) + " --title " + quoted (title) + " 2>/dev/null";
+                else
+                    return false;
+
+                chosen = run (command);
+                return ! chosen.empty();
+            }
+
+            bool confirm (const std::string& question) override
+            {
+                const bool asking = question.find ('?') != std::string::npos;
+
+                if (has ("zenity"))
+                    return std::system (("zenity " + std::string (asking ? "--question" : "--info") + " --title=Presets --text="
+                                         + quoted (question) + " >/dev/null 2>&1").c_str()) == 0;
+
+                if (has ("kdialog"))
+                    return std::system (("kdialog " + std::string (asking ? "--yesno " : "--msgbox ") + quoted (question) + " >/dev/null 2>&1").c_str()) == 0;
+
+                return asking ? false : true;
+            }
+
+            void showFolder (const std::string& path) override
+            {
+                std::system (("xdg-open " + quoted (path) + " >/dev/null 2>&1 &").c_str());
+            }
+
+        private:
+            static std::string quoted (const std::string& s)
+            {
+                std::string q = "'";
+
+                for (const auto c : s)
+                    q += c == '\'' ? std::string ("'\\''") : std::string (1, c);
+
+                return q + "'";
+            }
+
+            static bool has (const char* program)
+            {
+                return std::system (("command -v " + std::string (program) + " >/dev/null 2>&1").c_str()) == 0;
+            }
+
+            /** A command's output's first line. */
+            static std::string run (const std::string& command)
+            {
+                std::string out;
+
+                if (auto* pipe = ::popen (command.c_str(), "r"))
+                {
+                    char buffer[4096];
+
+                    while (std::fgets (buffer, sizeof (buffer), pipe) != nullptr)
+                        out += buffer;
+
+                    ::pclose (pipe);
+                }
+
+                const auto end = out.find ('\n');
+                return end == std::string::npos ? out : out.substr (0, end);
+            }
+        };
 
         //======================================================================
         class X11Window final : public Window,
@@ -278,11 +374,22 @@ namespace stella::gui
             {
                 pixels.resize ((size_t) editor.getWidth() * (size_t) editor.getHeight());
                 editor.setClipboard (this);
+                editor.setDesktop (&desktop);
+
+                // Its size menu chose another size: its pixels and itself that size, and the host told.
+                editor.onScaleChosen = [this]
+                {
+                    fitToEditor();
+
+                    if (onResizeRequest)
+                        onResizeRequest (editor.getWidth(), editor.getHeight());
+                };
             }
 
             ~X11Window() override
             {
                 editor.setClipboard (nullptr);
+                editor.setDesktop (nullptr);
 
                 if (focused)
                 {
@@ -315,8 +422,8 @@ namespace stella::gui
                     return false;
 
                 const auto screen = x.defaultScreen (display);
-                auto* visual = x.defaultVisual (display, screen);
-                const auto depth = x.defaultDepth (display, screen);
+                visual = x.defaultVisual (display, screen);
+                depth = x.defaultDepth (display, screen);
 
                 if (depth != 24 && depth != 32)
                     return false;   // the pixels are 32-bit true colour
@@ -374,6 +481,24 @@ namespace stella::gui
 
             int getFileDescriptor() const override    { return x.connectionNumber (display); }
 
+            void getSize (int& w, int& h) override
+            {
+                w = editor.getWidth();
+                h = editor.getHeight();
+            }
+
+            void setSize (int w, int h) override
+            {
+                const auto scale = scaleForSize (w, h);
+
+                if (scale == editor.getScale())
+                    return;
+
+                editor.setScale (scale);
+                editor.getHost().setWindowScale (scale);
+                fitToEditor();
+            }
+
             // Keys the host hands the plugin's view.
             bool wantsKeys() override    { return editor.wantsKeys(); }
 
@@ -395,6 +520,7 @@ namespace stella::gui
                 if (window == 0)
                     return;
 
+                editor.runQueuedPresetCommand();   // a preset command a click asked for (its dialog)
                 bool exposed = false;
 
                 while (x.pending (display) > 0)
@@ -705,6 +831,14 @@ namespace stella::gui
                     case buttonRelease:
                         lastTime = p.time;
 
+                        // A right-click: the size menu.
+                        if (p.button == 3)
+                        {
+                            editor.contextClick (p.x, p.y);
+                            paint();
+                            return true;
+                        }
+
                         if (p.button != 1)
                             return false;
 
@@ -729,8 +863,34 @@ namespace stella::gui
                 }
             }
 
+            /** Its pixels (and their image), and itself, the Editor's size. */
+            void fitToEditor()
+            {
+                pixels.assign ((size_t) editor.getWidth() * (size_t) editor.getHeight(), 0u);
+
+                if (window == 0)
+                    return;
+
+                if (image != nullptr)
+                {
+                    image->data = nullptr;   // the pixels are ours
+                    image->f.destroy_image (image);
+                }
+
+                image = x.createImage (display, visual, (unsigned int) depth, zPixmap, 0, reinterpret_cast<char*> (pixels.data()),
+                                       (unsigned int) editor.getWidth(), (unsigned int) editor.getHeight(), 32, editor.getWidth() * 4);
+
+                if (x.hasResize)
+                    x.resizeWindow (display, window, (unsigned int) editor.getWidth(), (unsigned int) editor.getHeight());
+
+                x.flush (display);
+            }
+
             void paint()
             {
+                if (image == nullptr)
+                    return;
+
                 editor.render (pixels.data());
                 x.putImage (display, window, gc, image, 0, 0, 0, 0, (unsigned int) editor.getWidth(), (unsigned int) editor.getHeight());
                 x.flush (display);
@@ -739,11 +899,14 @@ namespace stella::gui
             X11& x;
             Display* display;
             Editor editor;
+            X11Desktop desktop;
             std::vector<std::uint32_t> pixels;
             XWindow window = 0;
             Colormap colormap = 0;
             GC gc = nullptr;
             XImage* image = nullptr;
+            Visual* visual = nullptr;
+            int depth = 24;
             std::chrono::steady_clock::time_point lastPaint {};
             XTime lastClick = 0;
             int clickX = 0, clickY = 0;

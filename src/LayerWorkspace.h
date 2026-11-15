@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "UiHelpers.h"   // FineSlider
+
 #include "KnobFile.h"
 #include "LayerPanels.h"
 #include "LayerRender.h"
@@ -98,6 +100,9 @@ public:
     void resized() override;
     void paint (juce::Graphics&) override;
 
+    /** Stella: Ctrl+M merges the layers picked together (wherever the keyboard is in the studio). */
+    bool keyPressed (const juce::KeyPress&) override;
+
     void cycleBackground() { canvas.cycleBackground(); }
 
     /** So the Light Studio can put its key light where the knobs think it is.
@@ -109,6 +114,14 @@ public:
     bool isActualSize() const noexcept { return canvas.isActualSize(); }
 
     void importKnobFile();
+
+    /** KnobMaster 2's Shapes Gallery: the layers picked together (Shift+click), else the one
+        selected, by their index in the document, bottom first. */
+    std::vector<int> getChosenLayers() const;
+
+    /** ...and layers from it put on top of the stack (the top one selected), as a change the
+        user made (onDocumentChanged). A look from KnobMan becomes the studio's own. */
+    void addLayers (const std::vector<DocLayer>& layers);
 
     std::function<void (const juce::String&)> onStatus;
 
@@ -148,7 +161,7 @@ private:
     juce::Label      frameLabel;
 
     std::unique_ptr<juce::FileChooser> knobChooser;
-    juce::Slider   canvasWSlider, canvasHSlider, framesSlider;
+    FineSlider   canvasWSlider, canvasHSlider, framesSlider;
     juce::Label    canvasWLabel { {}, "W" }, canvasHLabel { {}, "H" }, framesLabel { {}, "Frames" };
     juce::ToggleButton linkSizeButton { "Link" };
 

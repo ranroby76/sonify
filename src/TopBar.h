@@ -11,7 +11,7 @@
     The Plugins Creator Studio's strip across the top, under Sonify's own top bar.
 
         left    the FANAN AI wordmark, the Options menu, then the open plugin's name
-        middle  the studio's tabs: Build with AI, Edit UI, Knob Studio, Protection, Store
+        middle  the studio's tabs: Build with AI, Edit UI, Knob Studio, 3D Studio, Protection, Store
         right   MIDI In (the ports the studio hears, with a light that blinks with them), the
                 studio's own output meter (what it plays) and Sonify's audio load
 
@@ -29,8 +29,8 @@ public:
     /** Which tab is showing, in the order of tabNames. */
     void setCurrentTab (int index);
 
-    static constexpr int numTabs = 5;
-    static constexpr const char* tabNames[numTabs] { "Build with AI", "Edit UI", "Knob Studio", "Protection", "Store" };
+    static constexpr int numTabs = 6;
+    static constexpr const char* tabNames[numTabs] { "Build with AI", "Edit UI", "Knob Studio", "3D Studio", "Protection", "Store" };
 
     std::function<void (int index)> onTabChosen;
 

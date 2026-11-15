@@ -6,6 +6,7 @@
 #include "DeviceStudio.h"
 #include "GuiLayout.h"
 #include "PluginLibrary.h"
+#include "SourceExport.h"
 #include "StellaLookAndFeel.h"
 #include "WasmCompiler.h"
 
@@ -438,8 +439,8 @@ CreatorStudio::CreatorStudio (AudioEngine& sonifyEngine, FananServer& fananServe
     chat.onSignIn = [this] (const juce::String& email) { signIn (false, email); };
     chat.onSignOut = [this] { signOut(); };
 
-    // The tabs, picked in the top bar: Build with AI (the chat), Edit UI, Knob Studio and
-    // Protection. The workspace shows one at a time; the top bar follows it.
+    // The tabs, picked in the top bar: Build with AI (the chat), Edit UI, Knob Studio, 3D Studio,
+    // Protection and Store. The workspace shows one at a time; the top bar follows it.
     workspace.setAiPage (chat);
     workspace.setProtectionPage (protection);
 
@@ -2492,6 +2493,36 @@ void CreatorStudio::saveProject()
     // Everything else is written as it changes.
     flushLayoutSave();
     topBar.showNotice ("Saved");
+
+    // ...and the plugin's source code, from what's saved now.
+    exportSource();
+}
+
+void CreatorStudio::exportSource()
+{
+    if (! project.isOpen())
+        return;
+
+    // What it takes from the studio (the panel's pictures too) here; the files are written by
+    // the source writer, one save after another, while work goes on.
+    auto request = std::make_shared<SourceExport::Request> (SourceExport::prepare (project.getFolder(), project.getInfo(), workspace.getLayout(),
+                                                                                   workspace.getLooks(), workspace.snapshotPages (1.0f)));
+
+    sourceWriter.addJob ([request, safeThis = juce::Component::SafePointer<CreatorStudio> (this)]
+    {
+        const auto written = SourceExport::write (*request);
+
+        juce::MessageManager::callAsync ([safeThis, written, folder = request->projectFolder.getChildFile (SourceExport::folderName)]
+        {
+            if (safeThis == nullptr)
+                return;
+
+            if (written.wasOk())
+                safeThis->topBar.showNotice ("Saved, with its source code");
+            else
+                safeThis->showError ("The plugin is saved, its source code isn't", written.getErrorMessage() + "\n\n" + folder.getFullPathName());
+        });
+    });
 }
 
 void CreatorStudio::saveProjectAs()
@@ -2544,6 +2575,7 @@ void CreatorStudio::saveProjectAs()
                 {
                     // The copy is a plugin of its own: Add to Sonify adds it beside the first one.
                     safeThis->topBar.showNotice ("Saved as " + safeThis->project.getInfo().name);
+                    safeThis->exportSource();   // its own source, in its own folder
                 }
             }
 

@@ -24,6 +24,7 @@
 #include <vector>
 
 struct KnobManDoc;   // KnobManEngine.h
+struct Model3D;      // Model3D.h
 
 //==============================================================================
 enum class AnimMode
@@ -421,6 +422,12 @@ struct PrimitiveSpec
     // for imported .knob files whose shapes are not in it.
     std::vector<juce::Point<float>> shapePoints;
 
+    // Stella: a shape of its own as SVG path data in 0..1 of the layer (M, L, Z...), any
+    // number of outlines, holes too: what merging layers makes (LayerMerge). Drawn when
+    // there's no inventory shape; shapePoints keep its biggest outline for whatever reads
+    // only those.
+    juce::String shapePath;
+
     bool fill = true;
 };
 
@@ -559,6 +566,11 @@ struct LayerDoc
     /** A look from KnobMan with its Sphere and Metal Circle layers lit by Sonify (from its
         layers above) instead of KnobMan's flatter shading; the rest stays KnobMan's. */
     bool knobmanSonifyLight = false;
+
+    /** Stella: a 3D look (the 3D Studio's): a knob, button, slider or toggle switch built as
+        an object and rendered by Render3D, its frames as the look's. Its layers above aren't
+        drawn. Null: a look of layers. */
+    std::shared_ptr<const Model3D> model3d;
 
     //--------------------------------------------------------------------------
     /** True if any layer is soloed; render then shows only soloed layers. */

@@ -79,7 +79,8 @@ The Device Studio (MainDevices.cpp): deviceStudio {action: shown {shown} | state
     the device there)
 
 The Plugins Creator Studio (MainCreator.cpp), Sonify's own window over its page: creatorShow {x, y,
-    width, height} (its page's area) | creatorHide | creatorTab {index} | creatorState
+    width, height} (its page's area) | creatorHide | creatorTab {index: 0 Build with AI, 1 Edit UI, 2 Knob
+    Studio, 3 3D Studio, 4 Protection, 5 Store} | creatorState
 
 The Analog Board (MainBoard.cpp), its own tab: board {action: shown {shown} | state | mixing {on}
     (the song mixed on the board, or on the Console; the first time, the strips start at the

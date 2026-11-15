@@ -6,8 +6,10 @@
 */
 
 #include "LayerWorkspace.h"
+#include "Render3D.h"
 #include "KnobFile.h"
 #include "UiHelpers.h"
+#include "ColourSwatch.h"   // the pickers' dropper takes colours from the preview
 
 namespace
 {
@@ -26,6 +28,7 @@ namespace
 //==============================================================================
 CanvasPreview::CanvasPreview()
 {
+    ColourDropper::markAsSource (*this);   // a colour picker open: a click here takes the colour there
 }
 
 void CanvasPreview::setDocument (LayerDoc* d)
@@ -38,8 +41,9 @@ void CanvasPreview::invalidate()
 {
     dirty = true;
 
-    // Changing quickly: drawn smaller now, sharp a moment after the last change.
-    if (document != nullptr && document->knobman != nullptr)
+    // Changing quickly: drawn smaller now, sharp a moment after the last change (a look from
+    // KnobMan, a 3D one).
+    if (document != nullptr && (document->knobman != nullptr || document->model3d != nullptr))
     {
         constexpr juce::uint32 settleMs = 350;
         quickUntil = juce::Time::getMillisecondCounter() + settleMs;
@@ -63,7 +67,7 @@ void CanvasPreview::invalidate()
 
 bool CanvasPreview::quickNow() const
 {
-    return document != nullptr && document->knobman != nullptr
+    return document != nullptr && (document->knobman != nullptr || document->model3d != nullptr)
         && (playing || juce::Time::getMillisecondCounter() < quickUntil);
 }
 
@@ -164,7 +168,17 @@ void CanvasPreview::rerender (float scale)
     // Stella: with room around the canvas, so a shadow that reaches past it shows the way it
     // falls on the plugin's panel.
     renderedPad = std::ceil (LayerRender::overhangOf (*document) * scale);
-    frame = LayerRender::renderFrame (*document, time, scale, renderedPad, &notes);
+
+    {
+        // A 3D look changing or playing: one sample a pixel until it settles.
+        std::unique_ptr<Render3D::ScopedDraft> draft;
+
+        if (quickNow())
+            draft = std::make_unique<Render3D::ScopedDraft>();
+
+        frame = LayerRender::renderFrame (*document, time, scale, renderedPad, &notes);
+    }
+
     renderedScale = scale;
     dirty = false;
 
@@ -278,6 +292,8 @@ LayerWorkspace::LayerWorkspace()
     layerList.setDocument (&doc);
     layerList.onSelectionChange = [this] { selectionChanged(); };
     layerList.onDocumentChange  = [this] { documentChanged(); };
+    layerList.currentFrame      = [this] { return canvas.getFrame(); };
+    layerList.onMessage         = [this] (const juce::String& text) { if (onStatus != nullptr) onStatus (text); };
     addAndMakeVisible (layerList);
 
     primPanel.onChange   = [this] { documentChanged(); };
@@ -476,6 +492,52 @@ void LayerWorkspace::pullCanvasFields()
     doc.canvasWidth  = (int) canvasWSlider.getValue();
     doc.canvasHeight = (int) canvasHSlider.getValue();
     doc.frames       = (int) framesSlider.getValue();
+    documentChanged();
+}
+
+bool LayerWorkspace::keyPressed (const juce::KeyPress& key)
+{
+    const auto mods = key.getModifiers();
+
+    if ((mods.isCtrlDown() || mods.isCommandDown()) && ! mods.isAltDown() && ! mods.isShiftDown()
+          && juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) key.getKeyCode()) == 'M')
+    {
+        layerList.mergePicked();
+        return true;
+    }
+
+    return false;
+}
+
+std::vector<int> LayerWorkspace::getChosenLayers() const
+{
+    const auto& picked = layerList.getPickedLayers();
+
+    if (picked.size() >= 2)
+        return { picked.begin(), picked.end() };
+
+    const int index = (int) doc.layers.size() - 1 - layerList.getSelectedIndex();
+
+    if (juce::isPositiveAndBelow (index, (int) doc.layers.size()))
+        return { index };
+
+    return {};
+}
+
+void LayerWorkspace::addLayers (const std::vector<DocLayer>& layers)
+{
+    if (layers.empty())
+        return;
+
+    // KnobMan has no layers from elsewhere: the look becomes the studio's own, as a merge makes it.
+    doc.knobman.reset();
+    doc.knobmanSonifyLight = false;
+
+    for (const auto& layer : layers)
+        doc.layers.push_back (layer);
+
+    layerList.refresh();
+    layerList.setSelectedIndex (0);   // the top one (the panels then point into the vector as it is now)
     documentChanged();
 }
 

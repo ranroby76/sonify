@@ -1,0 +1,43 @@
+{
+  "name": "Preset side panel",
+  "category": "Presets",
+  "order": 55,
+  "icon": "presets",
+  "description": "A side panel joined to the window's left or right (the window wider by it), always there or opened and closed by a handle; its look in the Preset Studio.",
+  "widget": {
+    "type": "preset",
+    "w": 220,
+    "h": 300,
+    "settings": {
+      "presets": {
+        "style": "side",
+        "side": "left",
+        "width": 220,
+        "toggle": false,
+        "categories": "tabs",
+        "search": true,
+        "actions": true,
+        "rowHeight": 26,
+        "title": "Presets",
+        "colour": "#FF2FB36B",
+        "panelColour": "#FF16181B",
+        "textColour": "#FFD8DADF",
+        "lineColour": "#FF2C2F35",
+        "keys": {
+          "render": "2d",
+          "style": "flat",
+          "shape": "rect",
+          "rounding": 20,
+          "gap": 8,
+          "capColour": "#FF1D1F23",
+          "capOnColour": "#FF233A2D",
+          "glowColour": "#FF2FB36B",
+          "glow": 25,
+          "labelColour": "#FFC8CBD0",
+          "labelOnColour": "#FFFFFFFF",
+          "textSize": 60
+        }
+      }
+    }
+  }
+}

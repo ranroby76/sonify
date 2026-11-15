@@ -5,12 +5,27 @@
 
 #include "PluginCanvas.h"
 #include "PluginCanvasMenu.h"
+#include "Body3D.h"
 #include "StellaLookAndFeel.h"
 #include "stella_keys.h"
 #include "FontLibrary.h"
 #include "MeterPaint.h"
 #include "PanelParts.h"        // the lamps', selectors', keyboards' and labels' displays
+#include "SegmentDisplay.h"    // labels' LED digits
+#include "IconLibrary.h"       // icons in place of words
+#include "IconBrowser.h"
+#include "SelectorStudio.h"    // the Advanced edit tab's studios
+#include "PerformStudio.h"
+#include "MatrixStudio.h"
+#include "PresetStudio.h"
+#include "SelectorSet.h"
+#include "PerformControl.h"
+#include "PresetPanel.h"
+#include "MaterialArchetypes.h"   // the built-in material looks
+#include "PanelLayouts.h"         // ...and the ready-made layouts (Start from a layout)
 #include "MaterialChoices.h"   // the painted backgrounds' and shapes' materials, finishes and patterns (as PanelPainter has them)
+
+#include <tuple>
 
 namespace
 {
@@ -24,7 +39,7 @@ namespace
 
     const GuiWidget::Type typeOrder[] { GuiWidget::Type::knob, GuiWidget::Type::slider, GuiWidget::Type::toggle,
                                         GuiWidget::Type::selector, GuiWidget::Type::xy, GuiWidget::Type::keyboard, GuiWidget::Type::preset,
-                                        GuiWidget::Type::tabs,
+                                        GuiWidget::Type::tabs, GuiWidget::Type::matrix,
                                         GuiWidget::Type::meter, GuiWidget::Type::scope, GuiWidget::Type::lamp,
                                         GuiWidget::Type::envelope, GuiWidget::Type::filter,
                                         GuiWidget::Type::image, GuiWidget::Type::label, GuiWidget::Type::group, GuiWidget::Type::shape };
@@ -125,6 +140,9 @@ namespace
     // A label's arrowheads, and a line's.
     const juce::StringArray arrowIds { "none", "left", "right", "both", "up", "down" };
     const juce::StringArray arrowNames { "None", "On the left", "On the right", "Both sides", "Pointing up", "Pointing down" };
+
+    // An icon's badge: its shapes, in the order its box lists them.
+    const juce::StringArray badgeIds { "none", "rect", "circle", "rhombus", "hexagon", "pentagon", "octagon", "triangle", "wide", "small" };
     const juce::StringArray lineArrowIds { "none", "start", "end", "both" };
     const juce::StringArray lineArrowNames { "None", "At its start", "At its end", "At both ends" };
     const juce::StringArray lineCapIds { "round", "flat", "square" };
@@ -385,7 +403,7 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     closeButton.setButtonText (juce::String::fromUTF8 ("\xc3\x97"));
     closeButton.setTooltip ("Close (Esc)");
     closeButton.onClick = [this] { canvas.select (-1); };
-    addAndMakeVisible (closeButton);
+    addChildComponent (closeButton);   // (the window has its own)
 
     pictureMode.addItemList (GuiLayout::pictureModeNames(), 1);
 
@@ -533,6 +551,25 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
             apply();
         };
 
+    // Icons from the library, in place of words or among them.
+    textIconButton.setButtonText (juce::String::fromUTF8 ("Icon\xe2\x80\xa6"));
+    textIconButton.setTooltip ("An icon from the library in its text, where the cursor is ({name}: an icon is its name in braces); "
+                               "an icon element's icon");
+    textIconButton.onClick = [this] { IconBrowser::show (textIconButton, [this] (const juce::String& name) { putIcon (label, name); }); };
+    iconPickButton.setButtonText (juce::String::fromUTF8 ("Choose its icon\xe2\x80\xa6"));
+    iconPickButton.setTooltip ("Another icon from the library (some 13,000), in place of this one");
+    iconPickButton.onClick = [this] { IconBrowser::show (iconPickButton, [this] (const juce::String& name) { putIcon (label, name); }); };
+
+    // A drop-down list's look.
+    dropLookBox.addItem ("Rectangle (Rounding: up to a pill)", 1);
+    dropLookBox.addItem ("Only its text, no box", 2);
+    dropLookBox.setTooltip ("How the list shows: in a box (its corners from square to round ends), or its chosen option's words alone");
+    dropLookBox.onChange = [this] { apply(); showFor (widget); };
+
+    optionsIconButton.setButtonText (juce::String::fromUTF8 ("Icon in a position\xe2\x80\xa6"));
+    optionsIconButton.setTooltip ("An icon from the library in its positions, where the cursor is (in place of a name, or beside it)");
+    optionsIconButton.onClick = [this] { IconBrowser::show (optionsIconButton, [this] (const juce::String& name) { putIcon (options, name); }); };
+
     textEffectsButton.setButtonText (juce::String::fromUTF8 ("Text effects (fx)\xe2\x80\xa6"));
     textEffectsButton.setTooltip ("Photoshop's Layer Style on its words: Bevel & Emboss, Stroke, Inner Shadow, Color Overlay and Drop Shadow "
                                   "(its words, caption, names and readout alike)");
@@ -584,6 +621,62 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
         for (size_t i = 0; i < blendChoices().size(); ++i)    blendBox.addItem (blendChoices()[i].label, (int) i + 1);
 
         surfaceMaterial.onChange = [this] { applySurface (true); };
+
+        // The built-in material looks, by family.
+        {
+            juce::String family;
+            int lookId = 1;
+
+            for (const auto& look : MaterialArchetypes::all())
+            {
+                if (family != look.family)
+                {
+                    family = look.family;
+                    materialLookBox.addSectionHeading (family.substring (0, 1).toUpperCase() + family.substring (1));
+                }
+
+                materialLookBox.addItem (look.name, lookId++);
+            }
+
+            materialLookBox.setTextWhenNothingSelected ("Choose a look");
+            materialLookBox.setTooltip ("A ready-made surface: its material, colours, grain, patterns and layer style");
+            lookThisButton.setTooltip ("This shape takes the look: its place, size and corners stay as they are");
+            lookAllButton.setTooltip ("Every rectangular panel takes the look, with the window's background, light and text "
+                                      "colours. Lines and other shapes stay as they are");
+            lookControlsToggle.setTooltip ("With Apply to all panels: every knob, slider and switch takes the look's matching "
+                                           "3D controls too (their place, size and parameter stay as they are)");
+            lookThisButton.setEnabled (false);
+            lookAllButton.setEnabled (false);
+            lookControlsToggle.setToggleState (false, juce::dontSendNotification);
+            lookThemeToggle.setTooltip ("With Apply to all panels: the lamps, selectors, readouts, LED digits, keyboards and meters "
+                                        "take the look's displays, the words its fonts and title lettering, the 3D controls its camera "
+                                        "(places, sizes, parameters and words stay as they are)");
+            lookThemeToggle.setToggleState (false, juce::dontSendNotification);
+            lookPaintToggle.setTooltip ("With Apply to all panels: the window's background is painted in the look (sections under "
+                                        "the groups, a plate under the title, screens, wells, dividers), and the panel shapes step "
+                                        "back (hidden, kept). The plugin must have been built once");
+            lookPaintToggle.setToggleState (false, juce::dontSendNotification);
+
+            materialLookBox.onChange = [this]
+            {
+                const bool chosen = materialLookBox.getSelectedId() > 0;
+                lookThisButton.setEnabled (chosen);
+                lookAllButton.setEnabled (chosen);
+            };
+
+            lookThisButton.onClick = [this]
+            {
+                if (canvas.applyMaterialLook (materialLookBox.getText(), widget))
+                    showFor (widget);   // its material rows show the look
+            };
+
+            lookAllButton.onClick = [this]
+            {
+                if (canvas.applyMaterialLook (materialLookBox.getText(), -1, lookControlsToggle.getToggleState(), lookThemeToggle.getToggleState(),
+                                              lookPaintToggle.getToggleState()))
+                    showFor (widget);
+            };
+        }
 
         for (auto* box : { &surfaceFinish, &patternBox, &blendBox })
             box->onChange = [this] { applySurface (false); };
@@ -655,6 +748,27 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
 
     for (auto* slider : { &topPoint, &middleX, &middleY, &leanX, &leanY })
         slider->setDoubleClickReturnValue (true, 0.0);
+
+    // Filled, or its outline alone; its outline's width and colour.
+    fillBox.addItem ("Filled", 1);
+    fillBox.addItem ("Not filled (its outline alone)", 2);
+    fillBox.setTooltip ("Filled: its colour or material inside its outline. Not filled: its outline alone, "
+                        "in its colour or material (Surface), with its layer style");
+    fillBox.onChange = [this]
+    {
+        if (updating)
+            return;
+
+        applyShape();
+        showFor (widget);   // the outline's range and colour follow
+    };
+
+    setUpSlider (outlineWidth, 0.0, ObjectPaint::maxOutlineWidth, 0.5, 0.0,
+                 "Its outline's width in pixels: 0 (none) to 12 filled, 1 to 12 not filled", " px");
+    outlineWidth.onValueChange = [this] { applyShape(); };
+
+    outlineColour.setTooltip ("Its outline's colour (not filled, the outline is in its colour or material)");
+    outlineColour.onColourChange = [this] { applyShape(); };
 
     // A line's bend points: pick one (or click its handle), make it an arc or a corner, add more
     // (each its own kind), take one away.
@@ -738,6 +852,27 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
         canvas.edited();
         canvas.repaint();
         showFor (widget);   // the lean sliders go (or come back)
+    };
+
+    // A frame: whether resizing it scales everything inside it (and the 3D body, inside it).
+    frameScaleToggle.setTooltip ("On: dragging its handles scales everything inside it with it, its shape kept, the 3D body too "
+                                 "when it's inside (a whole instrument made bigger or smaller at once). Off: only the frame changes");
+    frameScaleToggle.onClick = [this]
+    {
+        if (updating || ! juce::isPositiveAndBelow (widget, (int) canvas.layout.widgets.size()))
+            return;
+
+        auto& w = canvas.layout.widgets[(size_t) widget];
+
+        if (w.type != GuiWidget::Type::group)
+            return;
+
+        if (frameScaleToggle.getToggleState())
+            w.settings.erase ("scaleContents");
+        else
+            w.settings["scaleContents"] = false;
+
+        canvas.edited();
     };
 
     layerStyleButton.setButtonText (juce::String::fromUTF8 ("Layer style (fx)\xe2\x80\xa6"));
@@ -882,6 +1017,54 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     arrowsBox.setTooltip ("Small arrowheads beside its words");
     arrowsBox.onChange = [this] { applyPart(); };
 
+    // An icon's badge: a shape behind it (its colour), the icon on it in the element's colour.
+    badgeBox.addItemList ({ "None", "Rectangle", "Circle", "Rhombus", "Hexagon", "Pentagon", "Octagon",
+                           "Triangle", "Wide rectangle", "Small square" }, 1);
+    badgeBox.setTooltip ("A shape behind the icon, in the badge colour; the icon on it takes the element's colour (Colour, below)");
+    badgeBox.onChange = [this] { applyPart(); showFor (widget); };
+    badgeColour.setTooltip ("The badge's colour");
+    badgeColour.onColourChange = [this] { applyPart(); };
+
+    // A label's LED digits.
+    ledSegmentsBox.addItemList ({ "Auto (7 for numbers, 16 with letters)", "7 segments (numbers)", "14 segments", "16 segments" }, 1);
+    ledSegmentsBox.setTooltip ("The bars each character has: 7 in an \"8\" for numbers, 14 or 16 (diagonals, a split top and bottom) for letters too");
+    ledColourBox.addItem ("Its own colour", 1);
+    ledColourBox.addItemList (SegmentDisplay::colourNames(), 2);
+    ledColourBox.setTooltip ("The digits' colour (one for the whole display): a classic LED colour, or its own (Colour, below)");
+    ledWindowBox.addItemList ({ "No window", "A dark window", "A window in a bezel (3D)" }, 1);
+    ledWindowBox.setTooltip ("What the digits sit in");
+    setUpSlider (ledCells, 0.0, 32.0, 1.0, 0.0, "How many characters (0: as many as its text needs; a value's: its longest). "
+                                                "They always fill its box, however wide and tall it is");
+    setUpSlider (ledGhost, 0.0, 60.0, 1.0, 10.0, "How much the bars that aren't lit show", " %");
+    setUpSlider (ledGlow, 0.0, 100.0, 1.0, 40.0, "The light round the lit bars", " %");
+    setUpSlider (ledSlant, 0.0, 15.0, 0.5, 6.0, "Leaning forward, as printed LED digits do", juce::String::fromUTF8 ("\xc2\xb0"));
+    setUpSlider (ledThickness, 6.0, 30.0, 1.0, 16.0, "The bars' thickness, of a character's width", " %");
+    ledGhost.setDoubleClickReturnValue (true, 10.0);
+    ledGlow.setDoubleClickReturnValue (true, 40.0);
+    ledSlant.setDoubleClickReturnValue (true, 6.0);
+    ledThickness.setDoubleClickReturnValue (true, 16.0);
+    ledBack.setTooltip ("The window's colour (see-through: the standard near-black)");
+
+    for (auto* box : { &ledSegmentsBox, &ledColourBox, &ledWindowBox })
+        box->onChange = [this] { applyPart(); };
+
+    for (auto* slider : { &ledCells, &ledGhost, &ledGlow, &ledSlant, &ledThickness })
+        slider->onValueChange = [this] { applyPart(); };
+
+    ledBack.onColourChange = [this] { applyPart(); };
+
+    // A keyboard in 3D: from where it's seen.
+    setUpSlider (keyTilt, 0.0, 75.0, 1.0, 0.0, "Where it's seen from: 0 straight above (flat), 75 from the player's seat, "
+                                               "its keys' fronts and the black keys standing on them showing", juce::String::fromUTF8 ("\xc2\xb0"));
+    setUpSlider (keyYaw, -45.0, 45.0, 1.0, 0.0, "Seen from one side: minus from the left, plus from the right", juce::String::fromUTF8 ("\xc2\xb0"));
+    setUpSlider (keyPerspective, 0.0, 100.0, 1.0, 0.0, "How much nearer keys look bigger than far ones: 0 none, 100 close up", " %");
+    keyYaw.setDoubleClickReturnValue (true, 0.0);
+    keyTilt.setDoubleClickReturnValue (true, 0.0);
+    keyPerspective.setDoubleClickReturnValue (true, 40.0);
+
+    for (auto* slider : { &keyTilt, &keyYaw, &keyPerspective })
+        slider->onValueChange = [this] { applyPart(); };
+
     // A line's stroke.
     setUpSlider (lineWidthSlider, 0.5, 40.0, 0.5, 6.0, "How wide the line is, in pixels", " px");
     lineWidthSlider.onValueChange = [this] { applyShape(); };
@@ -936,6 +1119,85 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
         button->onClick = [this] { canvas.editGlobalLight(); };
     }
 
+    // The panel camera: the 3D looks seen as one camera over the whole panel sees them.
+    setUpSlider (cameraSlider, 0.0, 100.0, 1.0, 0.0,
+                 "The panel camera: the 3D knobs, buttons and sliders seen as one camera over the whole panel sees them (one on the left "
+                 "shows a little of its right side). 0: each seen straight on; 100: a wide lens close to the panel", " %");
+    cameraSlider.onValueChange = [this]
+    {
+        if (updating)
+            return;
+
+        canvas.layout.camera = (float) cameraSlider.getValue();
+        canvas.repaint();
+
+        if (! cameraSlider.isMouseButtonDown())
+            canvas.edited();
+    };
+    cameraSlider.onDragEnd = [this] { if (! updating) canvas.edited(); };
+
+    bodyButton.setButtonText (juce::String::fromUTF8 ("Showroom: the 3D body\xe2\x80\xa6"));
+    bodyButton.setTooltip ("The instrument's case in 3D, behind everything on the panel: a desktop synth's brick and the step where its keys "
+                           "sit, a rack unit, a stompbox... built from parts (or from a template) and seen, chosen, moved, turned and "
+                           "sized in 3D in the Showroom, lit by the global light; its picture saved as a PNG");
+    bodyButton.onClick = [this] { canvas.editBody(); };
+
+    // Start from a layout: the ready-made layouts by kind, the material looks by family.
+    {
+        juce::String kind;
+        int id = 1;
+
+        for (const auto& layout : PanelLayouts::all())
+        {
+            if (kind != layout.kind)
+            {
+                kind = layout.kind;
+                layoutStartBox.addSectionHeading (kind == "midi" ? juce::String ("MIDI") : kind.substring (0, 1).toUpperCase() + kind.substring (1) + "s");
+            }
+
+            layoutStartBox.addItem (layout.name, id++);
+        }
+
+        layoutStartBox.setTextWhenNothingSelected ("Choose a layout");
+        layoutStartBox.setTooltip ("A ready-made window for a kind of plugin: Fanan AI lays this window out from it, with this plugin's own controls");
+
+        layoutLookBox.addItem ("Keep the current look", 1);
+        juce::String family;
+        id = 2;
+
+        for (const auto& look : MaterialArchetypes::all())
+        {
+            if (family != look.family)
+            {
+                family = look.family;
+                layoutLookBox.addSectionHeading (family.substring (0, 1).toUpperCase() + family.substring (1));
+            }
+
+            layoutLookBox.addItem (look.name, id++);
+        }
+
+        layoutLookBox.setSelectedId (1, juce::dontSendNotification);
+        layoutLookBox.setTooltip ("The material look to dress the new window in");
+
+        for (auto* toggle : { &layoutControlsToggle, &layoutThemeToggle, &layoutPaintToggle })
+            toggle->setToggleState (false, juce::dontSendNotification);
+
+        layoutControlsToggle.setTooltip ("The look's matching 3D knobs, sliders and switches as well");
+        layoutThemeToggle.setTooltip ("The look's lamps, selectors, readouts, meters, keyboard, fonts and lettering as well");
+        layoutPaintToggle.setTooltip ("The look's painted panel behind it as well (the plugin must have been built once)");
+
+        layoutStartButton.setButtonText (juce::String::fromUTF8 ("Start from this layout\xe2\x80\xa6"));
+        layoutStartButton.setTooltip ("Fanan AI makes this window again from the layout, with this plugin's own controls, and dresses it in the look");
+        layoutStartButton.setEnabled (false);
+        layoutStartBox.onChange = [this] { layoutStartButton.setEnabled (layoutStartBox.getSelectedId() > 0); };
+        layoutStartButton.onClick = [this] { startFromLayout(); };
+    }
+
+    showroomButton.setButtonText (juce::String::fromUTF8 ("Showroom\xe2\x80\xa6"));
+    showroomButton.setTooltip ("The finished instrument: its 3D body with the controls printed on it, seen from anywhere round it, "
+                               "as a product photograph; saved as a picture");
+    showroomButton.onClick = [this] { canvas.showShowroom(); };
+
     fontSample.setInterceptsMouseClicks (false, false);
 
     cropToolButton.setButtonText (juce::String::fromUTF8 ("Crop the window (C)\xe2\x80\xa6"));
@@ -956,9 +1218,11 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
 
     addHeader (object, "Kind");
     addRow (object, "Type", type);
+    addRow (object, {}, iconPickButton, nullptr, 1.0f, 30);
     addHeader (object, "Place");
     addRow (object, "Position (left, top)", xBox, &yBox, 0.5f);
     addRow (object, "Size (width, height)", wBox, &hBox, 0.5f);
+    addRow (object, {}, frameScaleToggle, nullptr, 1.0f, 24);
     addHeader (object, "Turn and see-through");
     addRow (object, "Angle (degrees)", angleBox, nullptr, 0.4f);
     addRow (object, "Opacity", opacitySlider, nullptr, 1.0f, 24);
@@ -977,6 +1241,7 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     addRow (control, "Mode", mode);
     addHeader (control, "Choices");
     addRow (control, "Positions (comma separated)", options);
+    addRow (control, {}, optionsIconButton, nullptr, 1.0f, 28);
     addRow (control, "Keys (lowest, highest)", lowKey, &highKey, 0.5f);
 
     const juce::String meter ("Meter");
@@ -994,6 +1259,7 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
 
     addHeader (text, "Words");
     addRow (text, "Text", label);
+    addRow (text, {}, textIconButton, nullptr, 1.0f, 28);
     addRow (text, "Text size", textSize);
     addRow (text, "Style", textStyle, nullptr, 1.0f, 24);
     addRow (text, "Text colour", textColour, nullptr, 1.0f, 22);
@@ -1007,6 +1273,22 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     addRow (look, "Display", partDisplay);
     addRow (look, {}, followToggle, nullptr, 1.0f, 24);
     addRow (look, "Arrowheads", arrowsBox);
+    addRow (look, "Badge", badgeBox);
+    addRow (look, "Badge colour", badgeColour, nullptr, 1.0f, 22);
+    addHeader (look, "LED digits");
+    addRow (look, "Segments", ledSegmentsBox);
+    addRow (look, "Colour", ledColourBox);
+    addRow (look, "Characters (0: as the text needs)", ledCells, nullptr, 1.0f, 24);
+    addRow (look, "Dark bars", ledGhost, nullptr, 1.0f, 24);
+    addRow (look, "Glow", ledGlow, nullptr, 1.0f, 24);
+    addRow (look, "Slant", ledSlant, nullptr, 1.0f, 24);
+    addRow (look, "Bars' thickness", ledThickness, nullptr, 1.0f, 24);
+    addRow (look, "Window", ledWindowBox);
+    addRow (look, {}, ledBack, nullptr, 1.0f, 22);
+    addHeader (look, "View (3D)");
+    addRow (look, "Seen from (0 above, 75 the player's seat)", keyTilt, nullptr, 1.0f, 24);
+    addRow (look, "From the side (- left, + right)", keyYaw, nullptr, 1.0f, 24);
+    addRow (look, "Perspective", keyPerspective, nullptr, 1.0f, 24);
     addHeader (look, "Look");
     addRow (look, "Look", style);
     addRow (look, {}, originalLookButton, nullptr, 1.0f, 28);
@@ -1019,6 +1301,7 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     addRow (look, "White keys", whiteKeysSwatch, nullptr, 1.0f, 22);
     addRow (look, "Black keys", blackKeysSwatch, nullptr, 1.0f, 22);
     addHeader (look, "Corners");
+    addRow (look, "Shape", dropLookBox);
     addRow (look, "Rounding", presetRounding, nullptr, 1.0f, 24);
     addHeader (look, "Light");
     addRow (look, {}, globalLightButton, nullptr, 1.0f, 28);   // what's lit: looks, painted pictures
@@ -1031,6 +1314,10 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     addRow (shape, "Its bend", bendKind);
     addRow (shape, {}, addBendButton, &removeBendButton, 0.62f, 28);
     addRow (shape, {}, straightenButton, nullptr, 1.0f, 28);
+    addHeader (shape, "Fill and outline");
+    addRow (shape, "Fill", fillBox);
+    addRow (shape, "Outline width", outlineWidth, nullptr, 1.0f, 24);
+    addRow (shape, "Outline colour", outlineColour, nullptr, 1.0f, 22);
     addHeader (shape, "Corners");
     addRow (shape, "Rounding", cornerRadius, nullptr, 1.0f, 24);
     addHeader (shape, "Star");
@@ -1048,6 +1335,12 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
 
     // A shape's surface, a painted picture's (and the window's painted background's, in its
     // Background tab).
+    addHeader (surface, "Material look");
+    addRow (surface, "Look", materialLookBox);
+    addRow (surface, {}, lookThisButton, &lookAllButton, 0.5f, 28);
+    addRow (surface, {}, lookControlsToggle);
+    addRow (surface, {}, lookThemeToggle);
+    addRow (surface, {}, lookPaintToggle);
     addHeader (surface, "Material");
     addRow (surface, "Material", surfaceMaterial);
     addRow (surface, "Finish", surfaceFinish);
@@ -1077,6 +1370,17 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     addRow (window, "Pages (in order, comma separated)", pagesBox);
     addHeader (window, "Light");
     addRow (window, {}, windowLightButton, nullptr, 1.0f, 28);
+    addRow (window, "3D panel camera", cameraSlider, nullptr, 1.0f, 24);
+    addHeader (window, "3D body");
+    addRow (window, {}, bodyButton, nullptr, 1.0f, 28);
+    addRow (window, {}, showroomButton, nullptr, 1.0f, 28);
+    addHeader (window, "Start from a layout");
+    addRow (window, "Layout", layoutStartBox);
+    addRow (window, "Look", layoutLookBox);
+    addRow (window, {}, layoutControlsToggle);
+    addRow (window, {}, layoutThemeToggle);
+    addRow (window, {}, layoutPaintToggle);
+    addRow (window, {}, layoutStartButton, nullptr, 1.0f, 28);
 
     addHeader (background, "Colours");
     addRow (background, "Background colours (top, bottom)", topColour, &bottomColour, 0.5f, 22);
@@ -1102,7 +1406,72 @@ PluginCanvas::ElementMenu::ElementMenu (PluginCanvas& owner)
     addAndMakeVisible (sendButton);
 }
 
-PluginCanvas::ElementMenu::~ElementMenu() = default;
+PluginCanvas::ElementMenu::~ElementMenu()
+{
+    studio = nullptr;
+}
+
+//==============================================================================
+bool PluginCanvas::ElementMenu::hasAdvanced() const
+{
+    if (! several.empty() || ! canvas.hasPanel() || ! juce::isPositiveAndBelow (widget, (int) canvas.layout.widgets.size()))
+        return false;
+
+    const auto t = canvas.layout.widgets[(size_t) widget].type;
+    return t == GuiWidget::Type::selector || t == GuiWidget::Type::xy || t == GuiWidget::Type::matrix || t == GuiWidget::Type::preset;
+}
+
+bool PluginCanvas::ElementMenu::isAdvanced() const
+{
+    return studio != nullptr && tabStrip.current == advancedTab;
+}
+
+void PluginCanvas::ElementMenu::showStudio()
+{
+    const auto t = canvas.layout.widgets[(size_t) widget].type;
+
+    if (studio != nullptr && studioWidget == widget && studioType == (int) t)
+        return;
+
+    dropStudio();
+
+    switch (t)
+    {
+        case GuiWidget::Type::selector:  studio = std::make_unique<SelectorStudio> (canvas, widget); break;
+        case GuiWidget::Type::xy:        studio = std::make_unique<PerformStudio> (canvas, widget); break;
+        case GuiWidget::Type::matrix:    studio = std::make_unique<MatrixStudio> (canvas, widget); break;
+        case GuiWidget::Type::preset:    studio = std::make_unique<PresetStudio> (canvas, widget); break;
+        default: return;
+    }
+
+    studioWidget = widget;
+    studioType = (int) t;
+
+    if (advancedSize.x <= 0)
+        advancedSize = { studio->getWidth(), headerHeight + tabsHeight + 4 + studio->getHeight() };
+
+    addAndMakeVisible (*studio);
+}
+
+void PluginCanvas::ElementMenu::dropStudio()
+{
+    if (studio == nullptr)
+        return;
+
+    // Let go once whatever it's doing now is done (it may be what asked for this).
+    studio->setVisible (false);
+    removeChildComponent (studio.get());
+    juce::MessageManager::callAsync ([gone = std::shared_ptr<juce::Component> (studio.release())] {});
+    studioWidget = studioType = -1;
+}
+
+juce::Point<int> PluginCanvas::ElementMenu::getIdealSize() const
+{
+    if (isAdvanced())
+        return advancedSize;
+
+    return { menuWidth, getIdealHeight() };
+}
 
 void PluginCanvas::ElementMenu::addRow (const juce::String& tab, const juce::String& caption, juce::Component& first, juce::Component* second,
                                         float firstShare, int height)
@@ -1155,20 +1524,40 @@ void PluginCanvas::ElementMenu::showTabs()
                 break;
             }
 
+    // An element with a studio: it, in a tab of its own.
+    if (hasAdvanced())
+        names.add (advancedTab);
+
     tabStrip.names = names;
     tabStrip.setVisible (names.size() > 1);
     tabStrip.current = names.contains (chosenTab) ? chosenTab : names[0];
     rows.tab = tabStrip.current;
+
+    // One of them edits it at a time: the studio is let go in the other tabs.
+    if (tabStrip.current == advancedTab)
+        showStudio();
+    else
+        dropStudio();
+
+    viewport.setVisible (! isAdvanced());
     tabStrip.repaint();
 }
 
 void PluginCanvas::ElementMenu::pickTab (const juce::String& name)
 {
+    const bool wasAdvanced = isAdvanced();
     chosenTab = name;
-    showTabs();
+
+    // Back from the studio: the settings as it left them.
+    if (wasAdvanced && name != advancedTab)
+        showFor (widget);
+    else
+        showTabs();
+
     viewport.setViewPosition (0, 0);
     resized();
     repaint();
+    canvas.fitMenuWindow (false);
 }
 
 void PluginCanvas::ElementMenu::setShown (juce::Component& first, bool shouldShow, const juce::String& caption)
@@ -1197,16 +1586,24 @@ void PluginCanvas::ElementMenu::showFor (int widgetIndex)
         row.shown = false;
 
     showActions (widget >= 0);
-    removeButton.setVisible (widget >= 0);
-    instruction.setVisible (true);
-    sendButton.setVisible (true);
+    removeButton.setVisible (widget >= 0 || canvas.bodySelected);   // (the 3D body selected: it's taken off)
+    // Fanan AI's corner, where there's an AI to tell (KnobMaster 2 has none).
+    instruction.setVisible (canvas.onAskAi != nullptr);
+    sendButton.setVisible (canvas.onAskAi != nullptr);
 
     if (widget < 0)
     {
         // The window itself.
         const auto& l = canvas.layout;
-        title = "Plugin window";
+        title = canvas.bodySelected ? "3D body" : "Plugin window";
         subtitle = juce::String (l.width) + juce::String::fromUTF8 (" \xc3\x97 ") + juce::String (l.height);
+
+        if (canvas.bodySelected)
+        {
+            const auto box = canvas.bodyBounds();
+            subtitle = juce::String (juce::roundToInt (box.getWidth())) + juce::String::fromUTF8 (" \xc3\x97 ")
+                     + juce::String (juce::roundToInt (box.getHeight())) + "  (on the window's " + subtitle + ")";
+        }
 
         widthBox.setText (juce::String (l.width), juce::dontSendNotification);
         heightBox.setText (juce::String (l.height), juce::dontSendNotification);
@@ -1237,6 +1634,18 @@ void PluginCanvas::ElementMenu::showFor (int widgetIndex)
 
         setShown (paintBackgroundButton, ! painted.isObject() && canvas.onPaintPicture != nullptr);
         setShown (windowLightButton, canvas.hasPanel());
+        cameraSlider.setValue (l.camera, juce::dontSendNotification);
+        setShown (cameraSlider, canvas.hasPanel());
+        setShown (bodyButton, canvas.hasPanel());
+
+        const bool layouts = canvas.hasPanel() && canvas.onAskAi != nullptr;
+
+        for (auto* c : std::initializer_list<juce::Component*> { &layoutStartBox, &layoutLookBox, &layoutControlsToggle, &layoutThemeToggle,
+                                                                 &layoutStartButton })
+            setShown (*c, layouts);
+
+        setShown (layoutPaintToggle, layouts && canvas.onPaintPicture != nullptr);
+        setShown (showroomButton, false);   // the Showroom is the body's one window (the button above)
 
         instruction.setTextToShowWhenEmpty ("e.g. a dark wooden look with brass knobs", Theme::muted);
     }
@@ -1247,6 +1656,7 @@ void PluginCanvas::ElementMenu::showFor (int widgetIndex)
         const bool custom = t == GuiWidget::Type::custom;
         const bool dropdown = custom && w.element == GuiLayout::builtInElementFor ("dropdown");
         title = dropdown ? juce::String ("Drop-down list")
+              : t == GuiWidget::Type::label && PanelParts::labelDisplayOf (w) == "icon" ? juce::String ("Icon")
               : custom ? w.element
               : t == GuiWidget::Type::shape ? shapeKindNames[juce::jmax (0, shapeKindIds.indexOf (w.shapeKind()))]
                                             : PluginCanvas::typeDisplayName (t);
@@ -1289,7 +1699,7 @@ void PluginCanvas::ElementMenu::showFor (int widgetIndex)
             pageBox.setText (w.page, juce::dontSendNotification);   // a page the window doesn't have: its name, nothing picked
         setShown (pageBox, ! canvas.layout.pages.isEmpty() && t != GuiWidget::Type::registration);
 
-        if (w.isControl() || custom || (t == GuiWidget::Type::label && PanelParts::labelDisplayOf (w) == "readout"))
+        if (w.isControl() || custom || (t == GuiWidget::Type::label && PanelParts::labelShowsValue (w)))
         {
             param.setText (w.param, juce::dontSendNotification);
             setShown (param, true, paramCaption (t == GuiWidget::Type::label ? "Shows the value of" : "Parameter", w.param));
@@ -1359,6 +1769,9 @@ void PluginCanvas::ElementMenu::showFor (int widgetIndex)
 
         label.setText (w.label, juce::dontSendNotification);
         setShown (label, hasCaption, isText ? "Text" : "Caption");
+        setShown (textIconButton, hasCaption && t != GuiWidget::Type::registration);
+        textIconButton.setButtonText (juce::String::fromUTF8 (t == GuiWidget::Type::label && PanelParts::labelDisplayOf (w) == "icon"
+                                                                  ? "Choose its icon\xe2\x80\xa6" : "Icon\xe2\x80\xa6"));
 
         textSize.setText (w.fontSize > 0.0f ? juce::String (w.fontSize, 1).trimCharactersAtEnd ("0").trimCharactersAtEnd (".") : juce::String(),
                           juce::dontSendNotification);
@@ -1401,6 +1814,27 @@ void PluginCanvas::ElementMenu::showFor (int widgetIndex)
             presetRounding.setValue (juce::roundToInt (rounding * 100.0f), juce::dontSendNotification);
             setShown (presetRounding, true);
         }
+
+        // A drop-down list: a rectangle (square to a pill) or its words alone.
+        {
+            const bool dropdown = t == GuiWidget::Type::custom && w.element == GuiLayout::builtInElementFor ("dropdown");
+            const bool textOnly = w.settingText ("look").trim().equalsIgnoreCase ("text");
+            dropLookBox.setSelectedId (textOnly ? 2 : 1, juce::dontSendNotification);
+            setShown (dropLookBox, dropdown);
+
+            if (dropdown)
+            {
+                const auto found = w.settings.find ("rounding");
+                const auto boxH = juce::jmax (1.0f, (float) w.bounds.getHeight() - (w.label.isNotEmpty() && w.bounds.getHeight() >= 40 ? 18.0f : 0.0f));
+                const auto rounding = found != w.settings.end() ? (float) (double) found->second
+                                                                 : juce::jmin (100.0f, 4.0f / (boxH * 0.5f) * 100.0f);
+                presetRounding.setValue (juce::roundToInt (rounding), juce::dontSendNotification);
+                setShown (presetRounding, ! textOnly);
+            }
+        }
+
+        // An icon element: its icon, first thing.
+        setShown (iconPickButton, t == GuiWidget::Type::label && PanelParts::labelDisplayOf (w) == "icon");
 
         if (Looks::takesLook (w) && canvas.looks != nullptr)
         {
@@ -1465,6 +1899,7 @@ void PluginCanvas::ElementMenu::showFor (int widgetIndex)
 
         options.setText (w.options.joinIntoString (", "), juce::dontSendNotification);
         setShown (options, t == GuiWidget::Type::selector || custom);
+        setShown (optionsIconButton, t == GuiWidget::Type::selector);
 
         if (t == GuiWidget::Type::keyboard)
         {
@@ -1509,12 +1944,23 @@ void PluginCanvas::ElementMenu::showFor (int widgetIndex)
         colour.setStandardColour (PluginCanvas::standardColour (w));
         setShown (colour, takesColour (w) && t != GuiWidget::Type::shape, t == GuiWidget::Type::keyboard ? "Colour of the keys that are down" : "Colour");
         setShown (windowButton, true);
+        frameScaleToggle.setToggleState (PluginCanvas::scalesContents (w), juce::dontSendNotification);
+        setShown (frameScaleToggle, t == GuiWidget::Type::group);
 
         if (t == GuiWidget::Type::meter)
             showMeter (w);
 
         if (w.takesPartDisplay())
             showPart (w);
+
+        // Drawn by a design of its own (its studio: the Advanced edit tab): the look's settings
+        // here would do nothing, and only one of the two edits it.
+        if (SelectorSet::has (w) || PerformControl::has (w) || PresetPanel::has (w) || t == GuiWidget::Type::matrix)
+        {
+            setShown (colour, false);
+            setShown (partDisplay, false);
+            setShown (presetRounding, false);
+        }
 
         instruction.setTextToShowWhenEmpty ("e.g. make it bigger and gold", Theme::muted);
     }
@@ -1691,6 +2137,68 @@ void PluginCanvas::ElementMenu::showPart (const GuiWidget& w)
     const auto arrows = w.settingText ("arrows").trim().toLowerCase();
     arrowsBox.setSelectedId (juce::jmax (0, arrowIds.indexOf (arrows)) + 1, juce::dontSendNotification);
     setShown (arrowsBox, w.type == GuiWidget::Type::label && current == "plain");
+
+    // An icon's badge.
+    const bool iconLabel = w.type == GuiWidget::Type::label && current == "icon";
+    const auto badge = PanelParts::badgeOf (w);
+    badgeBox.setSelectedId (juce::jmax (0, badgeIds.indexOf (badge)) + 1, juce::dontSendNotification);
+    badgeColour.setColourValue (PanelParts::badgeColourOf (w), juce::dontSendNotification);
+    setShown (badgeBox, iconLabel);
+    setShown (badgeColour, iconLabel && badge != "none");
+
+    // LED digits: what they're set to.
+    const bool led = w.type == GuiWidget::Type::label && current == "led";
+    const auto segments = w.settingText ("segments").trim();
+    ledSegmentsBox.setSelectedId (segments == "7" ? 2 : segments == "14" ? 3 : segments == "16" ? 4 : 1, juce::dontSendNotification);
+    const auto windowName = w.settingText ("window").trim().toLowerCase();
+    ledWindowBox.setSelectedId (windowName == "none" ? 1 : windowName == "3d" ? 3 : 2, juce::dontSendNotification);
+    int named = 1;
+
+    for (int i = 0; i < SegmentDisplay::colourNames().size(); ++i)
+        if (! w.colour.isTransparent() && w.colour == SegmentDisplay::colourNamed (i))
+            named = i + 2;
+
+    ledColourBox.setSelectedId (w.colour.isTransparent() ? 2 : named, juce::dontSendNotification);
+    ledCells.setValue (w.number ("cells", 0.0f), juce::dontSendNotification);
+    ledGhost.setValue (w.number ("ghost", 10.0f), juce::dontSendNotification);
+    ledGlow.setValue (w.number ("glow", 40.0f), juce::dontSendNotification);
+    ledSlant.setValue (w.number ("slant", 6.0f), juce::dontSendNotification);
+    ledThickness.setValue (w.number ("thickness", 16.0f), juce::dontSendNotification);
+    ledBack.setStandardColour (SegmentDisplay::Style().background);
+    ledBack.setColourValue (w.settingText ("background").isNotEmpty() ? SegmentDisplay::styleOf (w).background : juce::Colours::transparentBlack,
+                            juce::dontSendNotification);
+
+    for (auto* row : std::initializer_list<juce::Component*> { &ledSegmentsBox, &ledColourBox, &ledCells, &ledGhost, &ledGlow, &ledSlant,
+                                                               &ledThickness, &ledWindowBox })
+        setShown (*row, led);
+
+    setShown (ledBack, led && ledWindowBox.getSelectedId() != 1);
+
+    // A keyboard: from where it's seen (in 3D once it's not from straight above).
+    const bool keyboard = w.type == GuiWidget::Type::keyboard;
+    keyTilt.setValue (w.number ("tilt", 0.0f), juce::dontSendNotification);
+    keyYaw.setValue (w.number ("yaw", 0.0f), juce::dontSendNotification);
+    keyPerspective.setValue (w.number ("perspective", 40.0f), juce::dontSendNotification);
+    setShown (keyTilt, keyboard);
+    setShown (keyYaw, keyboard);
+    setShown (keyPerspective, keyboard && PanelParts::isKeyboard3d (w));
+}
+
+void PluginCanvas::ElementMenu::putIcon (juce::TextEditor& into, const juce::String& name)
+{
+    if (! juce::isPositiveAndBelow (widget, (int) canvas.layout.widgets.size()))
+        return;
+
+    const auto& w = canvas.layout.widgets[(size_t) widget];
+
+    // An icon element's icon is its whole text; elsewhere the icon goes where the cursor is.
+    if (&into == &label && w.type == GuiWidget::Type::label && PanelParts::labelDisplayOf (w) == "icon")
+        into.setText (IconLibrary::token (name), juce::sendNotification);
+    else
+        into.insertTextAtCaret (IconLibrary::token (name));
+
+    typedBox = nullptr;
+    apply();
 }
 
 void PluginCanvas::ElementMenu::applyPart()
@@ -1724,13 +2232,77 @@ void PluginCanvas::ElementMenu::applyPart()
 
         if (arrows == "none") w.settings.erase ("arrows");
         else                  w.settings["arrows"] = arrows;
+
+        if (display == "icon")
+        {
+            const auto id = badgeBox.getSelectedId();
+
+            if (id <= 1)
+            {
+                w.settings.erase ("badge");
+            }
+            else
+            {
+                w.settings["badge"] = badgeIds[juce::jlimit (1, badgeIds.size() - 1, id - 1)];
+                w.settings["badgeColour"] = badgeColour.getColourValue().toDisplayString (true);
+            }
+        }
+    }
+
+    // LED digits: what's set (the standards need no setting).
+    bool ledColourPicked = false;
+
+    if (w.type == GuiWidget::Type::label && display == "led" && before == "led")
+    {
+        auto put = [&w] (const char* key, const juce::var& value, bool standard)
+        {
+            if (standard) w.settings.erase (key);
+            else          w.settings[key] = value;
+        };
+
+        const auto segmentsId = ledSegmentsBox.getSelectedId();
+        put ("segments", segmentsId == 2 ? "7" : segmentsId == 3 ? "14" : "16", segmentsId <= 1);
+        put ("window", ledWindowBox.getSelectedId() == 1 ? "none" : "3d", ledWindowBox.getSelectedId() == 2);
+
+        for (const auto& [slider, key, standard] : { std::tuple<juce::Slider*, const char*, double> { &ledCells, "cells", 0.0 },
+                                                     { &ledGhost, "ghost", 10.0 }, { &ledGlow, "glow", 40.0 }, { &ledSlant, "slant", 6.0 },
+                                                     { &ledThickness, "thickness", 16.0 } })
+            put (key, slider->getValue(), std::abs (slider->getValue() - standard) < 0.01);
+
+        const auto back = ledBack.getColourValue();
+        put ("background", back.toDisplayString (true), back.isTransparent());
+
+        // A classic colour picked: the label's colour (its own stays as it is).
+        if (const auto chosen = ledColourBox.getSelectedId(); chosen >= 2 && w.colour != SegmentDisplay::colourNamed (chosen - 2))
+        {
+            w.colour = SegmentDisplay::colourNamed (chosen - 2);
+            ledColourPicked = true;   // its Colour row shows it
+        }
+    }
+
+    bool viewChanged = false;
+
+    if (w.type == GuiWidget::Type::keyboard)
+    {
+        const bool was3d = PanelParts::isKeyboard3d (w);
+
+        for (const auto& [slider, key, standard] : { std::tuple<juce::Slider*, const char*, double> { &keyTilt, "tilt", 0.0 },
+                                                     { &keyYaw, "yaw", 0.0 }, { &keyPerspective, "perspective", 40.0 } })
+        {
+            const auto v = std::round (slider->getValue());
+
+            if (std::abs (v - standard) < 0.5) w.settings.erase (key);
+            else                               w.settings[key] = v;
+        }
+
+        viewChanged = was3d != PanelParts::isKeyboard3d (w);   // its Perspective row comes or goes
     }
 
     canvas.edited();
     canvas.repaint();
 
     // A new display can bring other rows (a readout's parameter, a lamp's follow).
-    if (before != w.settingText ("display"))
+    if (before != w.settingText ("display") || viewChanged || ledColourPicked)
     {
         showFor (widget);
         canvas.layOutOverlays();
@@ -1847,6 +2419,49 @@ void PluginCanvas::ElementMenu::showSurface (const juce::var& recipe)
     showSurfaceRows();
 }
 
+bool PluginCanvas::applyMaterialLook (const juce::String& name, int widgetIndex, bool withControls, bool withTheme, bool withPainting)
+{
+    const auto look = MaterialArchetypes::find (name);
+
+    if (! look.isObject())
+        return false;
+
+    if (widgetIndex >= 0)
+    {
+        if (! juce::isPositiveAndBelow (widgetIndex, (int) layout.widgets.size())
+            || layout.widgets[(size_t) widgetIndex].type != GuiWidget::Type::shape)
+            return false;
+
+        MaterialArchetypes::applyToWidget (layout.widgets[(size_t) widgetIndex], look);
+        edited();
+        repaint();
+        return true;
+    }
+
+    MaterialArchetypes::applyToLayout (layout, look);
+
+    if (withControls)
+        MaterialArchetypes::applyControls (layout, name);
+
+    if (withTheme)
+        MaterialArchetypes::applyTheme (layout, name);
+
+    const bool painting = withPainting && onPaintPicture != nullptr && hasPanel() && MaterialArchetypes::findPaintedPanel (name).isObject();
+
+    if (painting)
+        MaterialArchetypes::prepareForPainting (layout, name);
+
+    setGlobalLight (layout.lightAngle, layout.lightAltitude);
+    edited();
+    repaintBackgrounds();
+    repaint();
+
+    if (painting)
+        paintMaterialPanel (name);
+
+    return true;
+}
+
 void PluginCanvas::ElementMenu::showSurfaceRows()
 {
     // A flat colour has no finish or texture; a pattern has its colour and size; a painted
@@ -1862,6 +2477,16 @@ void PluginCanvas::ElementMenu::showSurfaceRows()
         setShown (*first, hasPattern);
 
     setShown (keyLight, ! shapeSurface);
+
+    // The material looks are a shape's (a line has none).
+    const bool looks = shapeSurface && juce::isPositiveAndBelow (widget, (int) canvas.layout.widgets.size())
+                    && canvas.layout.widgets[(size_t) widget].type == GuiWidget::Type::shape
+                    && canvas.layout.widgets[(size_t) widget].shapeKind() != "line";
+    setShown (materialLookBox, looks);
+    setShown (lookThisButton, looks);
+    setShown (lookControlsToggle, looks);
+    setShown (lookThemeToggle, looks);
+    setShown (lookPaintToggle, looks && canvas.onPaintPicture != nullptr);
 
     // The window's subtitle stays its size.
     if (widget >= 0)
@@ -2053,7 +2678,11 @@ void PluginCanvas::ElementMenu::applyObject()
         return;
     }
 
-    w.bounds = bounds;
+    // A frame that scales what's inside it, made bigger or smaller: everything in it too.
+    if (PluginCanvas::scalesContents (w) && ! w.isTurned() && bounds.getPosition() == w.bounds.getPosition() && (bounds.getWidth() != w.bounds.getWidth() || bounds.getHeight() != w.bounds.getHeight()))
+        canvas.scaleFrameTo (widget, bounds);
+    else
+        w.bounds = bounds;
 
     if (object)
     {
@@ -2098,8 +2727,19 @@ void PluginCanvas::ElementMenu::showShape (const GuiWidget& w)
     setShown (leanY, kind != "line" && ! perCorner);
     setShown (layerStyleButton, true);
 
-    // A line: its width, arrowheads and ends; straight again while it's bent.
+    // Filled or its outline alone, its outline's width (filled 0 to 12, not filled 1 to 12)
+    // and, filled, its colour. A line is its stroke.
     const bool line = kind == "line";
+    const bool filled = ObjectPaint::isFilled (w);
+    fillBox.setSelectedId (filled ? 1 : 2, juce::dontSendNotification);
+    outlineWidth.setRange (filled ? 0.0 : 1.0, ObjectPaint::maxOutlineWidth, 0.5);
+    outlineWidth.setValue (juce::jmin (ObjectPaint::maxOutlineWidth, ObjectPaint::outlineWidthOf (w)), juce::dontSendNotification);
+    outlineColour.setColourValue (w.stroke.isTransparent() ? juce::Colours::black : w.stroke, juce::dontSendNotification);
+    setShown (fillBox, ! line);
+    setShown (outlineWidth, ! line);
+    setShown (outlineColour, ! line && filled);
+
+    // A line: its width, arrowheads and ends; straight again while it's bent.
     lineWidthSlider.setValue (ObjectPaint::lineWidthOf (w), juce::dontSendNotification);
     lineArrowBox.setSelectedId (juce::jmax (0, lineArrowIds.indexOf (w.settingText ("arrow").trim().toLowerCase())) + 1, juce::dontSendNotification);
     lineCapBox.setSelectedId (juce::jmax (0, lineCapIds.indexOf (w.settingText ("cap").trim().toLowerCase())) + 1, juce::dontSendNotification);
@@ -2207,6 +2847,21 @@ void PluginCanvas::ElementMenu::applyShape()
         put ("leanY", leanY.getValue(), 0.0, 0.01);
     }
 
+    // Filled or its outline alone (newly not filled: an outline one pixel wide at least), its
+    // outline's width and colour.
+    if (kind != "line")
+    {
+        const bool filled = fillBox.getSelectedId() != 2;
+
+        if (filled != ObjectPaint::isFilled (w))
+            ObjectPaint::setFilled (w, filled);
+        else
+            w.strokeWidth = juce::jlimit (filled ? 0.0f : 1.0f, ObjectPaint::maxOutlineWidth, (float) outlineWidth.getValue());
+
+        if (filled)
+            w.stroke = outlineColour.getColourValue();
+    }
+
     canvas.edited();
     canvas.repaint();
 }
@@ -2284,6 +2939,17 @@ void PluginCanvas::ElementMenu::showActions (bool forElements)
                          && Looks::takesLook (canvas.layout.widgets[(size_t) widget]);
     galleryButton.setVisible (wearsALook);
     knobStudioButton.setVisible (wearsALook && canvas.looks != nullptr && canvas.onEditLook != nullptr);
+
+    // A 3D look opens in the 3D Studio; a look of layers in the Knob Studio.
+    if (knobStudioButton.isVisible())
+    {
+        const bool is3d = canvas.looks->lookFor (canvas.layout.widgets[(size_t) widget]).doc.model3d != nullptr;
+        knobStudioButton.setButtonText (is3d ? "Edit in 3D Studio" : "Edit in Knob Studio");
+        knobStudioButton.setTooltip (is3d ? "Its 3D look opens in the 3D Studio (the studio's own tab): its object, its materials, its light. "
+                                            "Come back with the studio's Back"
+                                          : "Its look opens in the Knob Studio (the studio's own tab): layers, bevels, "
+                                            "textures, the Gallery. Come back with the Knob Studio's Back");
+    }
     similarToggle.setVisible (wearsALook && canvas.looks != nullptr);
     similarApplyButton.setVisible (similarToggle.isVisible());
 
@@ -2328,19 +2994,33 @@ void PluginCanvas::ElementMenu::showActions (bool forElements)
     const auto last = (int) canvas.layout.widgets.size() - 1;
     const bool one = several.empty();
 
+    // With a 3D body: the ones over it and the ones under it (the back), each in their order.
+    const bool body = Body3D::hasParts (canvas.layout.body);
+    const bool behind = one && canvas.isBehindBody (widget);
+
     layerBox.addItem ("Bring to front", 1);
-    layerBox.setItemEnabled (1, ! one || widget < last);
+    layerBox.setItemEnabled (1, ! one || widget < last || behind);
 
     if (one)
     {
         layerBox.addItem ("Bring forward", 2);
         layerBox.addItem ("Send backward", 3);
-        layerBox.setItemEnabled (2, canvas.layerStep (widget, true) >= 0);    // something over it to pass
-        layerBox.setItemEnabled (3, canvas.layerStep (widget, false) >= 0);   // something under it
+        layerBox.setItemEnabled (2, canvas.layerStep (widget, true) >= 0 || behind);            // something over it to pass (or the body)
+        layerBox.setItemEnabled (3, canvas.layerStep (widget, false) >= 0 || (body && ! behind));   // something under it (or the body)
     }
 
     layerBox.addItem ("Send to back", 4);
-    layerBox.setItemEnabled (4, ! one || widget > 0);
+    layerBox.setItemEnabled (4, ! one || widget > 0 || (body && ! behind));
+
+    if (one && body)
+    {
+        layerBox.addSeparator();
+
+        if (behind)
+            layerBox.addItem ("In front of the 3D body", 6);
+        else
+            layerBox.addItem ("Behind the 3D body", 5);
+    }
 }
 
 void PluginCanvas::ElementMenu::layer (int choice)
@@ -2350,9 +3030,9 @@ void PluginCanvas::ElementMenu::layer (int choice)
         if (choice == 1 || choice == 4)
             canvas.reorderSelection (choice == 1);
     }
-    else if (choice >= 1 && choice <= 4)
+    else if (choice >= 1 && choice <= 6)
     {
-        const Order orders[] { Order::front, Order::forward, Order::backward, Order::back };
+        const Order orders[] { Order::front, Order::forward, Order::backward, Order::back, Order::behindBody, Order::overBody };
         canvas.reorder (widget, orders[choice - 1]);
     }
 
@@ -2418,7 +3098,30 @@ void PluginCanvas::ElementMenu::resized()
 
     headerArea = area.removeFromTop (headerHeight);
     closeButton.setBounds (headerArea.withTrimmedRight (8).removeFromRight (30).withSizeKeepingCentre (30, 28));
-    removeButton.setBounds (headerArea.withTrimmedRight (8 + 30 + 6).removeFromRight (64).withSizeKeepingCentre (64, 26));
+    removeButton.setBounds (headerArea.withTrimmedRight (8).removeFromRight (64).withSizeKeepingCentre (64, 26));
+
+    // Advanced edit: the studio, under the tabs, nothing else.
+    if (isAdvanced())
+    {
+        for (auto* c : std::initializer_list<juce::Component*> { &copyButton, &pasteButton, &duplicateButton, &layerBox, &copyStyleButton,
+                                                                 &pasteStyleButton, &galleryButton, &knobStudioButton, &similarToggle,
+                                                                 &similarApplyButton, &instruction, &sendButton, &viewport })
+            c->setBounds ({});
+
+        actionsArea = area.withHeight (0);
+        footerArea = {};
+
+        if (tabStrip.isVisible())
+            tabStrip.setBounds (area.removeFromTop (tabsHeight).reduced (pad, 0).withTrimmedTop (2));
+
+        area.removeFromTop (4);
+        studio->setBounds (area);
+
+        if (getWidth() >= 600)
+            advancedSize = { getWidth(), getHeight() };   // resized by hand: kept
+
+        return;
+    }
 
     // The actions, in a row: the window's menu has Paste only.
     actionsArea = area.removeFromTop (actionsSize());
@@ -2499,16 +3202,10 @@ void PluginCanvas::ElementMenu::resized()
 
 void PluginCanvas::ElementMenu::paint (juce::Graphics& g)
 {
-    const auto box = getLocalBounds().toFloat();
-
-    juce::DropShadow (juce::Colours::black.withAlpha (0.5f), 16, { 0, 4 }).drawForRectangle (g, getLocalBounds());
-    g.setColour (Theme::panel);
-    g.fillRoundedRectangle (box, 9.0f);
-    g.setColour (Theme::outline.brighter (0.15f));
-    g.drawRoundedRectangle (box.reduced (0.5f), 9.0f, 1.0f);
+    g.fillAll (Theme::panel);   // a window of its own
 
     // What it edits.
-    auto header = headerArea.reduced (pad, 0).withTrimmedRight (removeButton.isVisible() ? 34 + 70 : 34);
+    auto header = headerArea.reduced (pad, 0).withTrimmedRight (removeButton.isVisible() ? 70 : 0);
     const auto titleFont = Theme::font (15.5f, true);
     g.setColour (Theme::text);
     g.setFont (titleFont);
@@ -2603,7 +3300,7 @@ void PluginCanvas::ElementMenu::apply()
     }
 
     // The parameters typed in: the box shows the id each became (a readout shows its parameter's value).
-    if (w.isControl() || w.type == GuiWidget::Type::custom || (w.type == GuiWidget::Type::label && PanelParts::labelDisplayOf (w) == "readout"))
+    if (w.isControl() || w.type == GuiWidget::Type::custom || (w.type == GuiWidget::Type::label && PanelParts::labelShowsValue (w)))
     {
         w.param = paramIdFor (param.getText());
         param.setText (w.param, juce::dontSendNotification);
@@ -2756,6 +3453,15 @@ void PluginCanvas::ElementMenu::apply()
     if (w.type == GuiWidget::Type::preset)
         w.rounding = (float) juce::roundToInt (presetRounding.getValue()) / 100.0f;
 
+    // A drop-down list's look and corners.
+    if (w.type == GuiWidget::Type::custom && w.element == GuiLayout::builtInElementFor ("dropdown"))
+    {
+        if (dropLookBox.getSelectedId() == 2) w.settings["look"] = "text";
+        else                                   w.settings.erase ("look");
+
+        w.settings["rounding"] = juce::roundToInt (presetRounding.getValue());
+    }
+
     subtitle = w.type == GuiWidget::Type::image ? w.image : (w.type == GuiWidget::Type::shape ? subtitle : w.label);
     repaint (headerArea);
     canvas.edited();
@@ -2795,8 +3501,13 @@ void PluginCanvas::ElementMenu::applyWindow()
         if (w.type == GuiWidget::Type::image && w.bounds == oldWindow)
             w.bounds = { 0, 0, newWidth, newHeight };
 
+    const auto oldWidth = l.width, oldHeight = l.height;
     l.width = newWidth;
     l.height = newHeight;
+
+    if (resizedWindow)
+        canvas.bodyFollowsWindow (oldWidth, oldHeight);   // the body grows with the window
+
     l.backgroundTop = topColour.getColourValue();
     l.backgroundBottom = bottomColour.getColourValue();
 
@@ -2809,6 +3520,62 @@ void PluginCanvas::ElementMenu::applyWindow()
         canvas.fitPaintedBackdrops();
         canvas.viewChanged();
     }
+}
+
+void PluginCanvas::ElementMenu::startFromLayout()
+{
+    if (layoutStartBox.getSelectedId() > 0)
+        canvas.startFromLayout (layoutStartBox.getText(), layoutLookBox.getSelectedId() > 1 ? layoutLookBox.getText() : juce::String(),
+                                layoutControlsToggle.getToggleState(), layoutThemeToggle.getToggleState(), layoutPaintToggle.getToggleState());
+}
+
+void PluginCanvas::startFromLayout (const juce::String& layoutName, const juce::String& lookName, bool withControls, bool withTheme,
+                                    bool withPainting)
+{
+    if (onAskAi == nullptr || layoutName.isEmpty())
+        return;
+
+    // What Fanan AI is asked: the layout bound to this plugin, then the look (and its options).
+    juce::String text;
+    text << "Start this plugin's window again from the ready-made layout \"" << layoutName << "\" (design_templates, kind \"layout\"): "
+         << "bind its controls to this plugin's own parameters, drop the ones it has no parameter for, add the ones it needs in the same "
+         << "groups and grid, resize the window to fit, and put it in place of the current design with set_layout.";
+
+    if (lookName.isNotEmpty())
+    {
+        juce::StringArray extras;
+
+        if (withControls)                extras.add ("\"lookControls\": true");
+        if (withTheme)                   extras.add ("\"lookTheme\": true");
+        if (withPainting)                extras.add ("\"lookPainting\": true (then paint it as the result says)");
+
+        text << " Then dress it in the material look \"" << lookName << "\" with edit_layout's \"materialLook\""
+             << (extras.isEmpty() ? juce::String() : " and " + extras.joinIntoString (", ")) << ".";
+    }
+
+    const auto ask = [safeThis = juce::Component::SafePointer<PluginCanvas> (this), text]
+    {
+        if (safeThis != nullptr && safeThis->onAskAi != nullptr)
+            safeThis->onAskAi (-1, text);
+    };
+
+    // A window with a design already: it's replaced, so ask first.
+    if (layout.widgets.empty())
+    {
+        ask();
+        return;
+    }
+
+    juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "Start from a layout",
+                                        "Fanan AI will replace this window's design with the layout \"" + layoutName + "\""
+                                            + (lookName.isNotEmpty() ? " in \"" + lookName + "\"" : juce::String())
+                                            + ", keeping this plugin's controls and parameters.\n\nStart?",
+                                        "Start", "Cancel", this,
+                                        juce::ModalCallbackFunction::create ([ask] (int result)
+                                        {
+                                            if (result == 1)
+                                                ask();
+                                        }));
 }
 
 void PluginCanvas::ElementMenu::send()
@@ -2851,6 +3618,7 @@ void PluginCanvas::AiBanner::showWorking (const juce::String& what)
     working = true;
     dots = 0;
     startTimerHz (3);
+    chatButton.setVisible (canvas.onOpenChat != nullptr);   // a conversation to open, where there's one
     setVisible (true);
     canvas.layOutOverlays();
     repaint();
@@ -2861,6 +3629,7 @@ void PluginCanvas::AiBanner::showReply (const juce::String& reply)
     text = reply.trim().isNotEmpty() ? reply.trim() : juce::String ("Done.");
     working = false;
     stopTimer();
+    chatButton.setVisible (canvas.onOpenChat != nullptr);   // a conversation to open, where there's one
     setVisible (true);
     canvas.layOutOverlays();
     repaint();
@@ -2881,12 +3650,15 @@ juce::AttributedString PluginCanvas::AiBanner::makeText() const
 
     if (working)
     {
-        attributed.append ("Fanan AI is working on " + text + juce::String::repeatedString (".", dots), Theme::font (14.0f), Theme::text);
+        attributed.append ((canvas.onAskAi != nullptr ? "Fanan AI is working on " : "Working on ") + text.substring (0, 1).toLowerCase() + text.substring (1)
+                               + juce::String::repeatedString (".", dots),
+                           Theme::font (14.0f), Theme::text);
         return attributed;
     }
 
     // Short markdown, as in the chat: **bold**, and ==what the user should answer or do== in yellow.
-    attributed.append ("Fanan AI  ", Theme::font (14.0f, true), Theme::accent.brighter (0.2f));
+    if (canvas.onAskAi != nullptr)
+        attributed.append ("Fanan AI  ", Theme::font (14.0f, true), Theme::accent.brighter (0.2f));
 
     bool bold = false, ask = false;
     juce::String run;
@@ -3008,7 +3780,7 @@ void PluginCanvas::selectMany (const std::set<int>& indexes, int primary)
     // Several: an open menu turns into theirs; `selected` is the last one picked.
     manySelected = valid;
     selected = valid.count (primary) > 0 ? primary : *valid.rbegin();
-    panelSelected = false;
+    panelSelected = bodySelected = false;
 
     if (menuOpen)
         openMenu();
@@ -3023,7 +3795,7 @@ void PluginCanvas::select (int index)
 
     if (selected != was)
         activeBend = 0;   // another line's bend points
-    panelSelected = false;
+    panelSelected = bodySelected = false;
     manySelected.clear();
 
     if (selected < 0)
@@ -3038,6 +3810,7 @@ void PluginCanvas::selectPanel()
 {
     selected = -1;
     manySelected.clear();
+    bodySelected = false;
     panelSelected = design && hasPanel();
 
     if (! panelSelected)
@@ -3048,9 +3821,60 @@ void PluginCanvas::selectPanel()
     repaint();
 }
 
+namespace
+{
+    /** The edit menu's window. Keys it doesn't use go to the canvas (Esc, Delete, an undo...).
+        Over the app's window while the app's in front (a click on the canvas doesn't hide it),
+        not over other apps. */
+    class EditWindow final : public juce::DocumentWindow,
+                             private juce::Timer
+    {
+    public:
+        EditWindow (juce::Component& content, std::function<void()> closed, std::function<bool (const juce::KeyPress&)> key)
+            : juce::DocumentWindow ("Edit", Theme::panel, juce::DocumentWindow::closeButton),
+              onClosed (std::move (closed)), onKey (std::move (key))
+        {
+            setUsingNativeTitleBar (true);
+            setContentNonOwned (&content, true);
+            setResizable (true, false);
+            startTimer (250);
+        }
+
+        ~EditWindow() override
+        {
+            stopTimer();
+            clearContentComponent();
+        }
+
+        void closeButtonPressed() override
+        {
+            if (onClosed != nullptr)
+                onClosed();
+        }
+
+        bool keyPressed (const juce::KeyPress& key) override
+        {
+            if (onKey != nullptr && onKey (key))
+                return true;
+
+            return juce::DocumentWindow::keyPressed (key);
+        }
+
+    private:
+        std::function<void()> onClosed;
+        std::function<bool (const juce::KeyPress&)> onKey;
+
+        void timerCallback() override
+        {
+            if (const bool front = juce::Process::isForegroundProcess(); isVisible() && front != isAlwaysOnTop())
+                setAlwaysOnTop (front);
+        }
+    };
+}
+
 void PluginCanvas::openMenu()
 {
-    if (! design || (selected < 0 && ! panelSelected && manySelected.empty()))
+    if (! design || (selected < 0 && ! panelSelected && ! bodySelected && manySelected.empty()))
     {
         closeMenu();
         return;
@@ -3061,9 +3885,22 @@ void PluginCanvas::openMenu()
     else
         menu->showFor (panelSelected ? -1 : selected);
     menuOpen = true;
+
+    // Its window: opened beside what it edits, then left where it's put.
+    if (menuWindow == nullptr)
+        menuWindow = std::make_unique<EditWindow> (*menu, [this] { closeMenu(); },
+                                                   [this] (const juce::KeyPress& key) { return static_cast<juce::Component&> (*this).keyPressed (key); });
+
+    const bool opening = ! menuWindow->isVisible();
+    menuWindow->setName ("Edit" + (menu->heading().isNotEmpty() ? juce::String::fromUTF8 ("  \xc2\xb7  ") + menu->heading() : juce::String()));
     menu->setVisible (true);
-    layOutOverlays();
-    menu->toFront (false);
+    fitMenuWindow (opening);
+
+    if (opening)
+    {
+        menuWindow->setVisible (true);
+        menuWindow->toFront (false);
+    }
 }
 
 void PluginCanvas::closeMenu()
@@ -3071,7 +3908,68 @@ void PluginCanvas::closeMenu()
     menuOpen = false;
 
     if (menu != nullptr)
-        menu->setVisible (false);
+        menu->closed();
+
+    if (menuWindow != nullptr)
+        menuWindow->setVisible (false);
+}
+
+void PluginCanvas::fitMenuWindow (bool place)
+{
+    if (menuWindow == nullptr || menu == nullptr)
+        return;
+
+    const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds());
+    const auto screen = display != nullptr ? display->userArea : juce::Rectangle<int> (0, 0, 1600, 1000);
+    const auto ideal = menu->getIdealSize();
+    const bool advanced = menu->isAdvanced();
+    const auto width = juce::jmin (ideal.x, screen.getWidth() - 40);
+    const auto height = juce::jmin (ideal.y, screen.getHeight() - 60);
+
+    menuWindow->setResizeLimits (advanced ? 640 : ElementMenu::menuWidth, advanced ? 480 : 200, 4000, 4000);
+
+    if (menu->getWidth() != width || menu->getHeight() != height)
+        menuWindow->setContentComponentSize (width, height);
+
+    if (place)
+    {
+        // Beside what it edits: on its right if there's room, otherwise on its left.
+        auto target = bodySelected ? toView (bodyBounds().getSmallestIntegerContainer())
+                    : panelSelected || ! juce::isPositiveAndBelow (selected, (int) layout.widgets.size())
+                          ? panelArea()
+                          : toView (layout.widgets[(size_t) selected].bounds);
+
+        for (const auto i : manySelected)
+            if (juce::isPositiveAndBelow (i, (int) layout.widgets.size()))
+                target = target.getUnion (toView (layout.widgets[(size_t) i].bounds));
+
+        const auto onScreen = localAreaToGlobal (target.toNearestInt());
+        const auto outer = menuWindow->getBounds();
+        auto x = onScreen.getRight() + 14;
+
+        if (x + outer.getWidth() > screen.getRight() - 10)
+            x = onScreen.getX() - 14 - outer.getWidth();
+
+        if (x < screen.getX() + 10)
+            x = screen.getRight() - 10 - outer.getWidth();
+
+        const auto y = juce::jlimit (screen.getY() + 30, juce::jmax (screen.getY() + 30, screen.getBottom() - 10 - outer.getHeight()), onScreen.getY());
+        menuWindow->setTopLeftPosition (x, y);
+    }
+    else
+    {
+        // Grown: kept on the screen.
+        auto bounds = menuWindow->getBounds();
+
+        if (bounds.getRight() > screen.getRight())
+            bounds.setX (juce::jmax (screen.getX(), screen.getRight() - bounds.getWidth()));
+
+        if (bounds.getBottom() > screen.getBottom())
+            bounds.setY (juce::jmax (screen.getY() + 30, screen.getBottom() - bounds.getHeight()));
+
+        if (bounds != menuWindow->getBounds())
+            menuWindow->setTopLeftPosition (bounds.getPosition());
+    }
 }
 
 void PluginCanvas::layOutOverlays()
@@ -3103,29 +4001,7 @@ void PluginCanvas::layOutOverlays()
         banner->setBounds (view.getCentreX() - width / 2, view.getY() + 10, width, banner->getIdealHeight (width));
     }
 
-    // The edit menu, beside what it edits: on its right if there's room, otherwise on its left,
-    // otherwise along the canvas's right edge.
-    if (menuOpen && menu->isVisible())
-    {
-        auto target = panelSelected || ! juce::isPositiveAndBelow (selected, (int) layout.widgets.size())
-                          ? panelArea()
-                          : toView (layout.widgets[(size_t) selected].bounds);
-
-        for (const auto i : manySelected)
-            if (juce::isPositiveAndBelow (i, (int) layout.widgets.size()))
-                target = target.getUnion (toView (layout.widgets[(size_t) i].bounds));
-        const auto width = ElementMenu::menuWidth;
-        const auto height = juce::jmin (menu->getIdealHeight(), view.getHeight() - 20);
-
-        auto x = (int) target.getRight() + 14;
-
-        if (x + width > view.getRight() - 10)
-            x = (int) target.getX() - 14 - width;
-
-        if (x < view.getX() + 10)
-            x = view.getRight() - 10 - width;
-
-        const auto y = juce::jlimit (view.getY() + 10, juce::jmax (view.getY() + 10, view.getBottom() - 10 - height), (int) target.getY());
-        menu->setBounds (x, y, width, height);
-    }
+    // The edit window: as big as what it shows now.
+    if (menuOpen && menuWindow != nullptr && menuWindow->isVisible())
+        fitMenuWindow (false);
 }
