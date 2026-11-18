@@ -238,6 +238,20 @@ void Edits::InsertReplaced::swap()
     currentId = otherId;
 }
 
+void Edits::InstrumentsExchanged::trade (const TrackName (&names)[2])
+{
+    engine.exchangeInstruments (a, b);
+
+    const int ids[2] = { a, b };
+
+    for (int i = 0; i < 2; ++i)
+        if (auto* track = engine.findTrack (ids[i]))
+        {
+            track->name = names[i].text;
+            track->nameIsAutomatic = names[i].automatic;
+        }
+}
+
 Edits::InsertMoved::InsertMoved (AudioEngine& e, int channelId, int id, int fromPosition, int toPosition)
     : engine (e), channel (channelId), insertId (id), from (fromPosition), to (toPosition)
 {

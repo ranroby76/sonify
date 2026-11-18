@@ -564,14 +564,16 @@ MainComponent::MainComponent()
         [this] (const juce::String& title, const juce::String& message, const juce::String& yesText, std::function<void (bool)> answer)
         {
             // Asked by Sonify itself, not the AI: only the user's own click lets it go on.
-            juce::NativeMessageBox::showAsync (juce::MessageBoxOptions()
-                                                   .withIconType (juce::MessageBoxIconType::QuestionIcon)
-                                                   .withTitle (title)
-                                                   .withMessage (message)
-                                                   .withButton (yesText)
-                                                   .withButton ("Keep it")
-                                                   .withAssociatedComponent (this),
-                                               [answer = std::move (answer)] (int button) { answer (button == 0); });
+            // The callback gets the clicked button's result code (JUCE 9): closing the box any
+            // other way reads as Keep it (0), so only the yes button says yes.
+            juce::NativeMessageBox::showForOptionsAsync (juce::MessageBoxOptions()
+                                                             .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                                                             .withTitle (title)
+                                                             .withMessage (message)
+                                                             .withButton (juce::MessageBoxButtonOptions { yesText, 1 })
+                                                             .withButton (juce::MessageBoxButtonOptions { "Keep it", 0 }.setRole (juce::MessageBoxButtonRole::cancel))
+                                                             .withAssociatedComponent (this),
+                                                         [answer = std::move (answer)] (int result) { answer (result == 1); });
         },
         [this] { return pageCommands; },
         [this] (const juce::String& command, const juce::String& event, const juce::var& payload)
@@ -1146,6 +1148,16 @@ juce::WebBrowserComponent::Options MainComponent::createWebOptions()
                                addToHistory ("Move Insert", new Edits::InsertMoved (engine, channel, insertId, from, to));
 
                            pushTracks();
+                       }))
+                       // The Console: an insert dragged onto another channel; an instrument onto another instrument track.
+                       .withEventListener ("transferInsert", afterEvent (this, [this] (const juce::var& event)
+                       {
+                           transferInsert (static_cast<int> (event.getProperty ("from", 0)), static_cast<int> (event.getProperty ("insertId", 0)),
+                                           static_cast<int> (event.getProperty ("to", 0)), static_cast<int> (event.getProperty ("position", -1)));
+                       }))
+                       .withEventListener ("exchangeInstruments", afterEvent (this, [this] (const juce::var& event)
+                       {
+                           exchangeInstruments (static_cast<int> (event.getProperty ("from", 0)), static_cast<int> (event.getProperty ("to", 0)));
                        }))
                        .withEventListener ("bypassInsert", afterEvent (this, [this] (const juce::var& event)
                        {
@@ -3549,13 +3561,13 @@ void MainComponent::pushSong (bool opened, const juce::String& busy)
 
 void MainComponent::showSongMessage (const juce::String& title, const juce::String& message)
 {
-    juce::NativeMessageBox::showAsync (juce::MessageBoxOptions()
-                                           .withIconType (juce::MessageBoxIconType::WarningIcon)
-                                           .withTitle (title)
-                                           .withMessage (message)
-                                           .withButton ("OK")
-                                           .withAssociatedComponent (this),
-                                       nullptr);
+    juce::NativeMessageBox::showForOptionsAsync (juce::MessageBoxOptions()
+                                                     .withIconType (juce::MessageBoxIconType::WarningIcon)
+                                                     .withTitle (title)
+                                                     .withMessage (message)
+                                                     .withButton ("OK", 1)
+                                                     .withAssociatedComponent (this),
+                                                 nullptr);
 }
 
 void MainComponent::whenSongIsSafe (std::function<void()> next)
@@ -3570,21 +3582,28 @@ void MainComponent::whenSongIsSafe (std::function<void()> next)
         return;   // one question at a time
 
     askingToSave = true;
-    const auto options = juce::MessageBoxOptions::makeOptionsYesNoCancel (juce::MessageBoxIconType::QuestionIcon,
-                                                                          "Save changes?",
-                                                                          "Do you want to save the changes to \"" + songTitle() + "\"?",
-                                                                          "Save", "Don't Save", "Cancel", this);
+    // Each button's own result code (JUCE 9 hands the callback the code, not the button's place).
+    // Cancel is 0, so closing the box any other way cancels too: nothing is lost by accident.
+    enum { cancelled = 0, save = 1, dontSave = 2 };
+    const auto options = juce::MessageBoxOptions()
+                             .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                             .withTitle ("Save changes?")
+                             .withMessage ("Do you want to save the changes to \"" + songTitle() + "\"?")
+                             .withButton (juce::MessageBoxButtonOptions { "Save", save }.setPreferredAction())
+                             .withButton (juce::MessageBoxButtonOptions { "Don't Save", dontSave })
+                             .withButton (juce::MessageBoxButtonOptions { "Cancel", cancelled }.setRole (juce::MessageBoxButtonRole::cancel))
+                             .withAssociatedComponent (this);
 
-    juce::NativeMessageBox::showAsync (options, [safeThis = juce::Component::SafePointer<MainComponent> (this), next] (int button)
+    juce::NativeMessageBox::showForOptionsAsync (options, [safeThis = juce::Component::SafePointer<MainComponent> (this), next] (int result)
     {
         if (safeThis == nullptr)
             return;
 
         safeThis->askingToSave = false;
 
-        if (button == 0)
+        if (result == save)
             safeThis->saveSong (next);   // goes on only once it's saved
-        else if (button == 1)
+        else if (result == dontSave)
             next();
     });
 }
@@ -7015,6 +7034,131 @@ void MainComponent::recordPluginLoad (int channel, int insertId, AudioEngine::Di
                                                                    displaced.insertPosition), joinUndoStep);
     else
         addToHistory ("Add Insert", new Edits::InsertAdded (engine, channel, insertId, engine.getInsertPosition (channel, insertId)), joinUndoStep);
+}
+
+void MainComponent::transferInsert (int fromChannel, int insertId, int toChannel, int position)
+{
+    const auto fromAt = engine.getInsertPosition (fromChannel, insertId);
+
+    if (fromAt < 0 || fromChannel == toChannel)
+        return;
+
+    if (! engine.transferInsert (fromChannel, insertId, toChannel, position))
+    {
+        trackMessages[toChannel] = "It can't go there: that channel is frozen, or its inserts are full.";
+        pushTracks();
+        return;
+    }
+
+    addToHistory ("Move Insert", new Edits::InsertTransferred (engine, fromChannel, fromAt, toChannel,
+                                                              engine.getInsertPosition (toChannel, insertId), insertId));
+    carryPluginLinks (fromChannel, insertId, toChannel, false);
+    trackMessages.erase (fromChannel);
+    trackMessages.erase (toChannel);
+    pushTracks();
+}
+
+void MainComponent::exchangeInstruments (int trackA, int trackB)
+{
+    const auto beforeA = Edits::nameOf (engine, trackA), beforeB = Edits::nameOf (engine, trackB);
+
+    if (! engine.exchangeInstruments (trackA, trackB))
+        return;
+
+    // Names that follow their instruments follow them here too.
+    auto afterA = beforeA, afterB = beforeB;
+
+    if (beforeA.automatic && beforeB.automatic)
+    {
+        std::swap (afterA.text, afterB.text);
+    }
+    else
+    {
+        const auto follow = [this] (int id, Edits::TrackName& name)
+        {
+            if (const auto* track = engine.findTrack (id); name.automatic && track != nullptr && track->instrument != nullptr)
+                name.text = track->instrument->getDescriptor().name;
+        };
+
+        follow (trackA, afterA);
+        follow (trackB, afterB);
+    }
+
+    const auto rename = [this] (int id, const Edits::TrackName& name)
+    {
+        if (auto* track = engine.findTrack (id))
+        {
+            track->name = name.text;
+            track->nameIsAutomatic = name.automatic;
+        }
+    };
+
+    rename (trackA, afterA);
+    rename (trackB, afterB);
+
+    addToHistory ("Swap Instruments", new Edits::InstrumentsExchanged (engine, trackA, trackB, beforeA, beforeB, afterA, afterB));
+    carryPluginLinks (trackA, AudioEngine::instrumentSlot, trackB, true);
+    trackMessages.erase (trackA);
+    trackMessages.erase (trackB);
+    pushTracks();
+}
+
+void MainComponent::carryPluginLinks (int channel, int slot, int newChannel, bool swap)
+{
+    // Its envelopes: the plugin-parameter lanes naming the slot, from one track's automation to
+    // the other's (Main's own automation is its fader's only: lanes going there or from there stay).
+    const auto* lanesHere = engine.getAutomation (channel);
+    const auto* lanesThere = engine.getAutomation (newChannel);
+
+    if (channel != AudioEngine::mainChannel && newChannel != AudioEngine::mainChannel && lanesHere != nullptr && lanesThere != nullptr)
+    {
+        const auto names = [slot] (const AutomationLane& lane)
+        {
+            return lane.target.kind == AutomationTarget::Kind::parameter && lane.target.slot == slot;
+        };
+
+        const auto beforeHere = *lanesHere, beforeThere = *lanesThere;
+        std::vector<AutomationLane> afterHere, afterThere;
+
+        for (const auto& lane : beforeHere)   (names (lane) ? afterThere : afterHere).push_back (lane);
+        for (const auto& lane : beforeThere)  (names (lane) && swap ? afterHere : afterThere).push_back (lane);
+
+        if (std::any_of (beforeHere.begin(), beforeHere.end(), names) || (swap && std::any_of (beforeThere.begin(), beforeThere.end(), names)))
+        {
+            engine.setAutomationLanes (channel, afterHere);
+            engine.setAutomationLanes (newChannel, afterThere);
+            addToHistory ({}, new Edits::AutomationChanged (engine, channel, beforeHere, afterHere), true);
+            addToHistory ({}, new Edits::AutomationChanged (engine, newChannel, beforeThere, afterThere), true);
+        }
+    }
+
+    // The sidechain sends keying it.
+    std::vector<int> ids;
+
+    for (const auto& track : engine.getTracks())
+        ids.push_back (track->id);
+
+    for (const auto id : ids)
+    {
+        const auto before = engine.getSends (id);
+        auto after = before;
+        bool changed = false;
+
+        for (auto& send : after)
+        {
+            if (! send.sidechain || send.slot != slot)
+                continue;
+
+            if (send.target == channel)               { send.target = newChannel; changed = true; }
+            else if (swap && send.target == newChannel) { send.target = channel; changed = true; }
+        }
+
+        if (changed)
+        {
+            engine.setSends (id, after);
+            addToHistory ({}, new Edits::SendsChanged (engine, id, before, after), true);
+        }
+    }
 }
 
 //==============================================================================

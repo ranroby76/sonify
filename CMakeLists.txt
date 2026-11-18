@@ -2,7 +2,7 @@
 
 cmake_minimum_required(VERSION 3.22)
 
-project(FananWebHub VERSION 1.0.2 LANGUAGES C CXX)
+project(FananWebHub VERSION 1.0.4 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -206,6 +206,13 @@ target_sources(FananWebHub PRIVATE
     src/BuiltinEffects.cpp
     src/SonifySpace.h
     src/SonifyGreyhole.h
+    src/SpaceLifter5.h
+    src/NebulaFaceplate.h
+    src/NebulaFaceplate.cpp
+    src/SpaceLifter5Screen.h
+    src/SpaceLifter5Screen.cpp
+    src/ConsolePanels.h
+    src/ConsolePanels.cpp
     src/BuiltinScreen.h
     src/BuiltinScreen.cpp
     src/GrexFx.h
@@ -909,11 +916,12 @@ target_link_libraries(FananWebHub PRIVATE TomahawkImages juce::juce_dsp)
 # the Hub), only made in Sonify instead of loaded from a file: no plugin file exists and nothing
 # is installed. The Browser lists them with the other built-ins, under Sonify.exe.
 #
-# Each one's folder under src is its own (src/natura, src/zax, src/axis, src/timberwolf), and Sonify reaches it
+# Each one's folder under src is its own (src/natura, src/zax, src/zodiak, src/axis, src/timberwolf), and Sonify reaches it
 # only through the entries at the bottom of InternalPlugin.cpp.
 # ------------------------------------------------------------------------------
 file(GLOB NATURA_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/natura/*.h")
 file(GLOB ZAX_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/zax/*.h")
+file(GLOB ZODIAK_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/zodiak/*.h")
 file(GLOB AXIS_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/axis/*.h"
                                          "${CMAKE_CURRENT_SOURCE_DIR}/src/axis/dsp/*.h")
 # The guitar plugins, AXIS and Timber Wolf, are set aside for now (neither sounds as it should
@@ -922,9 +930,22 @@ file(GLOB AXIS_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/axis/*
 # -DSONIFY_GUITAR_PLUGINS=ON brings both back.
 option(SONIFY_GUITAR_PLUGINS "List AXIS and Timber Wolf among Sonify's plugins (and build Timber Wolf)" OFF)
 
+set(ZODIAK_SOURCES
+    src/zodiak/PluginProcessor.cpp
+    src/zodiak/ZodiakEngine.cpp
+    src/zodiak/ZodiakGraph.cpp
+    src/zodiak/ZodiakRack.cpp
+    src/zodiak/ZodiakEditor.cpp
+    src/zodiak/ZodiakMixer.cpp
+    src/zodiak/ZodiakPanels.cpp
+    src/zodiak/ZodiakGraphUi.cpp
+    src/zodiak/ZodiakRoll.cpp
+    src/zodiak/ZodiakLink.cpp
+    src/zodiak/ZodiakLinkUi.cpp)
+
 set(TIMBERWOLF_SOURCES)
 set(TIMBERWOLF_HEADERS)
-set(SONIFY_INTERNALS natura zax axis)
+set(SONIFY_INTERNALS natura zax zodiak axis)
 
 if(SONIFY_GUITAR_PLUGINS)
 set(TIMBERWOLF_SOURCES
@@ -979,6 +1000,15 @@ target_sources(FananWebHub PRIVATE
     src/zax/PluginProcessor.cpp
     src/zax/PluginEditor.cpp
     ${ZAX_HEADERS}
+
+    # Zodiak: Sonify's groove box. 8 channels, each its own graph of nodes (Sonify's and the
+    # user's plugins, filters, effects), patterns and a mixer. It carries only the plugins the
+    # user loads into it - VST3 (VST and AU where Sonify hosts them) from file, or Sonify's own
+    # by name (src/zodiak/ZodiakRack.cpp asks Internals). Its copies of Grex's parts are its own
+    # (ZodiakGrexFx.h, ZodiakSliders.h, ZodiakChrome.h, ZodiakPalette.h, in namespaces of their
+    # own), so Zax and the Tomahawk keep theirs as they are.
+    ${ZODIAK_SOURCES}
+    ${ZODIAK_HEADERS}
 
     # AXIS: Sonify's guitar board. Its panel is a web page of its own (src/axis/Resources/ui,
     # compiled in below), shown in the one WebView2 profile every web view in Sonify uses.
@@ -1060,6 +1090,7 @@ set(FANAN_INTERNAL_COMPILED
     src/natura/PluginProcessor.cpp src/natura/PluginEditor.cpp
     src/natura/NaturaEngine.cpp src/natura/FananLookAndFeel.cpp
     src/zax/PluginProcessor.cpp src/zax/PluginEditor.cpp
+    ${ZODIAK_SOURCES}
     src/axis/PluginProcessor.cpp src/axis/PluginEditor.cpp
     ${TIMBERWOLF_SOURCES})
 

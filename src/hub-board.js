@@ -642,7 +642,7 @@
             meter.columns[side].style.setProperty("--lit", String(lit));
           }
         });
-        if (Math.max(peakL, peakR) > -0.3) meter.clipUntil = now + 1200;
+        if (Math.max(peakL, peakR) > 0) meter.clipUntil = now + 1200;   // past 0 dBFS only (the peaks come rounded up)
         const clipped = now < meter.clipUntil;
         if (clipped !== meter.clipped) { meter.clipped = clipped; meter.clip.classList.toggle("lit", clipped); }
       }

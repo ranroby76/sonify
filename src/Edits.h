@@ -321,6 +321,44 @@ namespace Edits
         int channel, insertId, from, to;
     };
 
+    /** An insert dragged from one channel's chain to another's (the Console), from one place to
+        another. Its envelopes and the sidechain sends keying it are their own steps, joined to it. */
+    class InsertTransferred final : public Action
+    {
+    public:
+        InsertTransferred (AudioEngine& e, int fromChannel, int fromPosition, int toChannel, int toPosition, int id)
+            : engine (e), from (fromChannel), to (toChannel), insertId (id), fromAt (fromPosition), toAt (toPosition) {}
+
+        int getSizeInUnits() override   { return 1; }
+
+    private:
+        void redo() override         { engine.transferInsert (from, insertId, to, toAt); }
+        void revert() override       { engine.transferInsert (to, insertId, from, fromAt); }
+
+        AudioEngine& engine;
+        int from, to, insertId, fromAt, toAt;
+    };
+
+    /** Two instrument tracks' instruments traded (one dragged onto the other in the Console), with
+        the names that follow them. Trading again undoes it. */
+    class InstrumentsExchanged final : public Action
+    {
+    public:
+        InstrumentsExchanged (AudioEngine& e, int trackA, int trackB, TrackName aBefore, TrackName bBefore, TrackName aAfter, TrackName bAfter)
+            : engine (e), a (trackA), b (trackB), before { std::move (aBefore), std::move (bBefore) }, after { std::move (aAfter), std::move (bAfter) } {}
+
+        int getSizeInUnits() override   { return 1; }
+
+    private:
+        void redo() override         { trade (after); }
+        void revert() override       { trade (before); }
+        void trade (const TrackName (&names)[2]);
+
+        AudioEngine& engine;
+        int a, b;
+        TrackName before[2], after[2];
+    };
+
     /** A track's MIDI FX added, removed or moved: the devices before and after, as plain data
         (their settings and ids; what a device was in the middle of playing isn't kept). */
     class MidiFxChanged final : public Action

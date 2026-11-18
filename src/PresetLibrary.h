@@ -16,6 +16,8 @@
 struct PresetMenu
 {
     juce::StringArray names, groups;   // each preset's name, and the heading it's listed under
+    juce::StringArray categories;      // each one's category: a factory preset's own (else "Factory"), the
+                                       // user's and a bank's their group
     int current = -1;                  // the chosen one (-1: none)
     bool modified = false;             // its values changed since it was chosen
     bool canSave = false;              // Save writes over the chosen one (a preset of the user's)

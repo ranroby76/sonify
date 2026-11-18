@@ -2240,6 +2240,13 @@ body.hide-audio-editor #audio-editor { display: none; }
 }
 .strip-insert-name:hover { color: #fff; }
 .strip-insert-item.bypassed .strip-insert-name { color: var(--muted); text-decoration: line-through; }
+/* Drag an insert to another place or channel; an instrument channel's instrument, a row above its inserts, onto another instrument channel. */
+.strip-insert-item { cursor: grab; }
+.strip-instrument-item { display: flex; align-items: center; height: 16px; border-bottom: 1px solid #26282b; background: rgba(var(--accent-rgb), 0.10); cursor: grab; }
+.strip-instrument-item:hover .strip-insert-name { color: #fff; }
+.strip-instrument-mark { flex: none; width: 15px; height: 15px; display: inline-flex; align-items: center; justify-content: center; color: var(--accent); }
+.strip-instrument-mark svg { width: 10px; height: 10px; }
+.strip-insert-item.dragging, .strip-instrument-item.dragging { opacity: 0.45; }
 /* A DAWproject's placeholder (not playable here): greyed, after the inserts. */
 .strip-kept-item { display: flex; align-items: center; height: 16px; border-top: 1px solid #26282b; cursor: default; }
 .strip-insert-list > .strip-kept-item:first-child { border-top: none; }

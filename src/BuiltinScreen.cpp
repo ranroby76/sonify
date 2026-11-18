@@ -2,12 +2,14 @@
 
 #include "BuiltinScreen.h"
 #include "BuiltinPlugins.h"
+#include "ConsolePanels.h"
 #include "Looks.h"
 #include "PluginCanvas.h"
 #include "PluginHeader.h"
 #include "Preferences.h"
 #include "PresetLibrary.h"
 #include "SonifyPanels.h"
+#include "SpaceLifter5Screen.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -21,7 +23,7 @@ namespace
     {
         const juce::String unit (spec.unit);
 
-        if (! (unit == "Hz" || unit == "ms") || spec.minValue <= 0.0 || spec.maxValue / spec.minValue < 8.0)
+        if (! (unit == "Hz" || unit == "ms" || unit == "s") || spec.minValue <= 0.0 || spec.maxValue / spec.minValue < 8.0)
             return 1.0f;
 
         const auto middle = std::sqrt (spec.minValue * spec.maxValue);
@@ -53,50 +55,6 @@ namespace
 
             folder.createDirectory();
             file.replaceWithData (data, (size_t) size);
-        }
-    }
-
-    /** A built-in that took another's place keeps the presets saved under the old name: copied
-        into its own folder the first time (while it has none), with what the old one didn't have
-        set as it sounded (Space Lifter 4 took Sonify Reverb's place: its hall, no echo). */
-    void adoptFormerPresets (const juce::String& name)
-    {
-        struct Former { const char* now; const char* before; std::vector<std::pair<const char*, double>> asItWas; };
-        static const Former formers[] {
-            { "Space Lifter 4", "Sonify Reverb", { { "Voicing", 1.0 }, { "Echo On", 0.0 }, { "Routing", 3.0 }, { "Blend", 100.0 },
-                                                   { "Texture", 70.0 }, { "Mod", 20.0 } } }
-        };
-
-        for (const auto& former : formers)
-        {
-            if (name != former.now)
-                continue;
-
-            const auto from = PresetLibrary::root().getChildFile (juce::File::createLegalFileName (former.before));
-            const auto to = PresetLibrary::root().getChildFile (juce::File::createLegalFileName (former.now));
-
-            if (! from.isDirectory() || to.exists() || ! to.createDirectory())
-                return;
-
-            for (const auto& file : from.findChildFiles (juce::File::findFiles, false, juce::String ("*") + PresetLibrary::presetExtension))
-            {
-                auto json = juce::JSON::parse (file);
-                auto* fields = json.getDynamicObject();
-                auto* values = json.getProperty ("values", {}).getDynamicObject();
-
-                if (fields == nullptr || values == nullptr)
-                {
-                    file.copyFileTo (to.getChildFile (file.getFileName()));
-                    continue;
-                }
-
-                for (const auto& [key, value] : former.asItWas)
-                    if (! values->hasProperty (key))
-                        values->setProperty (key, value);
-
-                fields->setProperty ("plugin", juce::String (former.now));
-                to.getChildFile (file.getFileName()).replaceWithText (juce::JSON::toString (json));
-            }
         }
     }
 
@@ -152,6 +110,16 @@ namespace
                 canvas.onPresetAction = [this] (PresetAction action) { presetUi.perform (action); };
             }
 
+            // The stock effects and the Test Synth: their console faceplate (ConsolePanels.h) in
+            // the canvas's place, its preset strip on the same preset manager.
+            console = ConsolePanel::create (plugin);
+
+            if (console != nullptr && presets.hasPlugin())
+            {
+                console->onPresetChosen = [this] (int index) { presetUi.choose (index); };
+                console->onPresetAction = [this] (PresetAction action) { presetUi.perform (action); };
+            }
+
             canvas.onNote = [this] (int note, float velocity) { plugin.panelNote (note, velocity); };
             canvas.isNoteDown = [this] (int note) { return plugin.isPanelNoteDown (note); };
             canvas.readLevel = [this] (const juce::String& source, bool) { return plugin.readSource (source); };
@@ -166,9 +134,28 @@ namespace
 
             canvas.setLayout (layout);
             pushParameters (true);
-            canvas.setPresets (presets.getMenu());
+            showPresets (presets.getMenu());
 
             PluginHeader::attach (*this, plugin);    // ON/OFF over the panel; the shape below is the panel's
+
+            if (console != nullptr)
+            {
+                const auto window = console->designBounds();
+                shownWindow = window;
+                setContentNonOwned (console.get(), false);
+                // As designed, or smaller when the screen is (a wide panel on a small display).
+                const auto screen = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()->userBounds;
+                const auto fit = juce::jmin (1.0, 0.94 * screen.getWidth() / window.getWidth(), 0.86 * screen.getHeight() / window.getHeight());
+                const int w = juce::roundToInt (window.getWidth() * fit), h = juce::roundToInt (window.getHeight() * fit);
+                console->setSize (w, h);
+                setContentComponentSize (w, h);
+                setResizable (true, false);
+                limitTo (window);
+                centreWithSize (getWidth(), getHeight());
+                startTimerHz (15);
+                return;
+            }
+
             setContentNonOwned (&canvas, false);
             // Its window: the panel and the side panels joined to it (a preset manager's: wider
             // while one is open).
@@ -269,7 +256,6 @@ namespace
             }
 
             // Its own folder of presets, there from the start (Load opens it).
-            adoptFormerPresets (plugin.getDescriptor().name);
             presets.setPlugin (plugin.getDescriptor().name, file, false);
             presets.getFolder().createDirectory();
 
@@ -317,7 +303,7 @@ namespace
             if (const auto menu = presets.getMenu(); menu != shownMenu)
             {
                 shownMenu = menu;
-                canvas.setPresets (menu);
+                showPresets (menu);
             }
         }
 
@@ -343,7 +329,7 @@ namespace
 
             shownChoice = choice;
             shownMenu = presets.getMenu();
-            canvas.setPresets (shownMenu);
+            showPresets (shownMenu);
         }
 
         /** The plugin's values by parameter name (what Save writes). */
@@ -397,6 +383,15 @@ namespace
             return true;
         }
 
+        /** What the preset manager shows: the canvas's, or the console's strip. */
+        void showPresets (const PresetMenu& menu)
+        {
+            canvas.setPresets (menu);
+
+            if (console != nullptr)
+                console->setPresets (menu);
+        }
+
         void pushParameters (bool always)
         {
             const auto& specs = plugin.getSpecs();
@@ -436,6 +431,7 @@ namespace
         BuiltinPlugin& plugin;
         Looks looks;             // before the canvas, which draws with it
         PluginCanvas canvas;
+        std::unique_ptr<ConsolePanel> console;     // the console faceplate, when the plugin has one (shown in the canvas's place)
         std::vector<double> shown;
 
         PresetLibrary presets;
@@ -476,6 +472,10 @@ void BuiltinScreen::install()
 {
     BuiltinPlugin::setScreenFactory ([] (BuiltinPlugin& plugin) -> std::unique_ptr<BuiltinPlugin::Screen>
     {
+        // Space Lifter 5 opens the NebulaVerb faceplate itself (SpaceLifter5Screen.h), not a designed panel.
+        if (juce::String (plugin.getPanelName()) == "spacelifter5")
+            return SpaceLifter5Screen::create (plugin);
+
         return std::make_unique<WindowScreen> (plugin);
     });
 }

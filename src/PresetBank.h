@@ -13,6 +13,7 @@ struct Preset
 {
     juce::String name;
     std::map<juce::String, float> values;
+    juce::String category;      // what it is (Bass, Pad...): a preset window lists them by it; may be empty
 };
 
 //==============================================================================

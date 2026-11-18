@@ -3,7 +3,7 @@
 #include "BuiltinEffects.h"
 #include "BuiltinPlugins.h"
 #include "GrexFx.h"
-#include "SonifySpace.h"
+#include "SpaceLifter5.h"
 
 #include <cmath>
 #include <complex>
@@ -204,7 +204,7 @@ namespace
 
     //==============================================================================
     /** Two ducking bells' response in dB at hz (a bell subtracts a band-pass: 1 - a * bp), each
-        as deep as it dips now: the Ducker's curve, and Space Lifter's. */
+        as deep as it dips now: the Ducker's curve. */
     double duckBellsDb (const std::array<SonifyDsp::Biquad, 2>& bells, const std::array<double, 2>& amounts, double hz, double rate)
     {
         double db = 0.0;
@@ -225,400 +225,105 @@ namespace
     }
 
     //==============================================================================
-    // Space Lifter 4 (reverb-echo; Space Lifter 3's successor): an echo and a reverb blended into one space (SonifySpace.h),
-    // in one of four routings, with a two-band ducker on the wet alone (keyed by the dry or by
-    // the sidechain). It took Sonify Reverb's place: its id, and its ten parameters first, so
-    // the songs made with Sonify Reverb load into it (as its hall, without the echo).
-    namespace SpaceParam
+    // Space Lifter 5: a clean algorithmic reverb for long halls and spaces (SpaceLifter5.h, from
+    // the NebulaVerb project, tuned against measured halls). Eight types, a shimmer (a pitch
+    // shift in its feedback) and a gate on its tail. Its own id: songs made with Space Lifter 4
+    // don't load into it. Its window is the NebulaVerb faceplate itself (NebulaFaceplate.*, the
+    // same source the NebulaVerb VST3 draws with), opened by SpaceLifter5Screen.cpp.
+    namespace SL5Param
     {
         enum : uint32_t
         {
-            size = 1, decay, damping, preDelay, lowCut, highCut, early, earlySize, dry, wet,
-            routing, blend, voicing, shape, shapeTime, colour, texture, reverbOn,
-            echoOn, mode, style, sync, note, time, time2, feedback, groove, feel, accent, drive,
-            mod, freeze, width,
-            tap1, tap16 = tap1 + 15,
-            duckOn, duckKey, duckTarget,
-            duckLow,                       // its eight: on, freq, Q, depth, threshold, ratio, attack, release
-            duckHigh = duckLow + 8,
-            rhythmOn = duckHigh + 8        // the Rhythm pattern in place of the echo's mode (added: the Rhythm page's switch)
+            type = 1, mix, preDelay, decay, modulation, earlyLate, lowCut, highCut, damping,
+            shimmer, feedback, shift, split,
+            gate, threshold, attack, hold, release,
+            bypass
         };
     }
 
-    std::vector<BuiltinPlugin::Spec> spaceSpecs()
-    {
-        using P = BuiltinPlugin::Spec;
-        static const char* tapNames[16] { "Tap 1", "Tap 2", "Tap 3", "Tap 4", "Tap 5", "Tap 6", "Tap 7", "Tap 8",
-                                          "Tap 9", "Tap 10", "Tap 11", "Tap 12", "Tap 13", "Tap 14", "Tap 15", "Tap 16" };
-        static constexpr double tapDefaults[16] { 0, 0, 100, 0, 0, 75, 0, 55, 0, 0, 40, 0, 0, 30, 0, 20 };
-
-        std::vector<P> specs {
-            { SpaceParam::size,       "Size",        0.0,   100.0,    50.0, "%",  0 },
-            { SpaceParam::decay,      "Decay",       0.0,   100.0,    50.0, "%",  0 },
-            { SpaceParam::damping,    "Damping",     0.0,   100.0,    40.0, "%",  0 },
-            { SpaceParam::preDelay,   "Pre-Delay",   0.0,   250.0,    10.0, "ms", 0 },
-            { SpaceParam::lowCut,     "Low Cut",    20.0,  1000.0,   120.0, "Hz", 0, false, false, true, "min" },
-            { SpaceParam::highCut,    "High Cut", 1000.0, 20000.0, 20000.0, "Hz", 0, false, false, true, "max" },
-            { SpaceParam::early,      "Early",       0.0,   100.0,     0.0, "%",  0 },
-            { SpaceParam::earlySize,  "Early Size",  0.0,   100.0,    50.0, "%",  0 },
-            { SpaceParam::dry,        "Dry",         0.0,   100.0,   100.0, "%",  0 },
-            { SpaceParam::wet,        "Wet",         0.0,   100.0,    30.0, "%",  0 },
-
-            { SpaceParam::routing,    "Routing",     0.0,     3.0,     0.0, "",   0, true, false, true, nullptr,
-              { "Echo > Reverb", "Reverb in Echo", "Reverb > Echo", "Parallel" } },
-            { SpaceParam::blend,      "Blend",       0.0,   100.0,    50.0, "%",  0 },
-            { SpaceParam::voicing,    "Voicing",     0.0,     8.0,     0.0, "",   0, true, false, true, nullptr,
-              { "Plate", "Hall", "Room", "Chamber", "Cathedral", "Spring", "Vintage Digital", "Shimmer", "Greyhole" } },
-            { SpaceParam::shape,      "Shape",       0.0,     3.0,     0.0, "",   0, true, false, true, nullptr,
-              { "Decay", "Gate", "Reverse", "Bloom" } },
-            { SpaceParam::shapeTime,  "Shape Time", 20.0,  2000.0,   350.0, "ms", 0 },
-            { SpaceParam::colour,     "Color",    -100.0,   100.0,     0.0, "%",  0 },
-            { SpaceParam::texture,    "Texture",     0.0,   100.0,    70.0, "%",  0 },
-            { SpaceParam::reverbOn,   "Reverb On",   0.0,     1.0,     1.0, "",   0, true, false, true, nullptr, { "Off", "On" } },
-
-            { SpaceParam::echoOn,     "Echo On",     0.0,     1.0,     1.0, "",   0, true, false, true, nullptr, { "Off", "On" } },
-            // Mode's fourth, Rhythm, stays for the songs and presets that chose it before the
-            // Rhythm switch came (its page's switch is the way now: Mode is then what plays
-            // with it off).
-            { SpaceParam::mode,       "Mode",        0.0,     3.0,     0.0, "",   0, true, false, true, nullptr,
-              { "Single", "Dual", "Ping-Pong", "Rhythm" } },
-            { SpaceParam::style,      "Style",       0.0,     4.0,     0.0, "",   0, true, false, true, nullptr,
-              { "Tape", "BBD", "Oil Can", "Clean Digital", "Vintage Digital" } },
-            { SpaceParam::sync,       "Sync",        0.0,     1.0,     1.0, "",   0, true, false, true, nullptr, { "Free", "Song" } },
-            { SpaceParam::note,       "Note",        0.0,     8.0,     6.0, "",   0, true, false, true, nullptr,
-              { "1/1", "1/2", "1/4", "1/8", "1/16", "1/4 dotted", "1/8 dotted", "1/4 triplet", "1/8 triplet" } },
-            { SpaceParam::time,       "Time",       10.0,  2400.0,   375.0, "ms", 0 },
-            { SpaceParam::time2,      "Echo 2",     25.0,   200.0,    75.0, "%",  0 },
-            { SpaceParam::feedback,   "Feedback",    0.0,   100.0,    30.0, "%",  0 },
-            { SpaceParam::groove,     "Groove",    -50.0,    50.0,     0.0, "%",  0 },
-            { SpaceParam::feel,       "Feel",      -50.0,    50.0,     0.0, "ms", 0 },
-            { SpaceParam::accent,     "Accent",   -100.0,   100.0,     0.0, "%",  0 },
-            { SpaceParam::drive,      "Drive",       0.0,   100.0,    30.0, "%",  0 },
-
-            { SpaceParam::mod,        "Mod",         0.0,   100.0,    25.0, "%",  0 },
-            { SpaceParam::freeze,     "Freeze",      0.0,     1.0,     0.0, "",   0, true, false, true, nullptr, { "Off", "On" } },
-            { SpaceParam::width,      "Width",       0.0,   200.0,   100.0, "%",  0 }
-        };
-
-        for (uint32_t i = 0; i < 16; ++i)
-            specs.push_back ({ SpaceParam::tap1 + i, tapNames[i], 0.0, 100.0, tapDefaults[i], "%", 0 });
-
-        specs.push_back ({ SpaceParam::duckOn,     "Duck On",     0.0, 1.0, 0.0, "", 0, true, false, true, nullptr, { "Off", "On" } });
-        specs.push_back ({ SpaceParam::duckKey,    "Duck Key",    0.0, 1.0, 0.0, "", 0, true, false, true, nullptr, { "Self", "Sidechain" } });
-        specs.push_back ({ SpaceParam::duckTarget, "Duck Target", 0.0, 2.0, 0.0, "", 0, true, false, true, nullptr, { "Both", "Echo", "Reverb" } });
-
-        // The two bands, as Sonify Ducker's (wide by default: the whole wet dips under the playing).
-        struct Band { uint32_t base; const char* names[8]; double freq, q; };
-        static const Band bands[2] {
-            { SpaceParam::duckLow,  { "Duck Low On", "Duck Low Freq", "Duck Low Q", "Duck Low Depth", "Duck Low Threshold",
-                                      "Duck Low Ratio", "Duck Low Attack", "Duck Low Release" }, 300.0, 0.5 },
-            { SpaceParam::duckHigh, { "Duck High On", "Duck High Freq", "Duck High Q", "Duck High Depth", "Duck High Threshold",
-                                      "Duck High Ratio", "Duck High Attack", "Duck High Release" }, 2800.0, 0.5 }
-        };
-
-        for (const auto& band : bands)
-        {
-            specs.push_back ({ band.base,     band.names[0], 0.0, 1.0, 1.0, "", 0, true, false, true, nullptr, { "Off", "On" } });
-            specs.push_back ({ band.base + 1, band.names[1], 40.0, 16000.0, band.freq, "Hz", 0 });
-            specs.push_back ({ band.base + 2, band.names[2], 0.3, 8.0, band.q, "", 2 });
-            specs.push_back ({ band.base + 3, band.names[3], 0.0, 24.0, 12.0, "dB", 1 });
-            specs.push_back ({ band.base + 4, band.names[4], -60.0, 0.0, -36.0, "dB", 1 });
-            specs.push_back ({ band.base + 5, band.names[5], 1.0, 20.0, 4.0, ":1", 1 });
-            specs.push_back ({ band.base + 6, band.names[6], 0.5, 200.0, 5.0, "ms", 1 });
-            specs.push_back ({ band.base + 7, band.names[7], 20.0, 1000.0, 260.0, "ms", 0 });
-        }
-
-        specs.push_back ({ SpaceParam::rhythmOn, "Rhythm", 0.0, 1.0, 0.0, "", 0, true, false, true, nullptr, { "Off", "On" } });
-        return specs;
-    }
-
-    class SpacePlugin final : public BuiltinPlugin
+    class SpaceLifter5Plugin final : public BuiltinPlugin
     {
     public:
-        SpacePlugin()
-            : BuiltinPlugin (descriptorFor (Builtins::reverbId, "Space Lifter 4", { "audio-effect", "reverb", "delay", "stereo" }),
-                             spaceSpecs())
+        SpaceLifter5Plugin()
+            : BuiltinPlugin (descriptorFor (Builtins::spaceLifter5Id, "Space Lifter 5", { "audio-effect", "reverb", "stereo" }), specs())
         {
-            ducker.setEnabled (true);
         }
 
-        bool hasSidechain() const noexcept override           { return true; }
-        const char* getPanelName() const noexcept override   { return "reverb"; }
-        juce::StringArray getDisplaySources() const override  { return { "space.gr1", "space.gr2", "space.key1", "space.key2" }; }
-        juce::StringArray getCurveSources() const override    { return { "space.curve" }; }
-
-        float readSource (const juce::String& source) const noexcept override
-        {
-            if (source == "space.gr1" || source == "space.gr2")
-                return ducking ? juce::jlimit (0.0f, 1.0f, ducker.getGainReductionDb (source.getLastCharacter() == '1' ? 0 : 1) / 24.0f) : 0.0f;
-
-            if (source == "space.key1" || source == "space.key2")
-                return ducking ? juce::jlimit (0.0f, 1.0f, (ducker.getSidechainLevelDb (source.getLastCharacter() == '1' ? 0 : 1) + 60.0f) / 60.0f) : 0.0f;
-
-            return BuiltinPlugin::readSource (source);
-        }
-
-        void readCurve (const juce::String& source, float* destination, int numSamples) override
-        {
-            if (source != "space.curve")
-                return BuiltinPlugin::readCurve (source, destination, numSamples);
-
-            constexpr double rate = 48000.0;
-            std::array<SonifyDsp::Biquad, 2> bells {};
-            std::array<double, 2> amounts {};
-
-            for (int band = 0; band < 2; ++band)
-            {
-                const auto base = band == 0 ? SpaceParam::duckLow : SpaceParam::duckHigh;
-
-                if (! ducking || valueOf (base) < 0.5)
-                    continue;
-
-                bells[static_cast<size_t> (band)] = SonifyDsp::Biquad::bandPass (rate, valueOf (base + 1), valueOf (base + 2));
-                amounts[static_cast<size_t> (band)] = 1.0 - juce::Decibels::decibelsToGain (-static_cast<double> (ducker.getGainReductionDb (band)));
-            }
-
-            drawResponse (destination, numSamples, 24.0, [&] (double hz) { return duckBellsDb (bells, amounts, hz, rate); });
-        }
-
-        /** Kept with the song: that it's Space Lifter 4's (a song without it is Sonify Reverb's),
-            and which (2: since the Rhythm switch). */
-        juce::var saveExtra() const override
-        {
-            auto* extra = new juce::DynamicObject();
-            extra->setProperty ("space", 2);
-            return juce::var (extra);
-        }
-
-        void loadExtra (const juce::var& extra) override
-        {
-            if (extra.isObject() && extra.hasProperty ("space"))
-            {
-                // From before the Rhythm switch, on Mode's Rhythm: the switch on, as it sounded.
-                if (static_cast<int> (extra["space"]) < 2 && valueOf (SpaceParam::mode) >= 2.5)
-                {
-                    setValue (SpaceParam::rhythmOn, 1.0);
-                    setValue (SpaceParam::mode, 0.0);
-                }
-
-                return;
-            }
-
-            // A Sonify Reverb song: its hall alone, as it was.
-            setValue (SpaceParam::voicing, 1.0);
-            setValue (SpaceParam::echoOn, 0.0);
-            setValue (SpaceParam::routing, 3.0);
-            setValue (SpaceParam::blend, 100.0);
-            setValue (SpaceParam::texture, 70.0);
-            setValue (SpaceParam::mod, 20.0);
-        }
+        const char* getPanelName() const noexcept override   { return "spacelifter5"; }
 
     private:
-        void prepareAudio (double rate, int maxBlockSize) override
+        static std::vector<Spec> specs()
         {
-            chunk = juce::jmax (32, maxBlockSize);
-            scratch.assign (static_cast<size_t> (chunk) * 7, 0.0f);
-            space.prepare (rate);
-            tone.prepare (rate);
-            ducker.prepare (rate);
-            prepareSidechain (maxBlockSize);
-            dryGain = static_cast<float> (valueOf (SpaceParam::dry) / 100.0);
-            wetGain = static_cast<float> (valueOf (SpaceParam::wet) / 100.0);
-            fresh = true;
+            std::vector<const char*> types;
+            for (const auto& t : SpaceLifter5::typeTable())
+                types.push_back (t.name);
+
+            return {
+                { SL5Param::type,       "Type",          0.0,     7.0,     2.0, "",   0, true, false, true, nullptr, types },
+                { SL5Param::mix,        "Mix",           0.0,   100.0,    30.0, "%",  0 },
+                { SL5Param::preDelay,   "Pre-Delay",     0.0,   500.0,    20.0, "ms", 0 },
+                { SL5Param::decay,      "Decay",         0.2,    30.0,     3.6, "s",  2 },
+                { SL5Param::modulation, "Modulation",    0.0,   100.0,    35.0, "%",  0 },
+                { SL5Param::earlyLate,  "Early-Late",    0.0,   100.0,    55.0, "%",  0 },
+                { SL5Param::lowCut,     "Low Cut",      20.0,  1000.0,    20.0, "Hz", 0, false, false, true, "min" },
+                { SL5Param::highCut,    "High Cut",   1000.0, 20000.0, 20000.0, "Hz", 0, false, false, true, "max" },
+                { SL5Param::damping,    "Damping",       0.0,   100.0,    50.0, "%",  0 },
+
+                { SL5Param::shimmer,    "Shimmer",       0.0,     1.0,     0.0, "",   0, true, false, true, nullptr, { "Off", "On" } },
+                { SL5Param::feedback,   "Feedback",      0.0,   100.0,    40.0, "%",  0 },
+                { SL5Param::shift,      "Shift",       -24.0,    24.0,    12.0, "st", 0, true },
+                { SL5Param::split,      "Split",       100.0,  4000.0,   400.0, "Hz", 0 },
+
+                { SL5Param::gate,       "Gate",          0.0,     1.0,     0.0, "",   0, true, false, true, nullptr, { "Off", "On" } },
+                { SL5Param::threshold,  "Threshold",   -60.0,     0.0,   -30.0, "dB", 1 },
+                { SL5Param::attack,     "Attack",        0.1,   100.0,     2.0, "ms", 1 },
+                { SL5Param::hold,       "Hold",          0.0,  1000.0,   250.0, "ms", 0 },
+                { SL5Param::release,    "Release",      10.0,  2000.0,   150.0, "ms", 0 },
+
+                { SL5Param::bypass,     "Bypass",        0.0,     1.0,     0.0, "",   0, true, false, true, nullptr, { "Off", "On" } }
+            };
         }
 
         static int choice (double value) noexcept   { return static_cast<int> (std::lround (value)); }
 
-        double echoMs() const noexcept
+        void prepareAudio (double rate, int) override
         {
-            if (valueOf (SpaceParam::sync) > 0.5)
-                return divisions[juce::jlimit (0, 8, choice (valueOf (SpaceParam::note)))] * 60000.0 / juce::jmax (20.0, getBlockTempo());
-
-            return valueOf (SpaceParam::time);
+            update();
+            engine.prepare (rate);
         }
 
         void update() noexcept override
         {
-            using namespace SonifySpace;
-            Settings s;
-            s.routing = static_cast<Routing> (juce::jlimit (0, 3, choice (valueOf (SpaceParam::routing))));
-            s.blend = percent (valueOf (SpaceParam::blend));
-            s.echoOn = valueOf (SpaceParam::echoOn) > 0.5;
-            s.reverbOn = valueOf (SpaceParam::reverbOn) > 0.5;
-
-            const auto frozen = valueOf (SpaceParam::freeze) > 0.5;
-            const auto mod = percent (valueOf (SpaceParam::mod));
-
-            auto& r = s.reverb;
-            r.voicing = static_cast<Voicing> (juce::jlimit (0, numVoicings - 1, choice (valueOf (SpaceParam::voicing))));
-            r.size = percent (valueOf (SpaceParam::size));
-            r.decay = percent (valueOf (SpaceParam::decay));
-            r.damping = percent (valueOf (SpaceParam::damping));
-            r.preDelayMs = static_cast<float> (valueOf (SpaceParam::preDelay));
-            r.early = percent (valueOf (SpaceParam::early));
-            r.earlySize = percent (valueOf (SpaceParam::earlySize));
-            r.colour = percent (valueOf (SpaceParam::colour));
-            r.texture = percent (valueOf (SpaceParam::texture));
-            r.mod = mod;
-            r.shape = static_cast<Shape> (juce::jlimit (0, 3, choice (valueOf (SpaceParam::shape))));
-            r.shapeMs = static_cast<float> (valueOf (SpaceParam::shapeTime));
-            r.freeze = frozen;
-
-            auto& e = s.echo;
-            const auto modeChoice = juce::jlimit (0, 3, choice (valueOf (SpaceParam::mode)));
-            e.mode = valueOf (SpaceParam::rhythmOn) > 0.5 || modeChoice == 3 ? EchoMode::rhythm : static_cast<EchoMode> (modeChoice);
-            e.style = static_cast<EchoStyle> (juce::jlimit (0, 4, choice (valueOf (SpaceParam::style))));
-            e.timeMs = static_cast<float> (echoMs());
-            e.time2 = percent (valueOf (SpaceParam::time2));
-            e.feedback = percent (valueOf (SpaceParam::feedback));
-            e.groove = percent (valueOf (SpaceParam::groove));
-            e.feelMs = static_cast<float> (valueOf (SpaceParam::feel));
-            e.accent = percent (valueOf (SpaceParam::accent));
-            e.drive = percent (valueOf (SpaceParam::drive));
-            e.mod = mod;
-            e.freeze = frozen;
-
-            for (uint32_t i = 0; i < 16; ++i)
-                e.taps[i] = percent (valueOf (SpaceParam::tap1 + i));
-
-            // Back on: what it held when it went off isn't heard again.
-            if (s.echoOn && ! space.getSettings().echoOn)
-                space.resetEcho();
-
-            if (s.reverbOn && ! space.getSettings().reverbOn)
-                space.resetReverb();
-
-            space.set (s, fresh);     // its first settings: at once (no glide from the defaults)
-            fresh = false;
-            tone.set (static_cast<float> (valueOf (SpaceParam::lowCut)), static_cast<float> (valueOf (SpaceParam::highCut)),
-                      percent (valueOf (SpaceParam::width)));
-
-            ducking = valueOf (SpaceParam::duckOn) > 0.5;
-            fromSidechain = valueOf (SpaceParam::duckKey) > 0.5;
-            target = juce::jlimit (0, 2, choice (valueOf (SpaceParam::duckTarget)));
-
-            for (int band = 0; band < 2; ++band)
-            {
-                const auto base = band == 0 ? SpaceParam::duckLow : SpaceParam::duckHigh;
-                ducker.setBandEnabled (band, valueOf (base) > 0.5);
-                ducker.setFreq (band, static_cast<float> (valueOf (base + 1)));
-                ducker.setQ (band, static_cast<float> (valueOf (base + 2)));
-                ducker.setDepthDb (band, static_cast<float> (valueOf (base + 3)));
-                ducker.setThresholdDb (band, static_cast<float> (valueOf (base + 4)));
-                ducker.setRatio (band, static_cast<float> (valueOf (base + 5)));
-                ducker.setAttackMs (band, static_cast<float> (valueOf (base + 6)));
-                ducker.setReleaseMs (band, static_cast<float> (valueOf (base + 7)));
-            }
+            SpaceLifter5::Params p;
+            p.type        = juce::jlimit (0, SpaceLifter5::kNumTypes - 1, choice (valueOf (SL5Param::type)));
+            p.mix         = percent (valueOf (SL5Param::mix));
+            p.predelayMs  = static_cast<float> (valueOf (SL5Param::preDelay));
+            p.decaySec    = static_cast<float> (valueOf (SL5Param::decay));
+            p.modulation  = percent (valueOf (SL5Param::modulation));
+            p.earlyLate   = percent (valueOf (SL5Param::earlyLate));
+            p.lowCutHz    = static_cast<float> (valueOf (SL5Param::lowCut));
+            p.highCutHz   = static_cast<float> (valueOf (SL5Param::highCut));
+            p.damping     = percent (valueOf (SL5Param::damping));
+            p.shimmer     = valueOf (SL5Param::shimmer) > 0.5;
+            p.feedback    = percent (valueOf (SL5Param::feedback));
+            p.shiftSemis  = static_cast<float> (valueOf (SL5Param::shift));
+            p.splitHz     = static_cast<float> (valueOf (SL5Param::split));
+            p.gate        = valueOf (SL5Param::gate) > 0.5;
+            p.thresholdDb = static_cast<float> (valueOf (SL5Param::threshold));
+            p.attackMs    = static_cast<float> (valueOf (SL5Param::attack));
+            p.holdMs      = static_cast<float> (valueOf (SL5Param::hold));
+            p.releaseMs   = static_cast<float> (valueOf (SL5Param::release));
+            p.bypass      = valueOf (SL5Param::bypass) > 0.5;      // the faceplate's lever: the wet fades out, the dry stays
+            engine.setParams (p);    // the engine glides to them itself
         }
 
         void processAudio (float* left, float* right, int numSamples) noexcept override
         {
             const juce::ScopedNoDenormals noDenormals;
-
-            // In time with the song: the tempo can move every block.
-            space.setEchoTime (static_cast<float> (echoMs()));
-
-            const auto sidechainReady = getSidechainCapacity() >= numSamples;
-
-            for (int start = 0; start < numSamples; start += chunk)
-                processChunk (left + start, right + start, start, juce::jmin (chunk, numSamples - start), sidechainReady);
+            engine.process (left, right, numSamples);
         }
 
-        void processChunk (float* left, float* right, int start, int n, bool sidechainReady) noexcept
-        {
-            const auto size = static_cast<size_t> (chunk);
-            float* dryL = scratch.data();
-            float* dryR = dryL + size;
-            float* echoL = dryR + size;
-            float* echoR = echoL + size;
-            float* reverbL = echoR + size;
-            float* reverbR = reverbL + size;
-            float* silence = reverbR + size;
-
-            std::copy (left, left + n, dryL);
-            std::copy (right, right + n, dryR);
-
-            space.process (dryL, dryR, echoL, echoR, reverbL, reverbR, n);
-
-            const auto add = [n] (float* intoL, float* intoR, const float* l, const float* r)
-            {
-                for (int i = 0; i < n; ++i)
-                {
-                    intoL[i] += l[i];
-                    intoR[i] += r[i];
-                }
-            };
-
-            if (ducking)
-            {
-                // The key: the dry itself, or what the sidechain brings (silent while nothing sends to it).
-                float* keyL = dryL;
-                float* keyR = dryR;
-
-                if (fromSidechain)
-                {
-                    keyL = keyR = silence;
-                    std::fill (silence, silence + n, 0.0f);
-
-                    if (sidechainReady && getSidechainChannel (0) != nullptr)
-                    {
-                        keyL = getSidechainChannel (0) + start;
-                        keyR = getSidechainChannel (1) != nullptr ? getSidechainChannel (1) + start : keyL;
-                    }
-                }
-
-                const auto duck = [&] (float* l, float* r)
-                {
-                    float* styleChannels[] { l, r };
-                    juce::AudioBuffer<float> style (styleChannels, 2, n);
-                    float* keyChannels[] { keyL, keyR };
-                    const juce::AudioBuffer<float> key (keyChannels, 2, n);
-                    ducker.process (style, key);
-                };
-
-                if (target == 0)
-                {
-                    add (echoL, echoR, reverbL, reverbR);
-                    duck (echoL, echoR);
-                }
-                else
-                {
-                    duck (target == 1 ? echoL : reverbL, target == 1 ? echoR : reverbR);
-                    add (echoL, echoR, reverbL, reverbR);
-                }
-            }
-            else
-            {
-                add (echoL, echoR, reverbL, reverbR);
-            }
-
-            tone.process (echoL, echoR, n);
-
-            // Dry and wet apart: the source stays where it is.
-            const auto dryTo = static_cast<float> (valueOf (SpaceParam::dry) / 100.0);
-            const auto wetTo = static_cast<float> (valueOf (SpaceParam::wet) / 100.0);
-            const auto dryStep = (dryTo - dryGain) / static_cast<float> (n);
-            const auto wetStep = (wetTo - wetGain) / static_cast<float> (n);
-
-            for (int i = 0; i < n; ++i)
-            {
-                dryGain += dryStep;
-                wetGain += wetStep;
-                left[i] = dryGain * dryL[i] + wetGain * echoL[i];
-                right[i] = dryGain * dryR[i] + wetGain * echoR[i];
-            }
-
-            dryGain = dryTo;
-            wetGain = wetTo;
-        }
-
-        SonifySpace::Space space;
-        SonifySpace::WetTone tone;
-        GrexFx::StyleDucker ducker;
-        std::vector<float> scratch;
-        int chunk = 512, target = 0;
-        bool ducking = false, fromSidechain = false, fresh = true;
-        float dryGain = 1.0f, wetGain = 0.3f;
+        SpaceLifter5::Engine engine;
     };
 
     //==============================================================================
@@ -820,7 +525,7 @@ namespace
     {
         static const std::vector<Plugin::Descriptor> all {
             ChorusPlugin().getDescriptor(), PhaserPlugin().getDescriptor(), AutoWahPlugin().getDescriptor(),
-            SpacePlugin().getDescriptor(), DelayPlugin().getDescriptor(), SweetenerPlugin().getDescriptor(),
+            SpaceLifter5Plugin().getDescriptor(), DelayPlugin().getDescriptor(), SweetenerPlugin().getDescriptor(),
             DuckerPlugin().getDescriptor(), TestSynths::describe()
         };
 
@@ -838,7 +543,7 @@ juce::String BuiltinEffects::categoryOf (const juce::String& id)
 {
     if (id == Builtins::chorusId || id == Builtins::phaserId)   return "Modulation";
     if (id == Builtins::autoWahId)                              return "Filter";
-    if (id == Builtins::reverbId)                               return "Reverb";
+    if (id == Builtins::spaceLifter5Id)                         return "Reverb";
     if (id == Builtins::delayId)                                return "Delay";
     if (id == Builtins::sweetenerId || id == Builtins::duckerId) return "Dynamics";
     if (id == Builtins::testSynthId)                            return "Synth";
@@ -850,7 +555,7 @@ std::unique_ptr<Plugin> BuiltinEffects::create (const juce::String& id)
     if (id == Builtins::chorusId)      return std::make_unique<ChorusPlugin>();
     if (id == Builtins::phaserId)      return std::make_unique<PhaserPlugin>();
     if (id == Builtins::autoWahId)     return std::make_unique<AutoWahPlugin>();
-    if (id == Builtins::reverbId)      return std::make_unique<SpacePlugin>();
+    if (id == Builtins::spaceLifter5Id) return std::make_unique<SpaceLifter5Plugin>();
     if (id == Builtins::delayId)       return std::make_unique<DelayPlugin>();
     if (id == Builtins::sweetenerId)   return std::make_unique<SweetenerPlugin>();
     if (id == Builtins::duckerId)      return std::make_unique<DuckerPlugin>();

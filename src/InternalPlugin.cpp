@@ -13,6 +13,7 @@
 // only through the entries at the bottom of this file.
 #include "natura/PluginProcessor.h"
 #include "zax/PluginProcessor.h"
+#include "zodiak/PluginProcessor.h"
 
 // The guitar plugins are set aside for now (CMakeLists.txt, SONIFY_GUITAR_PLUGINS): AXIS stays
 // compiled, Timber Wolf isn't built, neither is listed.
@@ -399,6 +400,10 @@ const std::vector<Internals::Entry>& Internals::entries()
         { juce::String (Builtins::idPrefix) + "zax", "Zax", "Sonify", "1.0.0", "Synth",
           { "instrument", "drum-machine" }, Plugin::Role::instrument,
           [] { return std::unique_ptr<juce::AudioProcessor> (new ZaxProcessor()); } },
+
+        { juce::String (Builtins::idPrefix) + "zodiak", "Zodiak", "Sonify", "1.0.0", "Groove Box",
+          { "instrument", "drum-machine", "sampler" }, Plugin::Role::instrument,
+          [] { return std::unique_ptr<juce::AudioProcessor> (new ZodiakProcessor()); } },
 
 #if SONIFY_GUITAR_PLUGINS
         { juce::String (Builtins::idPrefix) + "axis", "AXIS", "Sonify", "1.0.0", "Guitar",

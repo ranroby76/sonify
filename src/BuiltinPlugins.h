@@ -16,8 +16,8 @@
 /**
     Sonify's own effects, instruments and system tools, built into the executable: Sonify EQ,
     Sonify Compressor, Sonify Limiter and Sonify Mastering (what the Mastering Assistant sets up
-    on Main); Grex's effects (Chorus, Phaser, Auto-Wah, Reverb, Delay, Sweetener, Ducker:
-    BuiltinEffects.cpp); the Test Synth (TestSynth.cpp); and the system tools: Container and FX
+    on Main); Grex's effects (Chorus, Phaser, Auto-Wah, Delay, Sweetener, Ducker) and Space Lifter 5,
+    the reverb (BuiltinEffects.cpp); the Test Synth (TestSynth.cpp); and the system tools: Container and FX
     Container (Container.h), the Playlist Player (PlaylistPlayer.h) and the Sonify Sampler
     (SonifySampler.h). And Sonify's own plugins, each written the way a plugin is and hosted as a
     VST3 is, only made in Sonify (InternalPlugin.h): Natura, its modelling synth, and Zax, its drum
@@ -40,7 +40,7 @@ namespace Builtins
     inline constexpr const char* chorusId = "sonify.builtin.chorus";
     inline constexpr const char* phaserId = "sonify.builtin.phaser";
     inline constexpr const char* autoWahId = "sonify.builtin.autowah";
-    inline constexpr const char* reverbId = "sonify.builtin.reverb";
+    inline constexpr const char* spaceLifter5Id = "sonify.builtin.spacelifter5";
     inline constexpr const char* delayId = "sonify.builtin.delay";
     inline constexpr const char* sweetenerId = "sonify.builtin.sweetener";
     inline constexpr const char* duckerId = "sonify.builtin.ducker";
@@ -130,7 +130,8 @@ public:
     virtual const char* getPanelName() const noexcept                    { return nullptr; }
 
     /** A meter's, lamp's or display's level (message thread): "in L/R", "out L/R" as linear
-        peaks, the plugin's own displays as 0..1. */
+        peaks, "over L/R" as a count of blocks that went past 0 dBFS (a clip light lights when
+        it changes, so it sees every over), the plugin's own displays as 0..1. */
     virtual float readSource (const juce::String& source) const noexcept;
     virtual juce::StringArray getDisplaySources() const                  { return {}; }
 
@@ -141,6 +142,9 @@ public:
     /** Its panel's keyboard (instruments): a note played, and whether one sounds. */
     virtual void panelNote (int note, float velocity)                    { juce::ignoreUnused (note, velocity); }
     virtual bool isPanelNoteDown (int note) const                        { juce::ignoreUnused (note); return false; }
+
+    /** Its panel's wheels: 0 the pitch wheel (-1..1, 0 in the middle), 1 the mod wheel (0..1). */
+    virtual void panelWheel (int wheel, float value)                     { juce::ignoreUnused (wheel, value); }
 
     /** The last parameter its panel moved (MIDI Link's Last Touched), once. */
     void panelTouched (int index) noexcept                               { touched.store (index); }
@@ -249,6 +253,7 @@ private:
 
     // The panel's meters: input and output peaks, falling back between blocks.
     std::array<std::atomic<float>, 4> peaks {};       // in L, in R, out L, out R
+    std::array<std::atomic<std::uint32_t>, 4> overs {};   // blocks with a sample past 0 dBFS, so far
     void measure (int first, const float* left, const float* right, int numSamples) noexcept;
     double currentRate = 48000.0;
     const clap_event_transport_t* blockTransport = nullptr;

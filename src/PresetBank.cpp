@@ -6,6 +6,7 @@ Preset PresetBank::fromVar (const juce::var& json)
 {
     Preset preset;
     preset.name = json.getProperty ("name", {}).toString().trim();
+    preset.category = json.getProperty ("category", {}).toString().trim();
 
     if (auto* values = json.getProperty ("values", {}).getDynamicObject())
         for (const auto& entry : values->getProperties())
@@ -24,6 +25,9 @@ juce::var PresetBank::toVar (const Preset& preset)
 
     auto* json = new juce::DynamicObject();
     json->setProperty ("name", preset.name);
+
+    if (preset.category.isNotEmpty())
+        json->setProperty ("category", preset.category);
     json->setProperty ("values", juce::var (values));
     return juce::var (json);
 }

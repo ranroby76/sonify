@@ -249,6 +249,16 @@ private:
     bool addWhenPlaying = false;     // Add to Sonify pressed while it built: it's added once it plays
     bool exportingPlugin = false;    // Export Plugin is building plugin files
 
+    // A project opening: a spinner over the workspace (which takes no clicks meanwhile) from the
+    // moment it's asked for until it plays, or didn't build, with its panel laid out and its
+    // preset back: what it's at, and for how long. Painted at once, before each step that keeps
+    // the message thread busy, so the studio never looks stuck.
+    class LoadingCover;
+    std::unique_ptr<LoadingCover> loadingCover;
+    bool openingProject = false;   // openProjectFile at work (the project before closes first)
+    void showLoading (const juce::String& name, const juce::String& step);
+    void hideLoading();
+
     // The plugin's source, written on every Save, one at a time, after the studio has gone on.
     juce::ThreadPool sourceWriter { juce::ThreadPoolOptions{}.withThreadName ("Sonify source export").withNumberOfThreads (1) };
 

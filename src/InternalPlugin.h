@@ -28,7 +28,7 @@
 //==============================================================================
 /**
     Sonify's own plugins, built into Sonify.exe: Zax (its drum synth), Natura (its modelling
-    synth) and AXIS (its guitar board). Each is a juce::AudioProcessor with a window of its own,
+    synth), Zodiak (its groove box) and AXIS (its guitar board). Each is a juce::AudioProcessor with a window of its own,
     written as a plugin would be, and Sonify hosts it exactly as it hosts a VST3 - the same
     parameters, the same state in songs, the same window over the Hub - only made in Sonify
     instead of loaded from a file. Nothing is installed, and no plugin file exists: the Browser

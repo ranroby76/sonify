@@ -5206,6 +5206,68 @@ bool AudioEngine::attachInsert (int channel, std::unique_ptr<EffectChain::Insert
     return added;
 }
 
+bool AudioEngine::transferInsert (int fromChannel, int insertId, int toChannel, int position)
+{
+    const auto frozen = [this] (int channel)
+    {
+        const auto* track = channel == mainChannel ? nullptr : findTrack (channel);
+        return track != nullptr && track->frozenFile != juce::File();
+    };
+
+    auto* source = chainFor (fromChannel);
+    auto* target = chainFor (toChannel);
+
+    if (source == nullptr || target == nullptr || source == target || target->isFull()
+        || source->indexOf (insertId) < 0 || frozen (fromChannel) || frozen (toChannel))
+        return false;
+
+    Plugin* moved = nullptr;
+
+    {
+        // One step under the lock: the audio thread never sees it on neither chain, nor on both.
+        const juce::SpinLock::ScopedLockType lock (graphLock);
+        auto insert = source->remove (insertId);
+        moved = insert->plugin.get();
+        insert->mix = 0.0f;   // fades in over its first block there, as a new insert does
+        target->add (std::move (insert), position);
+    }
+
+    hideScreen (moved);   // its window names the channel it was on
+    contentChanged (fromChannel);
+    contentChanged (toChannel);
+    return true;
+}
+
+bool AudioEngine::exchangeInstruments (int trackA, int trackB)
+{
+    auto* a = findTrack (trackA);
+    auto* b = findTrack (trackB);
+
+    const auto playable = [] (const Track* track)
+    {
+        return track != nullptr && track->kind == Track::Kind::instrument && track->frozenFile == juce::File();
+    };
+
+    if (a == b || ! playable (a) || ! playable (b))
+        return false;
+
+    {
+        const juce::SpinLock::ScopedLockType lock (graphLock);
+        std::swap (a->instrument, b->instrument);
+        const auto offA = a->instrumentOff.load(), offB = b->instrumentOff.load();
+        a->instrumentOff.store (offB);
+        b->instrumentOff.store (offA);
+    }
+
+    a->requestNotesOff();
+    b->requestNotesOff();
+    hideScreen (a->instrument.get());
+    hideScreen (b->instrument.get());
+    contentChanged (*a);
+    contentChanged (*b);
+    return true;
+}
+
 int AudioEngine::getInsertPosition (int channel, int insertId) noexcept
 {
     auto* chain = chainFor (channel);

@@ -409,6 +409,15 @@ public:
     bool attachInsert (int channel, std::unique_ptr<EffectChain::Insert> insert, int position);
     int getInsertPosition (int channel, int insertId) noexcept;
 
+    /** Moves an insert, as it is (its settings, its sound so far), from one channel's chain to
+        another's at a place there (-1 the end). False, and nothing moves, when either channel is
+        missing or frozen, they're the same, the target's chain is full, or the insert isn't there. */
+    bool transferInsert (int fromChannel, int insertId, int toChannel, int position);
+
+    /** Two instrument tracks trade instruments, each with its on/off (a track with the test synth
+        gives that). False, and nothing changes, unless both are unfrozen instrument tracks. */
+    bool exchangeInstruments (int trackA, int trackB);
+
     /** Puts an instrument (or none: the test synth) on a track and returns the one it had. */
     std::unique_ptr<Plugin> swapInstrument (int trackId, std::unique_ptr<Plugin> instrument);
 

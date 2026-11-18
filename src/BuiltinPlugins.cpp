@@ -461,6 +461,8 @@ float BuiltinPlugin::readSource (const juce::String& source) const noexcept
     if (source == "out R" || source == "plugin.out R")   return at (3);
     if (source == "in")                                  return juce::jmax (at (0), at (1));
     if (source == "out")                                 return juce::jmax (at (2), at (3));
+    if (source == "over L")                              return static_cast<float> (overs[2].load (std::memory_order_relaxed) & 0xffffffu);
+    if (source == "over R")                              return static_cast<float> (overs[3].load (std::memory_order_relaxed) & 0xffffffu);
     return 0.0f;
 }
 
@@ -527,6 +529,10 @@ void BuiltinPlugin::measure (int first, const float* left, const float* right, i
         const auto range = data != nullptr ? juce::FloatVectorOperations::findMinAndMax (data, numSamples) : juce::Range<float>();
         const auto level = juce::jmax (-range.getStart(), range.getEnd());
         peak.store (juce::jmax (level, peak.load (std::memory_order_relaxed) * fall), std::memory_order_relaxed);
+
+        // Real clipping only: a sample past full scale (1.0 itself is not over).
+        if (level > 1.0f)
+            overs[static_cast<size_t> (first + channel)].fetch_add (1, std::memory_order_relaxed);
     }
 }
 
@@ -615,7 +621,8 @@ int BuiltinPlugin::decimalsOf (const Spec& spec) noexcept
 
 bool BuiltinPlugin::isLogRange (const Spec& spec) noexcept
 {
-    const bool timeOrFrequency = std::strcmp (spec.unit, "Hz") == 0 || std::strcmp (spec.unit, "ms") == 0;
+    const bool timeOrFrequency = std::strcmp (spec.unit, "Hz") == 0 || std::strcmp (spec.unit, "ms") == 0
+                              || std::strcmp (spec.unit, "s") == 0;
     return timeOrFrequency && ! spec.stepped && spec.minValue > 0.0 && spec.maxValue / spec.minValue >= 8.0;
 }
 

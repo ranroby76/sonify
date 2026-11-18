@@ -7,9 +7,11 @@
 // track headers.
 // Meters show each channel after its fader, with a peak hold and a clip light.
 // Each strip lists its inserts: click one to open it in the Inspector, click its
-// light to bypass it, + to add an effect, or drop one from the Browser. An instrument
-// channel lists its MIDI FX above them (hub-miditools.js): the devices its notes go
-// through before the instrument hears them.
+// light to bypass it, + to add an effect, or drop one from the Browser. Drag one to
+// another place, or onto another channel to move it there. An instrument channel shows
+// its instrument above its inserts (drag it onto another instrument channel: they trade),
+// and its MIDI FX above them (hub-miditools.js): the devices its notes go through before
+// the instrument hears them.
 // While the Analog Board mixes the song, the Console is dimmed and says so.
 
 (() => {
@@ -60,7 +62,7 @@
         const db = Hub.gainToDb(gain || 0);
         if (db > bar.level) bar.level = db;
         if (db >= bar.peak) { bar.peak = db; bar.peakAt = now; }
-        if (gain >= 1 && !this.clipped) {
+        if (gain > 1 && !this.clipped) {           // past full scale: 1.0 itself is not a clip
           this.clipped = true;
           this.clip.classList.add("on");
         }
@@ -193,7 +195,23 @@
       Hub.addEffectMenu(event.currentTarget, channel);
     });
 
+    const list = area.querySelector(".strip-insert-list");
+    list.addEventListener("dragstart", (event) => {
+      const row = event.target.closest(".strip-insert-item, .strip-instrument-item");
+      if (!row) return;
+      startCarry(event, row, row.classList.contains("strip-instrument-item")
+        ? { channel, instrument: true }
+        : { channel, insertId: Number(row.dataset.insertId) });
+    });
+    listDrop(list, channel, ".strip-insert-item");
+
     area.addEventListener("click", (event) => {
+      if (event.target.closest(".strip-instrument-item")) {
+        event.stopPropagation();
+        Hub.openScreen(channel, 0);
+        return;
+      }
+
       const item = event.target.closest(".strip-insert-item");
       if (!item) return;
       event.stopPropagation();
@@ -215,15 +233,26 @@
   /** Strips are narrow: drop a leading "[Pack]" tag, so "[Basics] Chorus" shows as "Chorus". */
   const shortName = (name) => name.replace(/^\[[^\]]*\]\s*/, "") || name;
 
-  /** kept: a DAWproject's devices that can't play here (placeholders), listed greyed after the inserts. */
-  function showInserts(area, inserts, channel, kept = []) {
+  /** kept: a DAWproject's devices that can't play here (placeholders), listed greyed after the inserts.
+      instrument: an instrument channel's instrument ({name}), a row of its own above the inserts. */
+  function showInserts(area, inserts, channel, kept = [], instrument = null) {
     const key = inserts.map((i) => `${i.insertId}:${i.bypass ? 1 : 0}:${i.name}`).join(",")
-      + "|" + kept.map((k) => k.name).join(",");
+      + "|" + kept.map((k) => k.name).join(",") + "|" + (instrument ? instrument.name : "");
     if (area.dataset.key === key) return;
     area.dataset.key = key;
 
     const list = area.querySelector(".strip-insert-list");
     list.textContent = "";
+
+    if (instrument) {
+      const item = element("div", "strip-instrument-item");
+      item.draggable = true;
+      item.title = `${instrument.name}: click to open it; drag it onto another instrument channel to trade instruments`;
+      const mark = element("span", "strip-instrument-mark");
+      mark.innerHTML = ICON_KEYS;
+      item.append(mark, element("span", "strip-insert-name", shortName(instrument.name)));
+      list.appendChild(item);
+    }
 
     for (const insert of inserts) {
       const item = element("div", "strip-insert-item");
@@ -234,8 +263,9 @@
       power.setAttribute("aria-pressed", String(!insert.bypass));
       power.setAttribute("aria-label", insert.bypass ? `Switch ${insert.name} on` : `Bypass ${insert.name}`);
       const name = element("button", "strip-insert-name", shortName(insert.name));
-      name.title = `${insert.name}: click to edit it in the Inspector, double-click to open its screen`;
+      name.title = `${insert.name}: click to open it; drag it to another place, or onto another channel`;
       name.addEventListener("dblclick", () => Hub.openScreen(channel, insert.insertId));
+      item.draggable = true;
       item.append(power, name);
       list.appendChild(item);
     }
@@ -252,14 +282,17 @@
     area.querySelector(".strip-add").hidden = inserts.length >= Hub.MAX_INSERTS;
   }
 
-  /** Browser plugins dropped on a strip: effects join its inserts, instruments replace its instrument. */
+  /** Browser plugins dropped on a strip: effects join its inserts, instruments replace its instrument.
+      A plugin carried from another strip: an insert joins the end of its inserts, an instrument trades places. */
   function setupStripDrop(root, channel) {
     const accepts = () => Boolean(Hub.dragEntry) && (channel !== Hub.MAIN || Hub.dragEntry.kind === "effect");
+    const takesCarried = () => Boolean(carried) && carried.channel !== channel && canTake(channel);
 
     root.addEventListener("dragover", (event) => {
-      if (!accepts()) return;
+      const carrying = takesCarried();
+      if (!carrying && !accepts()) return;
       event.preventDefault();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      if (event.dataTransfer) event.dataTransfer.dropEffect = carrying ? "move" : "copy";
       root.classList.add("drop-target");
     });
 
@@ -269,10 +302,114 @@
 
     root.addEventListener("drop", (event) => {
       root.classList.remove("drop-target");
+
+      if (takesCarried()) {
+        event.preventDefault();
+        deliver(channel, -1);
+        endCarry();
+        return;
+      }
+
       if (!accepts()) return;
       event.preventDefault();
       Hub.dropEntryOn(Hub.dragEntry, channel);
       Hub.dragEntry = null;
+    });
+  }
+
+  // ---------------------------------------------------------------- carrying plugins between strips
+  // An insert dragged out of a strip (its list, or its panel's) lands where it's dropped: another
+  // place in its own chain, or another channel (moved as it is, its settings, envelopes and the
+  // sidechain sends keying it with it: one undo step). An instrument dragged onto another
+  // instrument channel trades places with that channel's. Main, buses and FX channels take effects only.
+  let carried = null;     // { channel, insertId } or { channel, instrument: true }
+  let carryLine = null;   // where an insert would land in a list
+
+  const clearCarryLine = () => { if (carryLine) carryLine.remove(); carryLine = null; };
+
+  /** Can this channel take what's carried? */
+  function canTake(channel) {
+    if (!carried) return false;
+    if (carried.instrument) {
+      const track = Hub.trackById(channel);
+      return channel !== carried.channel && Boolean(track) && track.kind === "instrument";
+    }
+    return channel === carried.channel || Hub.insertsOf(channel).length < Hub.MAX_INSERTS;
+  }
+
+  function startCarry(event, row, what) {
+    event.stopPropagation();
+    carried = what;
+    row.classList.add("dragging");
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", what.instrument ? "instrument" : String(what.insertId));
+    }
+  }
+
+  function endCarry() {
+    carried = null;
+    clearCarryLine();
+    document.querySelectorAll("#console .dragging, #console .strip.drop-target").forEach((el) => el.classList.remove("dragging", "drop-target"));
+  }
+  document.addEventListener("dragend", () => { if (carried) endCarry(); });
+
+  /** Sends the carried plugin to this channel: an insert at index in its list (-1 the end). */
+  function deliver(channel, index) {
+    if (!carried) return;
+    const from = carried.channel;
+
+    if (carried.instrument) {
+      Hub.send("exchangeInstruments", { from, to: channel });
+      return;
+    }
+
+    if (from !== channel) {
+      Hub.send("transferInsert", { from, insertId: carried.insertId, to: channel, position: index });
+      return;
+    }
+
+    const inserts = Hub.insertsOf(channel);
+    const at = inserts.findIndex((insert) => insert.insertId === carried.insertId);
+    if (at < 0) return;
+    const wanted = index < 0 ? inserts.length : index;
+    const position = wanted > at ? wanted - 1 : wanted;
+    if (position !== at) Hub.send("moveInsert", { trackId: channel, insertId: carried.insertId, position });
+  }
+
+  /** An insert list as a drop target: a line shows where a carried insert lands. */
+  function listDrop(list, channel, rowSelector) {
+    const rows = () => [...list.querySelectorAll(rowSelector)];
+    const indexAt = (clientY) => {
+      const all = rows();
+      const at = all.findIndex((row) => { const r = row.getBoundingClientRect(); return clientY < r.top + r.height / 2; });
+      return at < 0 ? all.length : at;
+    };
+    const takes = () => Boolean(carried) && !carried.instrument && canTake(channel);
+
+    list.addEventListener("dragover", (event) => {
+      if (!takes()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      const index = indexAt(event.clientY);
+      const all = rows();
+      if (!carryLine) carryLine = element("div", "drop-line");
+      if (index < all.length) list.insertBefore(carryLine, all[index]);
+      else if (all.length) all[all.length - 1].after(carryLine);
+      else list.insertBefore(carryLine, list.querySelector(".strip-kept-item, .panel-note"));
+    });
+
+    list.addEventListener("dragleave", (event) => {
+      if (carryLine && !list.contains(event.relatedTarget)) clearCarryLine();
+    });
+
+    list.addEventListener("drop", (event) => {
+      if (!takes()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      deliver(channel, indexAt(event.clientY));
+      endCarry();
     });
   }
 
@@ -421,58 +558,13 @@
     return found;
   }
 
-  /** Inserts reorder by dragging their banners (a line shows where one lands). */
+  /** Inserts move by dragging their banners, in this chain or onto another channel (a line shows where one lands). */
   function setupInsertReorder(list, channel) {
-    let dragging = null;   // { insertId, from }
-    let line = null;
-
-    const rows = () => [...list.querySelectorAll(".panel-insert")];
-    const indexAt = (clientY) => {
-      const all = rows();
-      const at = all.findIndex((row) => { const r = row.getBoundingClientRect(); return clientY < r.top + r.height / 2; });
-      return at < 0 ? all.length : at;
-    };
-    const clearLine = () => { if (line) line.remove(); line = null; };
-
     list.addEventListener("dragstart", (event) => {
       const row = event.target.closest(".panel-insert");
-      if (!row) return;
-      dragging = { insertId: Number(row.dataset.insertId), from: rows().indexOf(row) };
-      row.classList.add("dragging");
-      if (event.dataTransfer) {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", row.dataset.insertId);
-      }
+      if (row) startCarry(event, row, { channel, insertId: Number(row.dataset.insertId) });
     });
-
-    list.addEventListener("dragover", (event) => {
-      if (!dragging) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-      const index = indexAt(event.clientY);
-      clearLine();
-      line = element("div", "drop-line");
-      const all = rows();
-      if (index < all.length) list.insertBefore(line, all[index]);
-      else if (all.length) all[all.length - 1].after(line);
-    });
-
-    list.addEventListener("drop", (event) => {
-      if (!dragging) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const index = indexAt(event.clientY);
-      const position = index > dragging.from ? index - 1 : index;
-      if (position !== dragging.from) Hub.send("moveInsert", { trackId: channel, insertId: dragging.insertId, position });
-      clearLine();
-    });
-
-    list.addEventListener("dragend", () => {
-      list.querySelectorAll(".dragging").forEach((row) => row.classList.remove("dragging"));
-      dragging = null;
-      clearLine();
-    });
+    listDrop(list, channel, ".panel-insert");
   }
 
   /** Where a track can send: FX channels (or a new one), and every plugin in the song with a
@@ -744,7 +836,8 @@
     showPanelInserts(root.querySelector(".panel-insert-list"), track.inserts || [], track.id);
     showSends(root.querySelector(".panel-send-list"), track);
     root.classList.toggle("selected", Hub.isTrackSelected(track.id));
-    showInserts(root.querySelector(".strip-inserts"), track.inserts || [], track.id, track.kept || []);
+    showInserts(root.querySelector(".strip-inserts"), track.inserts || [], track.id, track.kept || [],
+                track.kind === "instrument" ? { name: track.instrument ? track.instrument.name : "Cayman" } : null);
 
     if (Hub.midiFx) {
       Hub.midiFx.showStrip(root.querySelector(".strip-midifx"), track);

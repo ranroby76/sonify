@@ -204,6 +204,112 @@ namespace
 }
 
 //==============================================================================
+/** A project opening: a card with a spinner over the workspace, the project's name and the step
+    it's at (with the seconds so far once it takes a while). It takes the clicks meant for the
+    workspace under it, so nothing half-loaded gets edited. */
+class CreatorStudio::LoadingCover final : public juce::Component,
+                                          private juce::Timer
+{
+public:
+    LoadingCover()
+    {
+        setInterceptsMouseClicks (true, true);
+        setTitle ("Loading");
+        startTimerHz (60);
+    }
+
+    void setText (const juce::String& newName, const juce::String& newStep)
+    {
+        if (newStep != step)
+            stepStarted = juce::Time::getMillisecondCounterHiRes();
+
+        name = newName;
+        step = newStep;
+        setDescription ("Loading " + name + ": " + step);
+        repaint();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (Theme::window.withAlpha (0.82f));
+
+        const auto card = cardBounds();
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        g.fillRoundedRectangle (card.translated (0.0f, 6.0f).expanded (4.0f), 14.0f);
+        g.setColour (Theme::panel);
+        g.fillRoundedRectangle (card, 12.0f);
+        g.setColour (Theme::outline);
+        g.drawRoundedRectangle (card.reduced (0.5f), 12.0f, 1.0f);
+
+        // The spinner: a quarter-and-a-bit of green going round a dim ring, once a second.
+        const auto now = juce::Time::getMillisecondCounterHiRes();
+        const auto centre = juce::Point<float> (card.getCentreX(), card.getY() + 52.0f);
+        const float radius = 17.0f;
+        const auto turn = (float) std::fmod ((now - created) / 1000.0, 1.0) * juce::MathConstants<float>::twoPi;
+        const juce::PathStrokeType stroke (3.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+
+        juce::Path ring;
+        ring.addCentredArc (centre.x, centre.y, radius, radius, 0.0f, 0.0f, juce::MathConstants<float>::twoPi, true);
+        g.setColour (Theme::outline);
+        g.strokePath (ring, stroke);
+
+        juce::Path arc;
+        arc.addCentredArc (centre.x, centre.y, radius, radius, 0.0f, turn, turn + 1.9f, true);
+        g.setColour (Theme::accent);
+        g.strokePath (arc, stroke);
+
+        auto text = card.withTrimmedTop (86.0f).reduced (20.0f, 0.0f);
+        g.setColour (Theme::text);
+        g.setFont (Theme::font (17.0f, true));
+        g.drawFittedText ("Loading " + name, text.removeFromTop (24.0f).toNearestInt(), juce::Justification::centred, 1);
+
+        // Its seconds so far, once a step takes a while (a first build can take a minute).
+        const auto seconds = (now - stepStarted) / 1000.0;
+        auto line = step + juce::String::fromUTF8 ("\xe2\x80\xa6");
+        if (seconds >= 3.0)
+            line << "  " << juce::String ((int) seconds) << " s";
+
+        g.setColour (Theme::muted);
+        g.setFont (Theme::font (13.5f));
+        g.drawFittedText (line, text.removeFromTop (22.0f).toNearestInt(), juce::Justification::centred, 1);
+    }
+
+private:
+    juce::Rectangle<float> cardBounds() const
+    {
+        return getLocalBounds().toFloat().withSizeKeepingCentre (380.0f, 156.0f);
+    }
+
+    void timerCallback() override   { repaint (cardBounds().getSmallestIntegerContainer()); }
+
+    juce::String name, step;
+    const double created = juce::Time::getMillisecondCounterHiRes();
+    double stepStarted = created;
+};
+
+void CreatorStudio::showLoading (const juce::String& name, const juce::String& step)
+{
+    if (loadingCover == nullptr)
+    {
+        loadingCover = std::make_unique<LoadingCover>();
+        addAndMakeVisible (*loadingCover);
+        loadingCover->setBounds (workspace.getBounds());
+    }
+
+    loadingCover->setText (name, step);
+    loadingCover->toFront (false);
+
+    // Painted now: the step after this keeps the message thread busy for a moment.
+    if (auto* peer = getPeer(); peer != nullptr && isShowing())
+        peer->performAnyPendingRepaintsNow();
+}
+
+void CreatorStudio::hideLoading()
+{
+    loadingCover = nullptr;
+}
+
+//==============================================================================
 CreatorStudio::CreatorStudio (AudioEngine& sonifyEngine, FananServer& fananServer)
     : server (fananServer),
       audio (sonifyEngine)
@@ -546,6 +652,9 @@ void CreatorStudio::resized()
 
     topBar.setBounds (area.removeFromTop (TopBar::height));
     workspace.setBounds (area);
+
+    if (loadingCover != nullptr)
+        loadingCover->setBounds (area);
 }
 
 //==============================================================================
@@ -631,6 +740,9 @@ void CreatorStudio::projectChanged()
     {
         workspace.setProject ({}, {});
         projectTools.setChosenKind (std::nullopt);
+
+        if (! openingProject)   // (not the one before closing as the next opens)
+            hideLoading();
 
         builtProjectId.clear();
         preview.unload();
@@ -973,9 +1085,19 @@ void CreatorStudio::previewChanged()
                                                               : Workspace::BuildState::idle,
                         empty ? juce::String (emptyProjectStatus) : preview.getStatus());
 
+    // A project opening: the cover follows it, and goes once it plays (or didn't build), with its
+    // panel laid out and its preset back (the end of this).
+    const auto loadingName = project.isOpen() ? project.getInfo().name : juce::String();
+
+    if (loadingCover != nullptr && state == LivePreview::State::building)
+        loadingCover->setText (loadingName, "Building it");
+
     // The knobs are rebuilt only when the plugin's parameter list changed.
     if (preview.getParametersVersion() != shownParamsVersion)
     {
+        if (loadingCover != nullptr && ! openingProject)
+            showLoading (loadingName, "Laying out its panel");
+
         shownParamsVersion = preview.getParametersVersion();
 
         pushParameters();
@@ -1019,6 +1141,10 @@ void CreatorStudio::previewChanged()
         static_cast<LogWindow*> (logWindow.get())->setLog (preview.getLog());
 
     refreshProtection();   // its panel can be taken once it plays
+
+    // (Idle doesn't end it: the project's library comes before its build starts.)
+    if (loadingCover != nullptr && ! openingProject && (state == LivePreview::State::playing || state == LivePreview::State::failed))
+        hideLoading();
 }
 
 void CreatorStudio::loadLayout (bool makeOneIfMissing)
@@ -1954,8 +2080,9 @@ void CreatorStudio::exportFinished (const PluginExporter::Result& result)
     auto options = juce::MessageBoxOptions()
                        .withTitle ("Exported")
                        .withMessage (message)
-                       .withButton ("Show export folder")
-                       .withButton ("OK")
+                       .withButton (juce::MessageBoxButtonOptions { "Show export folder", 1 })
+                       .withButton (juce::MessageBoxButtonOptions { "OK", 0 }.setRole (juce::MessageBoxButtonRole::cancel)
+                                                                             .setPreferredAction())
                        .withAssociatedComponent (this);
 
     juce::AlertWindow::showAsync (options, [file = result.files.isEmpty() ? folder : result.files.getFirst()] (int button)
@@ -2636,13 +2763,23 @@ void CreatorStudio::openProjectFile (const juce::File& file)
     }
 
     flushLayoutSave();   // the open project's last GUI change, before another one opens
+
+    // Reading the project, its looks and its panel takes a moment: the cover says so first. It
+    // stays while the plugin builds (previewChanged takes it away once it's ready).
+    showLoading (file.getParentDirectory().getFileName(), "Opening the project");
+    const juce::ScopedValueSetter<bool> opening (openingProject, true);
     const auto result = project.open (file);
 
     if (result.failed())
     {
+        hideLoading();
         settings.removeRecentProject (file);
         showError ("Couldn't open the project", result.getErrorMessage());
+        return;
     }
+
+    if (preview.getState() != LivePreview::State::building)
+        hideLoading();   // nothing to build: it's ready as it is
 }
 
 //==============================================================================

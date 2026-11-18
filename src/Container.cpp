@@ -536,8 +536,8 @@ namespace ContainerTools
         hold (leftPeak, leftHold, blockLeft);
         hold (rightPeak, rightHold, blockRight);
 
-        if (blockLeft >= 0.99f)  leftClipping.store (true);
-        if (blockRight >= 0.99f) rightClipping.store (true);
+        if (blockLeft > 1.0f)  leftClipping.store (true);    // past full scale only
+        if (blockRight > 1.0f) rightClipping.store (true);
 
         // A meter only takes the sound in: its channels are its sources' own, left as they are.
     }

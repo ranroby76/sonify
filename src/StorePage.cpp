@@ -1828,8 +1828,8 @@ void StorePage::postWithRules (StorePublisher::Item item)
                            .withMessage (rules.text + "\n\nFanan AI checks every ad against these rules before it's posted. "
                                          "A post that breaks them isn't posted, and after three such posts, posting in the Store "
                                          "closes for this account for good.")
-                           .withButton ("I accept")
-                           .withButton ("Cancel")
+                           .withButton (juce::MessageBoxButtonOptions { "I accept", 1 })
+                           .withButton (juce::MessageBoxButtonOptions { "Cancel", 0 }.setRole (juce::MessageBoxButtonRole::cancel))
                            .withAssociatedComponent (safeThis.getComponent());
 
         juce::AlertWindow::showAsync (options, [safeThis, item, version = rules.version] (int answer) mutable

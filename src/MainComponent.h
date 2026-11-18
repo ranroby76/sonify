@@ -1443,6 +1443,16 @@ private:
     std::unique_ptr<juce::FileChooser> scoreChooser;
     void loadPluginInto (int channel, const juce::File& file, const juce::String& pluginId,
                          int position, int replaceInsertId, bool joinUndoStep = false);
+
+    /** The Console's drags: an insert onto another channel (its envelopes and the sidechain sends
+        keying it go with it), an instrument onto another instrument track (they trade). One undo step each. */
+    void transferInsert (int fromChannel, int insertId, int toChannel, int position);
+    void exchangeInstruments (int trackA, int trackB);
+
+    /** Plugin-parameter envelopes and sidechain sends that name (channel, slot) now name the
+        slot's new channel; with swap, those naming (other, otherSlot) move the other way too.
+        Each change joins the newest undo step. */
+    void carryPluginLinks (int channel, int slot, int newChannel, bool swap);
     void recordPluginLoad (int channel, int insertId, AudioEngine::Displaced& displaced,
                            const Edits::TrackName& nameBefore, bool joinUndoStep);
 

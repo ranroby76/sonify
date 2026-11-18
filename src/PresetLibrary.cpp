@@ -65,7 +65,7 @@ int PresetMenu::step (int delta) const
 
 bool PresetMenu::operator== (const PresetMenu& other) const
 {
-    return names == other.names && groups == other.groups && current == other.current && modified == other.modified
+    return names == other.names && groups == other.groups && categories == other.categories && current == other.current && modified == other.modified
         && canSave == other.canSave && canDelete == other.canDelete && canSaveFactory == other.canSaveFactory;
 }
 
@@ -241,6 +241,7 @@ PresetMenu PresetLibrary::getMenu() const
     {
         menu.names.add (entry.preset.name);
         menu.groups.add (entry.group);
+        menu.categories.add (entry.isFactory() && entry.preset.category.isNotEmpty() ? entry.preset.category : entry.group);
     }
 
     menu.current = current;

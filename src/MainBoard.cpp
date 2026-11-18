@@ -56,11 +56,13 @@ namespace
     juce::var meterToVar (AnalogBoard::Meter& meter)
     {
         const auto round = [] (float value) { return std::round (value * 10.0f) / 10.0f; };
-        const auto peakDb = [] (float peak) { return peak > 1.0e-5f ? 20.0f * std::log10 (peak) : -100.0f; };
+        // Peaks round up to the next 0.1 dB, so the page's clip light (over 0 dB) sees even a small
+        // over, and full scale itself (0.0) never lights it.
+        const auto peakDb = [] (float peak) { return peak > 1.0e-5f ? std::ceil (200.0f * std::log10 (peak)) / 10.0f : -100.0f; };
 
         return juce::Array<juce::var> { static_cast<double> (round (meter.vuLeft.load())), static_cast<double> (round (meter.vuRight.load())),
-                                        static_cast<double> (round (peakDb (meter.peakLeft.exchange (0.0f)))),
-                                        static_cast<double> (round (peakDb (meter.peakRight.exchange (0.0f)))),
+                                        static_cast<double> (peakDb (meter.peakLeft.exchange (0.0f))),
+                                        static_cast<double> (peakDb (meter.peakRight.exchange (0.0f))),
                                         static_cast<double> (round (meter.reduction.load())),
                                         static_cast<double> (round (meter.dynamicReduction.load())) };
     }
